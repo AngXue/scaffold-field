@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">架算</string>
+    <string name="title_activity_main">架算</string>
+    <string name="package_name">com.scaffoldfield.app</string>
+    <string name="custom_url_scheme">com.scaffoldfield.app</string>
+</resources>

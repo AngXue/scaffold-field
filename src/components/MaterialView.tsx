@@ -1,5 +1,7 @@
-import { Download, FileSpreadsheet, Printer, Scissors } from 'lucide-react'
+import { Download, FileSpreadsheet, Printer } from 'lucide-react'
 import type { ScaffoldLayout } from '../domain/scaffold'
+import { saveTextFile } from '../platform/files'
+import { printDocument } from '../platform/print'
 
 type MaterialViewProps = {
   layout: ScaffoldLayout
@@ -14,7 +16,7 @@ const connectorLabels = {
 export function MaterialView({ layout }: MaterialViewProps) {
   const { materials } = layout
 
-  const exportCsv = () => {
+  const exportCsv = async () => {
     const rows = [
       ['类别', '规格', '数量', '单位'],
       ...Object.entries(materials.stockSummary).map(([length, quantity]) => ['钢管', length, quantity, '根']),
@@ -26,12 +28,24 @@ export function MaterialView({ layout }: MaterialViewProps) {
       ['铺设材料', '钢笆覆盖面积', materials.deckArea, 'm²'],
     ]
     const csv = `\uFEFF${rows.map((row) => row.join(',')).join('\n')}`
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = '青岚别墅-材料清单.csv'
-    link.click()
-    URL.revokeObjectURL(url)
+    try {
+      await saveTextFile({
+        fileName: '青岚别墅-材料清单.csv',
+        mimeType: 'text/csv;charset=utf-8',
+        contents: csv,
+        title: '导出材料清单',
+      })
+    } catch (error) {
+      window.alert(`导出失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  const printMaterials = async () => {
+    try {
+      await printDocument('青岚别墅-材料清单')
+    } catch (error) {
+      window.alert(`打印失败：${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   return (
@@ -73,30 +87,9 @@ export function MaterialView({ layout }: MaterialViewProps) {
         </section>
       </div>
 
-      <section className="cutting-section">
-        <div className="section-title">
-          <div><span className="field-caption">PIPE ASSEMBLY</span><h2>标准管组管方案</h2></div>
-          <span className="cutting-note"><Scissors size={15} /> 少接头优先 · 搭接计入用量</span>
-        </div>
-        <div className="cut-plan-table">
-          <div className="cut-table-head"><span>构件</span><span>标准管组合</span><span>额外外伸</span></div>
-          {materials.assemblyPlans.slice(0, 8).map((plan) => (
-            <div className="cut-table-row" key={plan.memberId}>
-              <strong>{plan.memberId}</strong>
-              <div className="cut-bar">
-                {plan.stockLengths.map((stockLength, segmentIndex) => (
-                  <i key={`${stockLength}-${segmentIndex}`} style={{ flex: stockLength }}><span>{stockLength.toFixed(1)}m</span></i>
-                ))}
-              </div>
-              <span>{plan.excessLength.toFixed(2)} m</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <div className="export-actions">
-        <button className="secondary-button" type="button" onClick={() => window.print()}><Printer size={17} /> 打印 / PDF</button>
-        <button className="primary-button export-button" type="button" onClick={exportCsv}><FileSpreadsheet size={18} /> 导出 Excel CSV <Download size={16} /></button>
+        <button className="secondary-button" type="button" onClick={() => { void printMaterials() }}><Printer size={17} /> 打印 / PDF</button>
+        <button className="primary-button export-button" type="button" onClick={() => { void exportCsv() }}><FileSpreadsheet size={18} /> 导出 Excel CSV <Download size={16} /></button>
       </div>
     </div>
   )

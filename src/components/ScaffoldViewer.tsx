@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useThree } from '@react-three/fiber'
-import { Grid, OrbitControls } from '@react-three/drei'
+import { ContactShadows, Environment, Grid, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { Box, Focus, Maximize2, Minimize2, Rotate3D, ScanEye } from 'lucide-react'
 import type { DeckPanel, MemberType, PipeSegment, ScaffoldLayout } from '../domain/scaffold'
+import { useCssFullscreen } from '../platform/fullscreen'
 
 type ViewerProps = {
   layout: ScaffoldLayout
@@ -11,10 +13,33 @@ type ViewerProps = {
 
 type RenderLayer = MemberType | 'deck' | 'connector'
 
+/**
+ * True tube radius. The domain models a 48 mm scaffold tube
+ * (`pipeDiameter: 0.048` in src/domain/scaffold.ts); the viewer used to draw a
+ * 76 mm one, which swallowed the joint clearances the domain already emits.
+ */
+const TUBE_RADIUS = 0.024
+const TUBE_SEGMENTS = 12
+/**
+ * Abutting segments are pulled back along their axis so a shared joint shows a
+ * seam instead of merging into one continuous blob. ~4 mm total also clears the
+ * depth-buffer quantum (≈2.4 mm at 20 m of scene depth) and sits at 8-12 % of
+ * the local diameter — below ~4 % it reads as a shading artefact, above ~15 % as
+ * a modelling error.
+ */
+const END_INSET_START = 0.002
+const END_INSET_END = 0.0026
+const SELECTED_COLOR = '#ffb02e'
+
+/**
+ * These are deliberately brighter than the UI accents: under ACES tone mapping a
+ * #2f3c40 post survives as ~20 % grey and reads as dead metal rather than a
+ * coloured part.
+ */
 const MEMBER_COLORS: Record<MemberType, string> = {
-  post: '#2f3c40',
-  longitudinal: '#247b85',
-  transverse: '#db7b26',
+  post: '#4e6268',
+  longitudinal: '#1f8a95',
+  transverse: '#f0862a',
 }
 
 const MEMBER_LABELS: Record<MemberType, string> = {
@@ -32,10 +57,51 @@ const LAYER_LABELS: Record<RenderLayer, string> = {
 const LAYER_COLORS: Record<RenderLayer, string> = {
   ...MEMBER_COLORS,
   deck: '#87989a',
-  connector: '#5b4b3e',
+  connector: '#8a8f93',
 }
 
 const RENDER_LAYERS = Object.keys(LAYER_LABELS) as RenderLayer[]
+
+/**
+ * FNV-1a. Gives every tube a stable, tiny variation so ~100 identical cylinders
+ * stop looking like clones, while staying deterministic across renders (random
+ * values would shimmer every frame while orbiting).
+ */
+function hashUnit(seed: string, salt: number): number {
+  let hash = 0x811c9dc5 ^ salt
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return ((hash >>> 0) % 4096) / 4096
+}
+
+/**
+ * Offline image-based lighting.
+ *
+ * drei's `<Environment preset="...">` downloads an HDR from a CDN
+ * (`raw.githack.com/pmndrs/drei-assets`), which would break the offline APK and
+ * hang the Suspense boundary inside the WebView. Building the room in-engine,
+ * pre-filtering it with PMREM and handing the texture to `<Environment map>` gives
+ * galvanised steel something to reflect without touching the network.
+ */
+function ScaffoldEnvironment() {
+  const gl = useThree((state) => state.gl)
+
+  const environment = useMemo(() => {
+    const pmrem = new THREE.PMREMGenerator(gl)
+    // sigma 0.02 softens the room's box highlights and is the cheap cure for
+    // specular aliasing, which MSAA does not fix.
+    const texture = pmrem.fromScene(new RoomEnvironment(), 0.02).texture
+    pmrem.dispose()
+    return texture
+  }, [gl])
+
+  const rotation = useMemo(() => new THREE.Euler(0, 0.6, 0), [])
+  useEffect(() => () => environment.dispose(), [environment])
+
+  return <Environment map={environment} environmentIntensity={0.9} environmentRotation={rotation} />
+}
 
 function CameraRig({ position, target, maximumDistance }: {
   position: [number, number, number]
@@ -61,25 +127,56 @@ function Pipe({ segment, selected, onSelect }: {
 }) {
   const start = new THREE.Vector3(...segment.start)
   const end = new THREE.Vector3(...segment.end)
-  const midpoint = start.clone().add(end).multiplyScalar(0.5)
   const direction = end.clone().sub(start)
-  const quaternion = new THREE.Quaternion().setFromUnitVectors(
-    new THREE.Vector3(0, 1, 0),
-    direction.clone().normalize(),
+  const length = direction.length()
+  const axis = direction.clone().normalize()
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), axis)
+
+  // Never inset more than 8 % of a very short segment, or it would vanish.
+  const startInset = Math.min(END_INSET_START, length * 0.08)
+  const endInset = Math.min(END_INSET_END, length * 0.08)
+  const tubeLength = Math.max(0.01, length - startInset - endInset)
+  const tubeCenter = start.clone().add(axis.clone().multiplyScalar(startInset + tubeLength / 2))
+
+  // Galvanised posts read as bare steel; longitudinal/transverse members are
+  // painted, so they get the physical clearcoat model instead.
+  const painted = segment.type !== 'post'
+  const albedo = useMemo(
+    () => new THREE.Color(MEMBER_COLORS[segment.type]).multiplyScalar(1 + (hashUnit(segment.id, 1) - 0.5) * 0.07),
+    [segment.id, segment.type],
   )
+  const roughness = (painted ? 0.46 : 0.45) + (hashUnit(segment.id, 2) - 0.5) * 0.1
+  const metalness = (painted ? 0.15 : 0.8) + (hashUnit(segment.id, 3) - 0.5) * 0.06
 
   return (
     <mesh
-      position={midpoint}
+      position={tubeCenter}
       quaternion={quaternion}
       onClick={(event) => { event.stopPropagation(); onSelect() }}
     >
-      <cylinderGeometry args={[selected ? 0.055 : 0.038, selected ? 0.055 : 0.038, direction.length(), 8]} />
-      <meshStandardMaterial
-        color={selected ? '#ffb02e' : MEMBER_COLORS[segment.type]}
-        roughness={0.5}
-        metalness={0.35}
-      />
+      {/* Constant geometry across selection states: resizing on select rebuilt
+          and re-uploaded the geometry on every click and made the part visibly
+          jump. Selection is emissive now, so nothing moves. */}
+      <cylinderGeometry args={[TUBE_RADIUS, TUBE_RADIUS, tubeLength, TUBE_SEGMENTS]} />
+      {painted ? (
+        <meshPhysicalMaterial
+          color={albedo}
+          metalness={metalness}
+          roughness={roughness}
+          clearcoat={0.25}
+          clearcoatRoughness={0.4}
+          emissive={selected ? SELECTED_COLOR : '#000000'}
+          emissiveIntensity={selected ? 0.5 : 0}
+        />
+      ) : (
+        <meshStandardMaterial
+          color={albedo}
+          metalness={metalness}
+          roughness={roughness}
+          emissive={selected ? SELECTED_COLOR : '#000000'}
+          emissiveIntensity={selected ? 0.5 : 0}
+        />
+      )}
     </mesh>
   )
 }
@@ -112,13 +209,13 @@ function SteelDeck({ deck, selected, onSelect }: {
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[surfaceVertices, 3]} />
         </bufferGeometry>
-        <meshStandardMaterial color={selected ? '#ffb02e' : '#788a8c'} transparent opacity={0.3} depthWrite={false} side={THREE.DoubleSide} roughness={0.8} />
+        <meshStandardMaterial color={selected ? SELECTED_COLOR : '#788a8c'} transparent opacity={0.3} depthWrite={false} side={THREE.DoubleSide} roughness={0.8} />
       </mesh>
       <lineSegments renderOrder={2}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[new Float32Array(linePoints), 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={selected ? '#ffb02e' : '#40575a'} transparent opacity={0.8} depthWrite={false} />
+        <lineBasicMaterial color={selected ? SELECTED_COLOR : '#40575a'} transparent opacity={0.8} depthWrite={false} />
       </lineSegments>
     </group>
   )
@@ -129,7 +226,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [cameraPreset, setCameraPreset] = useState(0)
   const [cameraRevision, setCameraRevision] = useState(0)
-  const [isFullscreen, setIsFullscreen] = useState(false)
+  const { isFullscreen, toggleFullscreen } = useCssFullscreen()
   const [visibility, setVisibility] = useState<Record<RenderLayer, boolean>>(() =>
     Object.fromEntries(RENDER_LAYERS.map((layer) => [layer, true])) as Record<RenderLayer, boolean>)
   const selectedSegment = layout.pipeSegments.find((segment) => segment.id === selectedId)
@@ -161,15 +258,18 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
     setCameraRevision((revision) => revision + 1)
   }
 
-  useEffect(() => {
-    const handleFullscreen = () => setIsFullscreen(document.fullscreenElement === viewerRef.current)
-    document.addEventListener('fullscreenchange', handleFullscreen)
-    return () => document.removeEventListener('fullscreenchange', handleFullscreen)
-  }, [])
+  // ContactShadows renders once (frames={1}); remount it when the structure
+  // actually changes, or the baked shadow goes stale.
+  const shadowKey = `${layout.pipeSegments.length}-${layout.decks.length}-${layout.connectors.length}-${span.toFixed(2)}`
 
-  const toggleFullscreen = async () => {
-    if (document.fullscreenElement) await document.exitFullscreen()
-    else await viewerRef.current?.requestFullscreen()
+  // Clicking empty space clears the selection, but a camera drag that happens to
+  // release off-model must not. OrbitControls is makeDefault, so without this
+  // every orbit wiped the selected member's detail panel.
+  const pointerDownAt = useRef<{ x: number; y: number } | null>(null)
+  const handlePointerMissed = (event: MouseEvent) => {
+    const origin = pointerDownAt.current
+    const travelled = origin ? Math.hypot(event.clientX - origin.x, event.clientY - origin.y) : 0
+    if (travelled < 6) setSelectedId(null)
   }
 
   const toggleLayer = (layer: RenderLayer) => {
@@ -185,7 +285,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
   }
 
   return (
-    <div className="viewer-shell" ref={viewerRef}>
+    <div className={isFullscreen ? 'viewer-shell is-fullscreen' : 'viewer-shell'} ref={viewerRef}>
       <div className="canvas-toolbar viewer-toolbar">
         <div className="tool-status"><Rotate3D size={17} /> 拖动旋转 · 双指缩放</div>
         <div className="toolbar-actions">
@@ -197,17 +297,34 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
         </div>
       </div>
       <div className="viewer-canvas" data-testid="scaffold-canvas">
-        <Canvas dpr={[1, 1.5]} camera={{ fov: 42 }} onPointerMissed={() => setSelectedId(null)}>
-          <color attach="background" args={['#eef2f1']} />
+        <Canvas
+          dpr={[1, 1.5]}
+          /* three defaults antialias to false, so the scene had no MSAA at all.
+             NeutralToneMapping (Khronos PBR Neutral) keeps flat member colours
+             saturated where ACES crushed them toward grey. */
+          gl={{ antialias: true, toneMapping: THREE.NeutralToneMapping }}
+          camera={{ fov: 42 }}
+          onPointerDown={(event) => { pointerDownAt.current = { x: event.clientX, y: event.clientY } }}
+          onPointerMissed={handlePointerMissed}
+        >
+          {/* The clear colour bypasses tone mapping, so it is set a little darker
+              than the CSS mat to stop the geometry looking washed out beside it. */}
+          <color attach="background" args={['#e6e8e9']} />
+          <ScaffoldEnvironment />
           <CameraRig
             key={`${cameraPreset}-${cameraRevision}`}
             position={cameraPositions[cameraPreset]}
             target={center}
             maximumDistance={span * 5}
           />
-          <ambientLight intensity={1.3} />
-          <directionalLight position={[7, 11, 8]} intensity={2.2} />
-          <directionalLight position={[-6, 4, -4]} intensity={0.7} />
+          {/* Ambient carries almost nothing now: the environment map does the
+              fill. Direct light was cut ~3x in the same change so the pipes do
+              not blow out. The rim light is what separates adjacent parts. */}
+          <hemisphereLight args={['#e8f0f2', '#6d7472', 0.45]} />
+          <directionalLight position={[7, 9, 6]} intensity={1.25} />
+          <directionalLight position={[-6, 3, -5]} intensity={0.5} />
+          <directionalLight position={[-3, 5, -9]} intensity={0.85} />
+          <ambientLight intensity={0.15} />
           <group>
             {layout.pipeSegments.filter((segment) => visibility[segment.type]).map((segment) => (
               <Pipe
@@ -222,11 +339,31 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
             ))}
             {visibility.connector && layout.connectors.map((connector) => (
               <mesh key={connector.id} position={connector.position} onClick={(event) => { event.stopPropagation(); setSelectedId(connector.id) }}>
-                <sphereGeometry args={[connector.id === selectedId ? 0.075 : 0.055, 7, 5]} />
-                <meshStandardMaterial color={connector.id === selectedId ? '#ffb02e' : '#55483d'} metalness={0.5} roughness={0.45} />
+                {/* A clamp is a bright, tight-highlight fitting rather than a
+                    tangent blob: high metalness and low roughness against the
+                    tube's broad soft highlight is what says "two parts". */}
+                <sphereGeometry args={[TUBE_RADIUS * 1.65, 16, 12]} />
+                <meshStandardMaterial
+                  color={connector.id === selectedId ? SELECTED_COLOR : LAYER_COLORS.connector}
+                  metalness={0.95}
+                  roughness={0.3}
+                  emissive={connector.id === selectedId ? SELECTED_COLOR : '#000000'}
+                  emissiveIntensity={connector.id === selectedId ? 0.5 : 0}
+                />
               </mesh>
             ))}
           </group>
+          <ContactShadows
+            key={shadowKey}
+            position={[center[0], minimum[1] + 0.002, center[2]]}
+            scale={span * 1.5}
+            resolution={256}
+            blur={2.4}
+            far={span}
+            opacity={0.4}
+            color="#31403f"
+            frames={1}
+          />
           <Grid
             args={[40, 40]}
             cellSize={0.5}

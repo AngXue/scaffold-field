@@ -13,6 +13,8 @@
 - Test: `npm test`
 - Lint: `npm run lint`
 - Production build: `npm run build`
+- Android toolchain (one-off, ~600 MB into `.toolchain/`): `npm run android:setup`
+- Build APK: `npm run apk` (debug) or `npm run apk:release`
 - Before finishing code changes, run tests, lint, and build. For 3D changes, also inspect the WebGL canvas in a real browser at desktop and tablet/mobile sizes.
 
 ## Architecture
@@ -32,12 +34,65 @@
 - Wall ties are intentionally excluded. Braces are not calculated or rendered and remain `--` in the BOM. Do not invent either rule without an explicit engineering specification.
 - Preserve the local-storage key `scaffold-project`, merge stored parameters with defaults, and keep the legacy `rowCount -> deckSupportRailCount` migration.
 
+## Theming (monochrome neumorphic)
+
+The UI is a neumorphic ("soft UI") theme in **white + black** — deliberately colourless — built on CSS custom properties in [src/index.css](src/index.css). The only chromatic values left in the app are the 3D member colours in `ScaffoldViewer.tsx`, which are a data encoding (立杆 / 纵向 / 横向), not decoration. The governing rule is **soft chrome, flat data**:
+
+- Shadows belong to the CONTROL plane only — buttons, tabs, panels, toolbars, popovers. Raised = actionable, recessed = editable/container.
+- The DATA plane stays **flat** with real hairlines and no `box-shadow`: material tables, numeric readouts, and both canvases. A neumorphic edge measures only ~1.14–1.45:1 against its own surface, so it can never tell a user where a field begins, which row they are on, or what is selected. Keep the shadow budget of a screen to roughly a handful of controls.
+- Use the `--nm-*` tokens rather than literal colours: `--nm-e1..e4` (raised depth), `--nm-i1..i2` (inset), `--nm-edge` (1px inset ring). Keep `blur = 2 × offset`, spread 0, offsets equal and opposite.
+- **Never paint the neumorphic plane `#ffffff`.** On pure white the highlight has no headroom (255 → 255), so the raised state becomes invisible and only a grey smudge remains. `--nm-surface` is a very light grey for exactly this reason.
+- Functional colours were renamed when the theme went monochrome: `--accent` / `--accent-strong` / `--accent-soft` (were `--teal*`) and `--mark` (was `--orange`). The names are historical — do not reintroduce colour under them.
+- **Every input and toggle needs `--nm-edge`**, never only a shadow, so it clears the 3:1 non-text contrast requirement.
+- Keep the verified contrast floors against `--nm-surface`: `--ink` 15.6:1, `--muted` 5.3:1, `--accent` 15.5:1, `--nm-border` 3.9:1. Do not darken the surface or lighten these without re-checking.
+- Focus visibility is a real colour, not a shadow: `3px solid var(--nm-focus)` at 18.4:1. The older `rgba(23,109,115,0.22)` ring measured 1.38:1 and failed WCAG 2.4.11 — do not restore it.
+- Do not animate `box-shadow`; swap to a pseudo-element whose opacity changes if a press transition is needed.
+- Print must stay flat black-on-white: the `@media print` block in [src/index.css](src/index.css) zeroes every shadow and background image, because the Android print framework renders through this same stylesheet.
+- `color-scheme: light` plus `android:forceDarkAllowed="false"` in the manifest are required: WebView algorithmic darkening recomputes every shadow and inverts the light source.
+- There is **no per-tab heading block**. The single 60px topbar carries the brand, the workflow tabs and the project actions; each tab's own toolbar is the panel's first row.
+
+## 2D Canvas
+
+The drawing surface is an **unbounded plane**, not a fixed view box:
+
+- Pan and zoom are a pure VIEW transform (`view = {x, y, k}` in [PlanEditor.tsx](src/components/PlanEditor.tsx)). Model coordinates stay in plan pixels at `PIXELS_PER_METER`, so `measurePath`, `resizePathSegment` and every measured length are untouched by panning or zooming. Never bake a zoom factor into the stored `Point2D[]`.
+- Never reintroduce coordinate clamping for nodes or added segments; the whole point is that geometry can sit anywhere.
+- The SVG `viewBox` tracks the element's real pixel size (via `ResizeObserver`) so one user unit equals one CSS pixel, and the grid rect covers exactly the visible model area rather than a giant fixed rect.
+- Grid and geometry strokes use `vector-effect: non-scaling-stroke`; node labels are counter-scaled by `1 / k`. Keep line weights and label sizes constant on screen at any zoom.
+- The 1 m scale bar lives in screen space and multiplies by `k`, so it always reports the true on-screen length.
+- Snapping still rounds to the absolute `GRID_SIZE` lattice in model space.
+
 ## 3D Rules
 
 - Render `layout.pipeSegments`, `layout.decks`, and `layout.connectors`; do not render logical members as physical pipes.
 - Data edits and layer visibility changes must not remount `CameraRig` or reset the user's camera. Only explicit reset/preset actions may change its key.
 - Avoid coincident geometry: keep rendered pipe segments and connector positions unique, suppress overlapping corner members, and separate steel-deck lines from transparent surfaces to prevent Z-fighting.
-- Keep the DPR cap and offline rendering behavior. Do not add remote HDR, texture, or model dependencies.
+- Keep the DPR cap and offline rendering behavior. Do not add remote HDR, texture, or model dependencies. drei's `<Environment preset>` fetches an HDR from a CDN — use the procedural `RoomEnvironment` + PMREM path already in `ScaffoldViewer.tsx` instead.
+- Keep `gl={{ antialias: true }}`: three defaults `antialias` to `false`, so without it the scene renders with no MSAA at all. There is no `antialias` prop on `<Canvas>`; it must go through `gl` or it is silently dropped.
+- Draw tubes at the true radius (`TUBE_RADIUS`, half of the domain's `pipeDiameter`). Oversizing them visually swallows the joint clearances the domain already emits. Keep the per-end axial insets so abutting segments read as separate parts, and never change geometry size to show selection — that re-uploads the geometry and makes the part jump. Selection is emissive.
+
+## Android / Capacitor
+
+The tablet build is a Capacitor WebView shell around the same web bundle, so the app must stay fully offline and every browser-only API must have a native path.
+
+- Put anything the WebView cannot do in `src/platform/`, never inline in a component. `saveTextFile` (Filesystem + Share) and `printDocument` (local `NativePrint` plugin) are the existing examples.
+- `window.print()` is a no-op in an Android WebView and an anchor `download` attribute is ignored for `blob:` URLs. Never reintroduce either; route through `src/platform/` instead.
+- Capacitor's `WebChromeClient.onShowCustomView` cancels the DOM Fullscreen API, so `requestFullscreen()` never takes effect in the APK. Use `useCssFullscreen()` from `src/platform/fullscreen.ts`, which overlays with CSS.
+- Android's back button belongs to the host, not the page. Keep `useAndroidBackButton` in `App.tsx`: exit fullscreen, then return to the first tab, then leave the app.
+- Keep `base: './'` in [vite.config.ts](vite.config.ts); the bundle is loaded from a local scheme.
+- The native plugin lives in `android/app/src/main/java/com/scaffoldfield/app/` and is registered in `MainActivity.onCreate` **before** `super.onCreate`.
+- `.toolchain/` holds the JDK, Android SDK and Gradle caches. It is gitignored and must never be committed; `scripts/setup-android-toolchain.sh` recreates it.
+- Keep the JDK/SDK versions in `scripts/setup-android-toolchain.sh` in step with `android/variables.gradle` (`compileSdkVersion` / `build-tools`).
+
+### Device debugging over Wi-Fi
+
+- Always run adb through `npm run adb -- <args>` (or `bash scripts/adb.sh`). adb keeps its keys in `$HOME/.android`, which this environment blocks, so the wrapper points `HOME` at `.toolchain/adb-home`. A bare `adb` fails with `Cannot mkdir '<home>/.android': Operation not permitted`.
+- Android 11+ wireless debugging needs a **one-time pairing** before `adb connect`. On the tablet open 开发者选项 → 无线调试 → 「使用配对码配对设备」, read the pairing port with `npm run adb -- mdns services` (it advertises `_adb-tls-pairing._tcp` only while that dialog is open), then `npm run adb -- pair <ip>:<pairing-port> <code>`. After that `adb connect <ip>:<connect-port>` works and adb reconnects on its own via mDNS.
+- The connect port advertises as `_adb-tls-connect._tcp`. If the handshake fails with `SSLV3_ALERT_CERTIFICATE_UNKNOWN`, the device is simply not paired yet — it is not a network or port problem.
+- On Xiaomi HyperOS/MIUI both `adb install` and `pm install` fail with `INSTALL_FAILED_USER_RESTRICTED` unless 「USB 调试（安全设置）」 is enabled. To avoid depending on that setting, push the APK and open the installer on the device:
+  `npm run adb -- push <apk> /sdcard/Download/` then
+  `npm run adb -- shell am start -a android.intent.action.VIEW -d file:///sdcard/Download/<apk> -t application/vnd.android.package-archive`
+- This machine has neither a connected device nor an emulator image, so on-device behaviour can only be checked when a tablet is actually paired.
 
 ## Validation
 

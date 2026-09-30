@@ -6,7 +6,12 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // `dist` is build output. `android` is the generated Capacitor project: it has its
+  // own toolchain and contains a copy of the built web bundle under
+  // android/app/src/main/assets/public, which must not be linted as source.
+  // `.toolchain` holds the local JDK/SDK/Gradle caches, which contain third-party
+  // JS assets (e.g. Capacitor's native-bridge.js) that are not our source.
+  globalIgnores(['dist', 'android', '.toolchain']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

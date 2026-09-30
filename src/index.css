@@ -1,34 +1,88 @@
 :root {
   font-family: "IBM Plex Sans", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  color: #243034;
-  background: #e9eeed;
+  color: #14181a;
+  background: #eef0f1;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  --ink: #243034;
-  --muted: #677479;
-  --line: #d4dcde;
+  /* Opt out of WebView/OS algorithmic darkening: it recomputes every painted
+     shadow and inverts the light source, which destroys the depth model. */
+  color-scheme: light;
+
+  /* --- monochrome white + black ------------------------------------------
+     The theme is deliberately colourless. The only chromatic values left in the
+     app are the 3D member colours in ScaffoldViewer.tsx, which are a data
+     encoding (立杆 / 纵向 / 横向) rather than decoration. */
+  --ink: #14181a;
+  --muted: #5c6467;
+  --line: #ccd2d4;
   --paper: #ffffff;
-  --canvas: #f3f6f5;
-  --teal: #176d73;
-  --teal-dark: #10565b;
-  --orange: #e3822d;
-  --red: #c8443d;
-  --soft-teal: #e6f1f0;
+  --canvas: #f7f8f8;
+  --accent: #16191b;
+  --accent-strong: #000000;
+  --accent-soft: #e3e6e7;
+  --mark: #2a3033;
+  --red: #8a2f2a;
+
+  /* --- neumorphic control plane -------------------------------------------
+     "Soft chrome, flat data". These tokens apply to controls, panels and
+     toolbars ONLY. Tables, numeric readouts and both canvases stay flat on
+     --paper with real hairlines: a neumorphic edge is only ~1.14-1.45:1 against
+     the surface, so it can never be the thing that tells a user where a field
+     begins or which row they are on — least of all in sunlight.
+     NOTE: the surface is a very light grey, not #ffffff. On pure white the
+     highlight has no headroom at all (255 -> 255) and the raised state becomes
+     invisible, leaving only a grey smudge on one side. */
+  --nm-surface: #eef0f1;
+  --nm-sunk: #e7eaeb;
+  --nm-light: #ffffff;
+  --nm-dark: #c5cbd0;
+  --nm-light-in: #ffffff;
+  --nm-dark-in: #b3b9be;
+  /* Clears 3:1 against every surface in use, so inputs and toggles keep a
+     perceivable boundary without a drawn box. */
+  --nm-border: #74797d;
+  --nm-focus: #000000;
+
+  /* Depth scale. blur = 2 x offset, spread 0, equal and opposite offsets. */
+  --nm-e1: -2px -2px 4px var(--nm-light), 2px 2px 4px var(--nm-dark);
+  --nm-e2: -3px -3px 6px var(--nm-light), 3px 3px 6px var(--nm-dark);
+  --nm-e3: -5px -5px 10px var(--nm-light), 5px 5px 10px var(--nm-dark);
+  --nm-e4: -8px -8px 16px var(--nm-light), 8px 8px 16px var(--nm-dark);
+  --nm-i1: inset 2px 2px 4px var(--nm-dark-in), inset -2px -2px 4px var(--nm-light-in);
+  --nm-i2: inset 3px 3px 6px var(--nm-dark-in), inset -3px -3px 6px var(--nm-light-in);
+  /* 1px inset ring: reads as the darkest edge of the shadow rather than a box. */
+  --nm-edge: inset 0 0 0 1px var(--nm-border);
+  --nm-r-1: 8px;
+  --nm-r-2: 10px;
+  --nm-r-3: 14px;
+  --nm-r-4: 20px;
 }
 
 * { box-sizing: border-box; }
-html { min-width: 320px; background: #e9eeed; }
+html { min-width: 320px; background: var(--nm-surface); }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input { font: inherit; }
 button { color: inherit; }
-button:focus-visible, input:focus-visible { outline: 3px solid rgba(23, 109, 115, 0.22); outline-offset: 2px; }
+/* 3px ring at a >=3:1 change of state (WCAG 2.4.11). The previous
+   rgba(23,109,115,0.22) ring composited to ~1.38:1 and did not qualify. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--nm-focus);
+  outline-offset: 2px;
+}
 #root { min-height: 100vh; }
 
 @media print {
-  :root { background: white; }
-  .topbar, .workflow-tabs, .inspector, .surface-heading p, .calculation-badge, .export-actions { display: none !important; }
-  .workspace { display: block !important; padding: 0 !important; }
-  .work-surface { border: 0 !important; box-shadow: none !important; }
+  /* The Android print framework renders through this stylesheet, so the whole
+     theme has to collapse to flat black on white. */
+  *, *::before, *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    background-image: none !important;
+    border-radius: 0 !important;
+  }
+  :root, html, body, .app-shell, .work-surface, .inspector { background: #fff !important; color: #000 !important; }
+  .topbar, .inspector, .export-actions { display: none !important; }
+  .workspace { display: block !important; padding: 0 !important; height: auto !important; }
+  .work-surface { border: 0 !important; }
   .materials-view { padding: 0 !important; }
 }

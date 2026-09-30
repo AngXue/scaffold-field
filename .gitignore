@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Local Android build toolchain (JDK + SDK + Gradle caches + signing key),
+# fetched by scripts/setup-android-toolchain.sh
+.toolchain
+
+# Local signing credentials
+android/keystore.properties
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

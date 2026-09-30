@@ -8,9 +8,20 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "android:setup": "bash scripts/setup-android-toolchain.sh",
+    "android:sync": "npm run build && cap sync android",
+    "apk": "bash scripts/build-apk.sh",
+    "apk:release": "bash scripts/build-apk.sh release",
+    "adb": "bash scripts/adb.sh"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/share": "^8.0.2",
     "@react-three/drei": "^10.7.8",
     "@react-three/fiber": "^9.7.0",
     "lucide-react": "^1.47.0",

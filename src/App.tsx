@@ -15,6 +15,9 @@ import './App.css'
 import { MaterialView } from './components/MaterialView'
 import { PlanEditor } from './components/PlanEditor'
 import { PIXELS_PER_METER } from './domain/plan'
+import { saveTextFile } from './platform/files'
+import { exitFullscreenIfActive } from './platform/fullscreen'
+import { useAndroidBackButton } from './platform/useAndroidBackButton'
 import {
   calculateScaffold,
   countMembers,
@@ -98,6 +101,16 @@ function App() {
   const [parameters, setParameters] = useState<ScaffoldParameters>(initialProject?.parameters ?? DEFAULT_PARAMETERS)
   const [saved, setSaved] = useState(false)
 
+  // Android back: leave fullscreen, then walk back to the first tab, then let Android close the app.
+  useAndroidBackButton(() => {
+    if (exitFullscreenIfActive()) return true
+    if (activeTab !== 'plan') {
+      setActiveTab('plan')
+      return true
+    }
+    return false
+  })
+
   const layout = calculateScaffold(points, lengths, parameters)
   const counts = countMembers(layout)
 
@@ -111,57 +124,54 @@ function App() {
     setSaved(true)
   }
 
-  const exportProject = () => {
+  const exportProject = async () => {
     const project = { version: '0.3', points, lengths, parameters, layout }
-    const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = '青岚别墅-脚手架项目.json'
-    link.click()
-    URL.revokeObjectURL(url)
+    try {
+      await saveTextFile({
+        fileName: '青岚别墅-脚手架项目.json',
+        mimeType: 'application/json',
+        contents: JSON.stringify(project, null, 2),
+        title: '导出脚手架项目数据',
+      })
+    } catch (error) {
+      window.alert(`导出失败：${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   return (
     <div className="app-shell">
+      {/* One bar: brand, the workflow tabs and the project actions used to be a
+          68px topbar plus a 56px tab strip. The project name was dropped with it. */}
       <header className="topbar">
         <div className="brand-block">
           <button className="icon-button mobile-menu" type="button" title="打开菜单"><Menu size={20} /></button>
           <div className="brand-mark"><Layers3 size={24} strokeWidth={1.8} /></div>
-          <div><strong>架算</strong><span>SCAFFOLD FIELD</span></div>
+          <div className="brand-text"><strong>架算</strong><span>SCAFFOLD FIELD</span></div>
         </div>
-        <div className="project-title"><span>当前项目</span><strong>青岚别墅 · 东南立面</strong></div>
+
+        <nav className="workflow-tabs" aria-label="项目流程">
+          {(Object.entries(TAB_META) as Array<[WorkspaceTab, typeof TAB_META[WorkspaceTab]]>).map(([key, tab], index) => {
+            const Icon = tab.icon
+            return (
+              <div className="workflow-step-wrap" key={key}>
+                <button className={activeTab === key ? 'workflow-step active' : 'workflow-step'} type="button" onClick={() => setActiveTab(key)}>
+                  <span>{index + 1}</span><Icon size={18} /> {tab.label}
+                </button>
+                {index < 2 && <ChevronRight className="workflow-arrow" size={17} />}
+              </div>
+            )
+          })}
+        </nav>
+
         <div className="topbar-actions">
           <span className={saved ? 'save-state saved' : 'save-state'}>{saved ? '已保存到本机' : '有未保存更改'}</span>
           <button className="secondary-button" type="button" onClick={saveProject}><Save size={17} /> 保存</button>
-          <button className="icon-button" type="button" onClick={exportProject} title="导出项目数据"><Download size={19} /></button>
+          <button className="icon-button" type="button" onClick={() => { void exportProject() }} title="导出项目数据"><Download size={19} /></button>
         </div>
       </header>
 
-      <nav className="workflow-tabs" aria-label="项目流程">
-        {(Object.entries(TAB_META) as Array<[WorkspaceTab, typeof TAB_META[WorkspaceTab]]>).map(([key, tab], index) => {
-          const Icon = tab.icon
-          return (
-            <div className="workflow-step-wrap" key={key}>
-              <button className={activeTab === key ? 'workflow-step active' : 'workflow-step'} type="button" onClick={() => setActiveTab(key)}>
-                <span>{index + 1}</span><Icon size={18} /> {tab.label}
-              </button>
-              {index < 2 && <ChevronRight className="workflow-arrow" size={17} />}
-            </div>
-          )
-        })}
-      </nav>
-
       <main className="workspace">
         <section className="work-surface">
-          <div className="surface-heading">
-            <div>
-              <span className="eyebrow">{activeTab === 'plan' ? 'PATH INPUT' : activeTab === 'model' ? 'LAYOUT REVIEW' : 'MATERIAL OUTPUT'}</span>
-              <h1>{TAB_META[activeTab].label}</h1>
-              <p>{activeTab === 'plan' ? '绘制实际搭设路径，画布尺寸与现场测量值保持同步。' : activeTab === 'model' ? '旋转并点击标准钢管段，核查组合、搭接与空间关系。' : '查看标准管组管、利用率与扣件需求。'}</p>
-            </div>
-            <span className="calculation-badge"><i /> 计算结果已同步</span>
-          </div>
-
           {activeTab === 'plan' && (
             <PlanEditor
               points={points}
