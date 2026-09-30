@@ -7,6 +7,8 @@ import {
   Layers3,
   Map,
   Menu,
+  Minus,
+  Plus,
   Save,
   Settings2,
   TriangleAlert,
@@ -78,19 +80,77 @@ function NumberField({ label, value, unit = 'm', step = 0.1, min = 0.1, max, onC
   max?: number
   onChange: (value: number) => void
 }) {
+  // While the user is typing, show exactly what they typed. A purely controlled
+  // numeric input rewrites "1." to "1" mid-edit, which makes decimals impossible
+  // to enter with a soft keyboard. The parsed value is still committed per
+  // keystroke, and the draft is dropped on blur so the field snaps back to the
+  // canonical clamped value.
+  const [draft, setDraft] = useState<string | null>(null)
+  const decimals = (String(step).split('.')[1] ?? '').length
+
+  const clamp = (raw: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min, raw))
+
+  /** Typing is free-form: a step is an increment, not a limit on precision. */
+  const commitTyped = (raw: number) => {
+    if (Number.isFinite(raw)) onChange(clamp(raw))
+  }
+
+  /**
+   * Stepping snaps to the step's own precision. Fractional steps accumulate float
+   * noise (0.1 + 0.2 = 0.30000000000000004), and the field must never show a
+   * number the user could not have typed.
+   */
+  const commitStepped = (raw: number) => {
+    if (Number.isFinite(raw)) onChange(Number(clamp(raw).toFixed(decimals)))
+  }
+
+  const nudge = (direction: number) => {
+    setDraft(null)
+    commitStepped(value + step * direction)
+  }
+
   return (
     <label className="parameter-field">
       <span>{label}</span>
+      {/* Explicit −/+ buttons rather than the browser's native number spinners:
+          Android WebView draws none at all, so on the tablet these fields could
+          previously only be typed into. */}
       <span className="number-input">
+        <button
+          className="number-step"
+          type="button"
+          title={`减小${label}`}
+          disabled={value <= min}
+          onClick={() => nudge(-1)}
+        >
+          <Minus size={15} />
+        </button>
+        {/* Deliberately a text input with a decimal keypad. A number input reports
+            its value as "" while the user is mid-way through "7." — the browser
+            rejects a partial number — so decimals cannot be typed with a soft
+            keyboard. Rendered value falls back to the model value when not
+            editing. */}
         <input
-          type="number"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(event) => onChange(Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min, Number(event.target.value))))}
+          type="text"
+          inputMode="decimal"
+          value={draft ?? String(value)}
+          onChange={(event) => {
+            const raw = event.target.value.replace(/[^0-9.]/g, '')
+            setDraft(raw)
+            if (raw !== '' && raw !== '.') commitTyped(Number(raw))
+          }}
+          onBlur={() => setDraft(null)}
         />
         <b>{unit}</b>
+        <button
+          className="number-step"
+          type="button"
+          title={`增大${label}`}
+          disabled={max !== undefined && value >= max}
+          onClick={() => nudge(1)}
+        >
+          <Plus size={15} />
+        </button>
       </span>
     </label>
   )
