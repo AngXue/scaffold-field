@@ -254,6 +254,21 @@ body.has-fullscreen { overflow: hidden; }
 .pending-material-icon { width: 24px; height: 24px; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--nm-border); font: 700 12px monospace; }
 .deck-material-icon { width: 24px; height: 18px; border: 1px solid #6a7276; background: repeating-linear-gradient(0deg, transparent, transparent 4px, #8b9296 4px, #8b9296 5px), repeating-linear-gradient(90deg, transparent, transparent 5px, #8b9296 5px, #8b9296 6px); transform: skewY(-8deg); }
 .connector-list > div > span:nth-child(2) small { display: block; margin-top: 2px; color: var(--muted); font: 10px monospace; }
+
+/* Manual quantity correction. The arrows are the control; an adjusted row is
+   tinted and ringed so it cannot be mistaken for a pure calculation, and the
+   original number stays visible in the small "原 N" reset button. */
+.qty-control { display: flex; align-items: center; gap: 4px; justify-self: end; }
+.qty-control.adjusted { padding: 2px 7px 2px 4px; border-radius: var(--nm-r-1); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--nm-border); }
+.qty-step { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; color: var(--muted); background: var(--nm-surface); border: 0; border-radius: 6px; box-shadow: var(--nm-e1), var(--nm-edge); cursor: pointer; touch-action: manipulation; }
+.qty-step:active:not(:disabled) { box-shadow: var(--nm-i1), var(--nm-edge); }
+.qty-step:disabled { opacity: 0.35; cursor: not-allowed; }
+.qty-value { min-width: 32px; text-align: center; color: var(--ink); font: 700 15px/1 monospace; font-variant-numeric: tabular-nums; }
+.qty-control.adjusted .qty-value { color: var(--accent-strong); }
+.qty-delta { color: var(--ink); font: 700 11px/1 monospace; font-style: normal; }
+.qty-reset { padding: 2px 4px; color: var(--muted); background: transparent; border: 0; border-bottom: 1px dashed var(--nm-border); font-size: 10px; cursor: pointer; }
+.qty-unit { color: var(--muted); }
+.adjust-note { margin-right: auto; color: var(--muted); font-size: 11px; }
 .export-actions { justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .pending-section { margin-top: 14px; }
 .pending-note { color: var(--muted); font-size: 11px; }

@@ -45,12 +45,14 @@ const MEMBER_COLORS: Record<MemberType, string> = {
   post: '#4e6268',
   longitudinal: '#1f8a95',
   transverse: '#f0862a',
+  guardrail: '#c9b03a',
 }
 
 const MEMBER_LABELS: Record<MemberType, string> = {
   post: '立杆',
   longitudinal: '纵向水平杆',
   transverse: '横向杆',
+  guardrail: '防护栏杆',
 }
 
 const LAYER_LABELS: Record<RenderLayer, string> = {

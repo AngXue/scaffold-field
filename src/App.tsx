@@ -22,6 +22,7 @@ import {
   calculateScaffold,
   countMembers,
   DEFAULT_PARAMETERS,
+  type MaterialAdjustments,
   type Point2D,
   type ScaffoldParameters,
 } from './domain/scaffold'
@@ -52,9 +53,11 @@ function loadStoredProject() {
       points: Point2D[]
       lengths: number[]
       parameters: Partial<ScaffoldParameters> & { rowCount?: number }
+      adjustments?: MaterialAdjustments
     }
     return {
       ...project,
+      adjustments: project.adjustments ?? {},
       parameters: {
         ...DEFAULT_PARAMETERS,
         ...project.parameters,
@@ -99,6 +102,7 @@ function App() {
   const [points, setPoints] = useState<Point2D[]>(initialProject?.points ?? INITIAL_POINTS)
   const [lengths, setLengths] = useState(initialProject?.lengths ?? [7.2, 4.8])
   const [parameters, setParameters] = useState<ScaffoldParameters>(initialProject?.parameters ?? DEFAULT_PARAMETERS)
+  const [adjustments, setAdjustments] = useState<MaterialAdjustments>(initialProject?.adjustments ?? {})
   const [saved, setSaved] = useState(false)
 
   // Android back: leave fullscreen, then walk back to the first tab, then let Android close the app.
@@ -119,13 +123,28 @@ function App() {
     setSaved(false)
   }
 
+  /** Manual correction on top of a calculated quantity, stored as a delta. */
+  const adjustMaterial = (key: string, delta: number) => {
+    setAdjustments((current) => ({ ...current, [key]: (current[key] ?? 0) + delta }))
+    setSaved(false)
+  }
+
+  const resetMaterial = (key: string) => {
+    setAdjustments((current) => {
+      const next = { ...current }
+      delete next[key]
+      return next
+    })
+    setSaved(false)
+  }
+
   const saveProject = () => {
-    localStorage.setItem('scaffold-project', JSON.stringify({ points, lengths, parameters }))
+    localStorage.setItem('scaffold-project', JSON.stringify({ points, lengths, parameters, adjustments }))
     setSaved(true)
   }
 
   const exportProject = async () => {
-    const project = { version: '0.3', points, lengths, parameters, layout }
+    const project = { version: '0.4', points, lengths, parameters, adjustments, layout }
     try {
       await saveTextFile({
         fileName: '青岚别墅-脚手架项目.json',
@@ -185,7 +204,14 @@ function App() {
               <ScaffoldViewer layout={layout} />
             </Suspense>
           )}
-          {activeTab === 'materials' && <MaterialView layout={layout} />}
+          {activeTab === 'materials' && (
+            <MaterialView
+              layout={layout}
+              adjustments={adjustments}
+              onAdjust={adjustMaterial}
+              onResetAdjustment={resetMaterial}
+            />
+          )}
         </section>
 
         <aside className="inspector">
@@ -198,7 +224,7 @@ function App() {
               <NumberField label="钢笆纵向杆数" value={parameters.deckSupportRailCount} unit="根" step={1} min={2} max={4} onChange={(value) => updateParameter('deckSupportRailCount', Math.round(value))} />
               <NumberField label="立杆纵距" value={parameters.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
               <NumberField label="步距" value={parameters.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
-              <NumberField label="扫地杆高度" value={parameters.sweepBarHeight} step={0.05} min={0} max={1} onChange={(value) => updateParameter('sweepBarHeight', value)} />
+              <NumberField label="扫地杆高度" value={parameters.sweepBarHeight} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('sweepBarHeight', value)} />
               <NumberField label="管端外伸" value={parameters.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
               <NumberField label="立杆顶端外伸" value={parameters.postTopExtension} step={0.1} min={0} max={2} onChange={(value) => updateParameter('postTopExtension', value)} />
               {/* 对接扣件 butts two tubes, so the joint consumes no length; raise
@@ -206,6 +232,9 @@ function App() {
                   旋转扣件 and is flagged as not modelled. */}
               <NumberField label="搭接长度" value={parameters.spliceOverlap} step={0.1} min={0} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
               <NumberField label="钢笆铺设间隔" value={parameters.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
+              {/* JGJ 130-2011 §7.3.12 mandates the outer row only; 2 is the common
+                  site rule and is required when the inner face is open. */}
+              <NumberField label="防护栏杆侧数" value={parameters.guardrailSides} unit="侧" step={1} min={0} max={2} onChange={(value) => updateParameter('guardrailSides', Math.round(value))} />
             </div>
             <p className="stock-spec-note">库存钢管规格：{parameters.stockLengths.join(' / ')} m</p>
           </div>
@@ -216,7 +245,7 @@ function App() {
               <div><span>立杆</span><strong>{counts.post}</strong></div>
               <div><span>水平杆</span><strong>{counts.longitudinal}</strong></div>
               <div><span>横向杆</span><strong>{counts.transverse}</strong></div>
-              <div><span>剪刀撑</span><strong>--</strong></div>
+              <div><span>防护栏杆</span><strong>{counts.guardrail}</strong></div>
             </div>
             <div className="utilization-row"><span>钢管利用率</span><strong>{layout.materials.utilization}%</strong></div>
             <div className="utilization-track"><i style={{ width: `${layout.materials.utilization}%` }} /></div>

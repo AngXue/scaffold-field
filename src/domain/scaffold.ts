@@ -12,6 +12,14 @@ export type ScaffoldParameters = {
   liftHeight: number
   /** Height of the 扫地杆 (sweep-bar) layer above the base. */
   sweepBarHeight: number
+  /**
+   * Guarded sides per 作业层. §7.3.12(1) mandates the OUTER row only (栏杆和挡脚板
+   * 均应搭设在外立杆的内侧), so 1 is the code minimum and the default; the inner
+   * row is regulated as a gap to the building. 2 is the common site rule, and
+   * becomes mandatory when the inner face is genuinely open and therefore a 临边
+   * (JGJ 80-2016 §4.1.1, 强制性条文).
+   */
+  guardrailSides: number
   tubeEndExtension: number
   postTopExtension: number
   spliceOverlap: number
@@ -20,8 +28,37 @@ export type ScaffoldParameters = {
   stockLengths: number[]
 }
 
-export type MemberType = 'post' | 'longitudinal' | 'transverse'
+export type MemberType = 'post' | 'longitudinal' | 'transverse' | 'guardrail'
 export type Vector3Tuple = [number, number, number]
+
+/**
+ * Height of the 上栏杆 上皮 above the 作业层 (JGJ 130-2011 §7.3.12(2)).
+ *
+ * This is also the scaffold's height datum: §2.1.20 defines 脚手架高度 as the
+ * distance from the post base to the **架顶栏杆上皮**, so the parameter `height`
+ * measures to this rail and the top 作业层 sits exactly one of these below it.
+ */
+export const GUARDRAIL_TOP_EDGE = 1.2
+
+/**
+ * JGJ 130-2011 §7.3.12 requires, at every 作业层, TWO rails per guarded side:
+ *   1 栏杆和挡脚板均应搭设在外立杆的内侧; 2 上栏杆上皮高度应为 1.2m;
+ *   4 中栏杆应居中设置.
+ * GB 51210-2016 §8.2.8 条文说明 fixes the lower rail as 居中 between the deck and
+ * the top rail. The standard gives the top rail as 上皮 (top edge), so its
+ * centreline sits one radius lower. The mid rail has no stated number; 0.6 m is
+ * the common site reading and does not affect any material quantity, because
+ * every rail is horizontal and therefore the same length wherever it sits.
+ *
+ * Heights are measured from the 作业层, which is the lift axis.
+ */
+export const GUARDRAILS = [
+  { id: 'top', label: '上栏杆', centreAboveDeck: GUARDRAIL_TOP_EDGE - 0.024 },
+  { id: 'mid', label: '中栏杆', centreAboveDeck: 0.6 },
+] as const
+
+/** The deck surface is drawn a little above the lift axis. */
+const DECK_SURFACE_OFFSET = 0.055
 
 /**
  * Couplers, by the names used on site:
@@ -123,20 +160,14 @@ export type PipeAssemblyPlan = {
 }
 
 /**
- * GB/T 706-2016 热轧槽钢 10# (100 × 48 × 5.3 mm), the usual base beam for a
- * two-row 落地架. Nominal mass per metre from the section table.
+ * 槽钢 counts for the material list. The app estimates materials only — it does
+ * not procure — so it records how many pieces and how long, not the section
+ * properties of a particular supplier's stock.
  */
-export const CHANNEL_STEEL = {
-  size: '10#',
-  massPerMeter: 10,
-} as const
-
 export type ChannelSteelSummary = {
-  size: string
   count: number
   lengthPerPiece: number
   totalLength: number
-  totalMass: number
 }
 
 export type MaterialResult = {
@@ -156,6 +187,21 @@ export type MaterialResult = {
      * lap exists and the count stays unknown until laps or braces are modelled.
      */
     swivel: number | null
+  }
+  /**
+   * Guardrail tubes — side rails, the 架顶栏杆 and any 端部防护 returns. JGJ
+   * 130-2011 §4.1.2 classifies 栏杆 as 构配件 (accessory), separate from
+   * 架体结构自重, and 定额 practice takes it off as its own line. The tube is still
+   * ordinary stock, so this is a breakdown of what is already inside
+   * `stockSummary`; the material list shows it only as part of the standard
+   * pipes, never as a separate quantity.
+   */
+  guardrail: {
+    sides: number
+    runs: number
+    /** Runs that return across an open scaffold end (端部防护). */
+    endRuns: number
+    totalLength: number
   }
   channelSteel: ChannelSteelSummary
   pendingMaterials: PendingMaterial[]
@@ -180,7 +226,8 @@ export const DEFAULT_PARAMETERS: ScaffoldParameters = {
   deckSupportRailCount: 2,
   postSpacing: 1.8,
   liftHeight: 1.8,
-  sweepBarHeight: 0.3,
+  sweepBarHeight: 0.2,
+  guardrailSides: 1,
   tubeEndExtension: 0.1,
   postTopExtension: 0.2,
   // 对接扣件 butts two tube ends inside a sleeve, so a joint consumes no length:
@@ -200,6 +247,27 @@ export const PENDING_MATERIALS: PendingMaterial[] = [
   { id: 'padPlate', label: '小垫板', unit: '块' },
   { id: 'formwork', label: '支模板', unit: 'm²' },
 ]
+
+/**
+ * Keys for the manual quantity corrections a user can apply on top of the
+ * calculated bill of materials. Kept in the domain so the view, the stored
+ * project and the CSV export always agree on the same key.
+ */
+export const MATERIAL_KEYS = {
+  stock: (length: string) => `stock:${length}`,
+  connector: (type: ConnectorType) => `connector:${type}`,
+  channel: 'channel',
+  deck: 'deck',
+  pending: (id: string) => `pending:${id}`,
+} as const
+
+/**
+ * Manual corrections keyed by `MATERIAL_KEYS`, stored as a DELTA on the
+ * calculated quantity rather than an absolute override: changing a parameter
+ * keeps flowing through the calculation, with the user's correction still on top
+ * of it, instead of the corrected number silently going stale.
+ */
+export type MaterialAdjustments = Record<string, number>
 
 const round = (value: number, precision = 3) => Number(value.toFixed(precision))
 const vectorDistance = (a: Vector3Tuple, b: Vector3Tuple) =>
@@ -377,6 +445,7 @@ function calculateMaterials(
   decks: DeckPanel[],
   connectors: ScaffoldConnector[],
   baseChannels: BaseChannel[],
+  parameters: ScaffoldParameters,
   assemblyPlans: PipeAssemblyPlan[],
 ): MaterialResult {
   const theoreticalLength = round(members.reduce((sum, member) => sum + member.length, 0))
@@ -399,16 +468,23 @@ function calculateMaterials(
       butt: connectors.filter((connector) => connector.type === 'butt').length,
       swivel: null,
     },
-    // 槽钢 is bought by the piece, so report both the piece count and the run
-    // length rather than folding it into the tube figures.
-    channelSteel: (() => {
-      const totalLength = round(baseChannels.reduce((sum, channel) => sum + channel.length, 0))
+    // 槽钢 is bought by the piece, so report the piece count and the run length
+    // rather than folding it into the tube figures.
+    channelSteel: {
+      count: baseChannels.length,
+      lengthPerPiece: baseChannels.length ? round(baseChannels[0].length) : 0,
+      totalLength: round(baseChannels.reduce((sum, channel) => sum + channel.length, 0)),
+    },
+    // A breakdown of tube already inside stockSummary, not an extra quantity.
+    guardrail: (() => {
+      const rails = members.filter((member) => member.type === 'guardrail')
+      // A run is an end return if it is as long as the scaffold is wide.
+      const endRuns = rails.filter((member) => Math.abs(member.length - parameters.width) < 0.5).length
       return {
-        size: CHANNEL_STEEL.size,
-        count: baseChannels.length,
-        lengthPerPiece: baseChannels.length ? round(baseChannels[0].length) : 0,
-        totalLength,
-        totalMass: round(totalLength * CHANNEL_STEEL.massPerMeter, 1),
+        sides: Math.max(0, Math.min(2, Math.round(parameters.guardrailSides))),
+        runs: rails.length,
+        endRuns,
+        totalLength: round(rails.reduce((sum, member) => sum + member.length, 0)),
       }
     })(),
     pendingMaterials: PENDING_MATERIALS,
@@ -463,7 +539,28 @@ export function calculateScaffold(
     })
   }
 
-  const layerCount = Math.max(1, Math.ceil(parameters.height / parameters.liftHeight))
+  // JGJ 130-2011 §2.1.20 measures the scaffold height to the 架顶栏杆上皮, so the
+  // top 作业层 sits one guardrail height below `height`. Steps are then divided
+  // EVENLY from the 扫地杆 up to it, so every 步距 is equal and none exceeds the
+  // configured one — the sweep bar is the bottom horizontal layer (§2.1.14 read
+  // with §2.1.23), and a short top step would not be uniform.
+  const topLiftElevation = round(Math.max(0.2, parameters.height - GUARDRAIL_TOP_EDGE))
+  const baseElevation = parameters.sweepBarHeight > 0 && parameters.sweepBarHeight < topLiftElevation
+    ? round(parameters.sweepBarHeight)
+    : 0
+  const layerCount = Math.max(1, Math.ceil((topLiftElevation - baseElevation) / parameters.liftHeight))
+  const step = (topLiftElevation - baseElevation) / layerCount
+  // A closed path shares its first and last point, so it has no 临空 end.
+  const pathIsClosed = physical.length > 2 &&
+    Math.hypot(physical[0][0] - physical[physical.length - 1][0], physical[0][1] - physical[physical.length - 1][1]) < 0.01
+
+  if (parameters.height <= GUARDRAIL_TOP_EDGE + baseElevation) {
+    warnings.push({
+      id: 'short-scaffold',
+      message: `搭设高度 ${parameters.height} m 不足一个作业层加 ${GUARDRAIL_TOP_EDGE} m 架顶栏杆（架顶栏杆上皮即搭设高度），请复核。`,
+    })
+  }
+
   const postRowCount = 2
   const supportRailCount = Math.max(2, Math.round(parameters.deckSupportRailCount))
   physical.slice(0, -1).forEach((start2d, segmentIndex) => {
@@ -551,6 +648,12 @@ export function calculateScaffold(
     // 钢笆纵向支承杆 (deck-support rails), which only exist where a deck does.
     const normalRows = [supportRows[0], supportRows[supportRows.length - 1]]
 
+    // 端部防护: an end that is not closed off is itself a 临边 (JGJ 80-2016 §4.1.1,
+    // 强制性条文), so the rails return across it.
+    const endStations: number[] = []
+    if (!pathIsClosed && segmentIndex === 0) endStations.push(0)
+    if (!pathIsClosed && segmentIndex === physical.length - 2) endStations.push(bayCount)
+
     const addHorizontalBand = (elevation: number, layer: number, rows: Vector3Tuple[][], withDeck: boolean) => {
       for (const row of rows) {
         const connectionPoints = row.map((point) => [point[0], elevation, point[2]] as Vector3Tuple)
@@ -581,13 +684,54 @@ export function calculateScaffold(
         )
       })
 
+      // 作业层 protection. These are ADDITIONAL members, never a substitute for the
+      // ordinary longitudinal rows: JGJ 130-2011 §4.1.2 puts 栏杆 in 构配件自重, a
+      // different bucket from 架体结构自重.
+      //
+      // A deckless top lift still gets its 架顶栏杆, because that rail is what
+      // `height` is measured to (§2.1.20) and it is what carries the top of the
+      // scaffold.
+      const guardedRails = withDeck
+        ? GUARDRAILS
+        : layer === layerCount ? [GUARDRAILS[0]] : []
+      const guardrailSides = Math.max(0, Math.min(postRowCount, Math.round(parameters.guardrailSides)))
+
+      if (guardrailSides > 0 && guardedRails.length > 0) {
+        // A short 步距 can drop a rail onto the next lift's longitudinal member;
+        // never emit two coincident tubes.
+        const usableRails = guardedRails
+          .map((rail) => ({ rail, elevation: round(elevation + rail.centreAboveDeck) }))
+          .filter(({ elevation: railElevation }) =>
+            !(layer < layerCount && Math.abs(railElevation - round(elevation + step)) < 0.05))
+
+        for (let side = 0; side < guardrailSides; side += 1) {
+          // Side 0 is the outer row, which is the one the standard mandates.
+          const row = side === 0 ? postRows[0] : postRows[postRowCount - 1]
+          for (const { elevation: railElevation } of usableRails) {
+            const points = row.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
+            addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points)
+          }
+        }
+
+        for (const { elevation: railElevation } of usableRails) {
+          for (const station of endStations) {
+            const outerPoint = postRows[0][station]
+            const innerPoint = postRows[1][station]
+            const start: Vector3Tuple = [outerPoint[0], railElevation, outerPoint[2]]
+            const end: Vector3Tuple = [innerPoint[0], railElevation, innerPoint[2]]
+            addMember('guardrail', start, end, layer, segmentIndex, [start, end])
+          }
+        }
+      }
+
       if (!withDeck) return
+
       for (let bay = 0; bay < bayCount; bay += 1) {
         const outerStart = postRows[0][bay]
         const outerEnd = postRows[0][bay + 1]
         const innerEnd = postRows[1][bay + 1]
         const innerStart = postRows[1][bay]
-        const deckElevation = elevation + 0.055
+        const deckElevation = round(elevation + DECK_SURFACE_OFFSET)
         decks.push({
           id: `D${decks.length + 1}`,
           corners: [
@@ -604,16 +748,20 @@ export function calculateScaffold(
     }
 
     // 扫地杆 layer. It gets ordinary transverse + longitudinal members only:
-    // there is no deck here, so no deck-support rails either.
-    if (parameters.sweepBarHeight > 0 && parameters.sweepBarHeight < parameters.height) {
-      addHorizontalBand(round(parameters.sweepBarHeight), SWEEP_BAR_LAYER, normalRows, false)
+    // there is no deck here, so no deck-support rails and no edge protection.
+    if (baseElevation > 0) {
+      addHorizontalBand(baseElevation, SWEEP_BAR_LAYER, normalRows, false)
     }
 
     for (let layer = 1; layer <= layerCount; layer += 1) {
-      const elevation = Math.min(parameters.height, round(layer * parameters.liftHeight))
+      // Exactly `step` apart. Every stored coordinate is then millimetre-rounded
+      // by `extendLine` like the rest of the model, so the spacing a user can read
+      // back is uniform to within 1 mm — three orders below construction tolerance.
+      const elevation = round(baseElevation + layer * step)
       const withDeck = layer % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0
-      // Rails exist to carry a deck, so a deckless lift gets only the two normal
-      // longitudinal rows.
+      // A decked lift is a 作业层 and gets both rails; a deckless lift gets only the
+      // two normal longitudinal rows — except the top lift, which always carries
+      // the 架顶栏杆 that `height` is measured to.
       addHorizontalBand(elevation, layer, withDeck ? supportRows : normalRows, withDeck)
     }
 
@@ -650,9 +798,9 @@ export function calculateScaffold(
     const connectionPoints = member.type === 'transverse'
       ? [member.connectionPoints[0], member.connectionPoints[member.connectionPoints.length - 1]]
       : member.connectionPoints
-    const verticalOffset = member.type === 'longitudinal'
-      ? parameters.pipeDiameter * 0.65
-      : -parameters.pipeDiameter * 0.65
+    const verticalOffset = member.type === 'transverse'
+      ? -parameters.pipeDiameter * 0.65
+      : parameters.pipeDiameter * 0.65
 
     return connectionPoints.map((position, index) => ({
       id: `C-${member.id}-${index + 1}`,
@@ -691,13 +839,21 @@ export function calculateScaffold(
     connectors,
     baseChannels,
     warnings,
-    materials: calculateMaterials(members, pipeSegments, decks, connectors, baseChannels, assemblyPlans),
+    materials: calculateMaterials(
+      members,
+      pipeSegments,
+      decks,
+      connectors,
+      baseChannels,
+      parameters,
+      assemblyPlans,
+    ),
   }
 }
 
 export function countMembers(layout: ScaffoldLayout) {
   return layout.members.reduce<Record<MemberType, number>>(
     (counts, member) => ({ ...counts, [member.type]: counts[member.type] + 1 }),
-    { post: 0, longitudinal: 0, transverse: 0 },
+    { post: 0, longitudinal: 0, transverse: 0, guardrail: 0 },
   )
 }
