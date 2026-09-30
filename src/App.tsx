@@ -198,11 +198,16 @@ function App() {
               <NumberField label="钢笆纵向杆数" value={parameters.deckSupportRailCount} unit="根" step={1} min={2} max={4} onChange={(value) => updateParameter('deckSupportRailCount', Math.round(value))} />
               <NumberField label="立杆纵距" value={parameters.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
               <NumberField label="步距" value={parameters.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
+              <NumberField label="扫地杆高度" value={parameters.sweepBarHeight} step={0.05} min={0} max={1} onChange={(value) => updateParameter('sweepBarHeight', value)} />
               <NumberField label="管端外伸" value={parameters.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
               <NumberField label="立杆顶端外伸" value={parameters.postTopExtension} step={0.1} min={0} max={2} onChange={(value) => updateParameter('postTopExtension', value)} />
-              <NumberField label="钢管搭接长度" value={parameters.spliceOverlap} step={0.1} min={0.2} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
+              {/* 对接扣件 butts two tubes, so the joint consumes no length; raise
+                  this past 1 m and the connection becomes a 搭接, which needs
+                  旋转扣件 and is flagged as not modelled. */}
+              <NumberField label="搭接长度" value={parameters.spliceOverlap} step={0.1} min={0} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
               <NumberField label="钢笆铺设间隔" value={parameters.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
             </div>
+            <p className="stock-spec-note">库存钢管规格：{parameters.stockLengths.join(' / ')} m</p>
           </div>
 
           <div className="live-summary">

@@ -27,11 +27,13 @@
 ## Domain Invariants
 
 - The 2D scale is `50 px/m`; keep `Point2D[]` and measured segment lengths synchronized through the helpers in `src/domain/plan.ts`.
-- The scaffold has exactly two post rows. `deckSupportRailCount` adds longitudinal deck-support rails between them and must never add posts.
-- Deduplicate shared corner posts and do not emit transverse members at internal path corners where they overlap adjacent longitudinal members.
-- Physical pipes use only configured `stockLengths`. Long members require overlapping assemblies; include overlap in purchased length and create the associated inline connectors.
-- Connector names are 十字扣 (`cross`), 万向扣 (`universal`), and 一字扣 (`inline`). 万向扣 remains `null`/`--` while brace rules are pending.
-- Wall ties are intentionally excluded. Braces are not calculated or rendered and remain `--` in the BOM. Do not invent either rule without an explicit engineering specification.
+- The scaffold has exactly two post rows. `deckSupportRailCount` adds longitudinal deck-support rails between them and must never add posts. Those rails only exist on lifts that actually carry a deck — they are 钢笆支承杆, so a deckless lift (including the 扫地杆 layer) gets only the two ordinary longitudinal rows at the post rows.
+- The 扫地杆 (sweep-bar) layer sits at `sweepBarHeight` and is tagged `SWEEP_BAR_LAYER` (0), so it is never counted as a lift. It has ordinary transverse and longitudinal members, but no deck and therefore no deck-support rails. JGJ 130-2011 §6.3.2 caps the longitudinal sweep bar at 200 mm above the tube bottom, so anything above that raises a `sweep-bar-height` warning — the site-confirmed 300 mm is still produced, but never silently.
+- One 槽钢 base beam is laid under each pair of posts, running in the same direction as the transverse members, and is reported as `channelSteel` (size / count / length per piece / total length / total mass) using the `CHANNEL_STEEL` constant (GB/T 706-2016 10#, 10 kg/m). It is not a `ScaffoldMember` and not a `PipeSegment` — it is bought by the piece, not cut from tube stock.
+- Stock pipe lengths are the confirmed field set `0.8 / 1.2 / 2 / 2.4 / 3 / 4 / 4.5 / 6 m`. `spliceOverlap` defaults to **0**: a 对接扣件 butts two tube ends inside a sleeve, so consecutive segments meet end to end and each joint takes exactly **one** coupler. Setting `spliceOverlap >= 1` means a 搭接, which JGJ 130-2011 requires to be tied with 旋转扣件 (3 per longitudinal lap, at least 2 per post lap); that regime is **not** modelled and raises a `lap-not-modelled` warning rather than silently reporting 对接扣件.
+- Connector names follow the site: 十字扣 (`cross`, right angle), 对接扣 (`butt`, end-to-end sleeve splice) and 转向扣 (`swivel`, any angle). Use `CONNECTOR_LABELS` from the domain rather than repeating the strings. 十字扣 is emitted at two per 主节点, which matches JGJ 130-2011 条文说明 §4.2.1. `connectorSummary.swivel` stays `null`/`--` because this model has neither laps nor braces.
+- Wall ties are intentionally excluded. Braces are not calculated or rendered. Do not invent either rule without an explicit engineering specification.
+- 扎丝, 小垫板, 支模板 and 剪刀撑 are listed through `PENDING_MATERIALS` with a `--` quantity because they are outside the calculation scope. Never emit a computed-looking number for them.
 - Preserve the local-storage key `scaffold-project`, merge stored parameters with defaults, and keep the legacy `rowCount -> deckSupportRailCount` migration.
 
 ## Theming (monochrome neumorphic)

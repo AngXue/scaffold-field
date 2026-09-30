@@ -5,13 +5,18 @@ import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { Box, Focus, Maximize2, Minimize2, Rotate3D, ScanEye } from 'lucide-react'
 import type { DeckPanel, MemberType, PipeSegment, ScaffoldLayout } from '../domain/scaffold'
+import { CONNECTOR_LABELS, SWEEP_BAR_LAYER } from '../domain/scaffold'
 import { useCssFullscreen } from '../platform/fullscreen'
 
 type ViewerProps = {
   layout: ScaffoldLayout
 }
 
-type RenderLayer = MemberType | 'deck' | 'connector'
+type RenderLayer = MemberType | 'deck' | 'connector' | 'channel'
+
+/** 10# 槽钢: 100 mm high, 48 mm flange. */
+const CHANNEL_HEIGHT = 0.1
+const CHANNEL_FLANGE = 0.048
 
 /**
  * True tube radius. The domain models a 48 mm scaffold tube
@@ -52,12 +57,14 @@ const LAYER_LABELS: Record<RenderLayer, string> = {
   ...MEMBER_LABELS,
   deck: '钢笆',
   connector: '扣件',
+  channel: '槽钢',
 }
 
 const LAYER_COLORS: Record<RenderLayer, string> = {
   ...MEMBER_COLORS,
   deck: '#87989a',
   connector: '#8a8f93',
+  channel: '#6f7a7d',
 }
 
 const RENDER_LAYERS = Object.keys(LAYER_LABELS) as RenderLayer[]
@@ -233,6 +240,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
   const selectedMember = layout.members.find((member) => member.id === selectedSegment?.memberId)
   const selectedAssembly = layout.materials.assemblyPlans.find((plan) => plan.memberId === selectedMember?.id)
   const selectedDeck = layout.decks.find((deck) => deck.id === selectedId)
+  const selectedChannel = layout.baseChannels.find((channel) => channel.id === selectedId)
   const selectedConnector = layout.connectors.find((connector) => connector.id === selectedId)
   const memberPoints = layout.pipeSegments.flatMap((segment) => [segment.start, segment.end])
   const scenePoints = memberPoints.length > 0
@@ -352,6 +360,30 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
                 />
               </mesh>
             ))}
+            {visibility.channel && layout.baseChannels.map((channel) => {
+              const start = new THREE.Vector3(...channel.start)
+              const end = new THREE.Vector3(...channel.end)
+              const midpoint = start.clone().add(end).multiplyScalar(0.5)
+              // Channels are always horizontal, so a single Y rotation is exact.
+              const angle = Math.atan2(end.x - start.x, end.z - start.z)
+              return (
+                <mesh
+                  key={channel.id}
+                  position={[midpoint.x, CHANNEL_HEIGHT / 2, midpoint.z]}
+                  rotation={[0, angle, 0]}
+                  onClick={(event) => { event.stopPropagation(); setSelectedId(channel.id) }}
+                >
+                  <boxGeometry args={[CHANNEL_FLANGE, CHANNEL_HEIGHT, channel.length]} />
+                  <meshStandardMaterial
+                    color={channel.id === selectedId ? SELECTED_COLOR : LAYER_COLORS.channel}
+                    metalness={0.85}
+                    roughness={0.42}
+                    emissive={channel.id === selectedId ? SELECTED_COLOR : '#000000'}
+                    emissiveIntensity={channel.id === selectedId ? 0.5 : 0}
+                  />
+                </mesh>
+              )
+            })}
           </group>
           <ContactShadows
             key={shadowKey}
@@ -392,7 +424,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
         ))}
       </div>
 
-      <aside className={selectedSegment || selectedDeck || selectedConnector ? 'member-popover visible' : 'member-popover'}>
+      <aside className={selectedSegment || selectedDeck || selectedChannel || selectedConnector ? 'member-popover visible' : 'member-popover'}>
         {selectedSegment && selectedMember && selectedAssembly && (
           <>
             <span className="field-caption">已选择 · {selectedSegment.id}</span>
@@ -403,7 +435,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
               <div><dt>搭接长度</dt><dd>{selectedSegment.overlapWithPrevious.toFixed(2)} m</dd></div>
               <div><dt>目标净长</dt><dd>{selectedAssembly.requiredLength.toFixed(2)} m</dd></div>
               <div><dt>组合外伸</dt><dd>{selectedAssembly.excessLength.toFixed(2)} m</dd></div>
-              <div><dt>所在层</dt><dd>{selectedMember.layer ? `第 ${selectedMember.layer} 层` : '立杆全高'}</dd></div>
+              <div><dt>所在层</dt><dd>{selectedMember.layer === undefined ? '立杆全高' : selectedMember.layer === SWEEP_BAR_LAYER ? '扫地杆' : `第 ${selectedMember.layer} 层`}</dd></div>
             </dl>
           </>
         )}
@@ -418,10 +450,21 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
             </dl>
           </>
         )}
+        {selectedChannel && (
+          <>
+            <span className="field-caption">已选择 · {selectedChannel.id}</span>
+            <strong>槽钢底座</strong>
+            <dl>
+              <div><dt>单根长度</dt><dd>{selectedChannel.length.toFixed(2)} m</dd></div>
+              <div><dt>方向</dt><dd>与横向杆一致</dd></div>
+              <div><dt>路径段</dt><dd>#{selectedChannel.pathSegment + 1}</dd></div>
+            </dl>
+          </>
+        )}
         {selectedConnector && (
           <>
             <span className="field-caption">已选择 · {selectedConnector.id}</span>
-            <strong>{selectedConnector.type === 'inline' ? '一字扣' : selectedConnector.type === 'universal' ? '万向扣' : '十字扣'}</strong>
+            <strong>{CONNECTOR_LABELS[selectedConnector.type]}</strong>
             <dl><div><dt>关联构件</dt><dd>{selectedConnector.memberId}</dd></div></dl>
           </>
         )}

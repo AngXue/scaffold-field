@@ -102,6 +102,7 @@
 .parameter-section { padding: 18px 0; box-shadow: inset 0 -1px 0 var(--nm-dark); }
 .parameter-section h2 { margin: 0 0 13px; font-size: 12px; font-weight: 700; }
 .parameter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+.stock-spec-note { margin: 12px 0 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .parameter-field { min-width: 0; display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
 /* Recessed = editable. The shadow alone is only ~1.2:1, so the inset ring
    carries the boundary the user actually needs to see. */
@@ -243,13 +244,20 @@ body.has-fullscreen { overflow: hidden; }
 .connector-icon { position: relative; display: block; width: 24px; height: 24px; }
 .connector-icon i { position: absolute; left: 3px; top: 10px; width: 19px; height: 4px; background: #6a7276; }
 .connector-icon i:last-child { transform: rotate(90deg); }
-.connector-icon.universal i:last-child { transform: rotate(45deg); }
-.connector-icon.inline i:last-child { transform: rotate(0) translateY(7px); }
-.connector-icon.inline i { border-left: 4px solid var(--mark); border-right: 4px solid var(--mark); }
+/* 转向扣 joins tubes at any angle; 对接扣 butts them end to end, so its bars are
+   collinear rather than crossed. */
+.connector-icon.swivel i:last-child { transform: rotate(45deg); }
+.connector-icon.butt i:last-child { transform: rotate(0) translateY(7px); }
+.connector-icon.butt i { border-left: 4px solid var(--mark); border-right: 4px solid var(--mark); }
+/* 槽钢 section: a C profile. */
+.channel-icon { display: block; width: 22px; height: 16px; border: 2px solid #6f7a7d; border-right: 0; }
 .pending-material-icon { width: 24px; height: 24px; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--nm-border); font: 700 12px monospace; }
 .deck-material-icon { width: 24px; height: 18px; border: 1px solid #6a7276; background: repeating-linear-gradient(0deg, transparent, transparent 4px, #8b9296 4px, #8b9296 5px), repeating-linear-gradient(90deg, transparent, transparent 5px, #8b9296 5px, #8b9296 6px); transform: skewY(-8deg); }
 .connector-list > div > span:nth-child(2) small { display: block; margin-top: 2px; color: var(--muted); font: 10px monospace; }
 .export-actions { justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.pending-section { margin-top: 14px; }
+.pending-note { color: var(--muted); font-size: 11px; }
+.pending-list { grid-template-columns: 1fr 1fr; }
 .export-actions .secondary-button { min-height: 43px; }
 .export-button { width: auto; min-width: 205px; }
 

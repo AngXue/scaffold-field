@@ -10,6 +10,8 @@ export type ScaffoldParameters = {
   deckSupportRailCount: number
   postSpacing: number
   liftHeight: number
+  /** Height of the 扫地杆 (sweep-bar) layer above the base. */
+  sweepBarHeight: number
   tubeEndExtension: number
   postTopExtension: number
   spliceOverlap: number
@@ -20,6 +22,30 @@ export type ScaffoldParameters = {
 
 export type MemberType = 'post' | 'longitudinal' | 'transverse'
 export type Vector3Tuple = [number, number, number]
+
+/**
+ * Couplers, by the names used on site:
+ * - `cross`  十字扣 / 直角扣件 — joins two tubes at a right angle. JGJ 130-2011
+ *   条文说明 §4.2.1 counts two of these per 主节点, which is what this model emits.
+ * - `butt`   对接扣 / 对接扣件 — one sleeve joining two tube ends, so exactly one
+ *   per splice joint.
+ * - `swivel` 转向扣 / 旋转扣件 — joins two tubes at any angle. Mandated for every
+ *   搭接 lap, every 剪刀撑 node, 抛撑 and 横向斜撑; see `connectorSummary.swivel`.
+ */
+export type ConnectorType = 'cross' | 'butt' | 'swivel'
+
+/** Site names for the three coupler types, shared by every material view. */
+export const CONNECTOR_LABELS: Record<ConnectorType, string> = {
+  cross: '十字扣',
+  butt: '对接扣',
+  swivel: '转向扣',
+}
+
+/**
+ * Sweep-bar members (扫地杆) sit below lift 1, so they are tagged with layer 0
+ * rather than counting as a normal lift.
+ */
+export const SWEEP_BAR_LAYER = 0
 
 export type ScaffoldMember = {
   id: string
@@ -53,9 +79,33 @@ export type DeckPanel = {
 
 export type ScaffoldConnector = {
   id: string
-  type: 'cross' | 'universal' | 'inline'
+  type: ConnectorType
   position: Vector3Tuple
   memberId: string
+}
+
+/**
+ * 槽钢 base beam. One piece is laid under each pair of posts, running in the same
+ * direction as the transverse members, and the posts stand on it.
+ */
+export type BaseChannel = {
+  id: string
+  start: Vector3Tuple
+  end: Vector3Tuple
+  length: number
+  pathSegment: number
+}
+
+/**
+ * Materials that are consumed on site but deliberately outside the calculation
+ * scope, so the bill of materials lists them with a `--` quantity instead of a
+ * number that would be mistaken for a computed one.
+ */
+export type PendingMaterial = {
+  id: 'brace' | 'bindingWire' | 'padPlate' | 'formwork'
+  label: string
+  unit: string
+  note?: string
 }
 
 export type LayoutWarning = {
@@ -72,6 +122,23 @@ export type PipeAssemblyPlan = {
   segmentIds: string[]
 }
 
+/**
+ * GB/T 706-2016 热轧槽钢 10# (100 × 48 × 5.3 mm), the usual base beam for a
+ * two-row 落地架. Nominal mass per metre from the section table.
+ */
+export const CHANNEL_STEEL = {
+  size: '10#',
+  massPerMeter: 10,
+} as const
+
+export type ChannelSteelSummary = {
+  size: string
+  count: number
+  lengthPerPiece: number
+  totalLength: number
+  totalMass: number
+}
+
 export type MaterialResult = {
   theoreticalLength: number
   purchasedLength: number
@@ -81,12 +148,17 @@ export type MaterialResult = {
   stockSummary: Record<string, number>
   connectorSummary: {
     cross: number
-    universal: null
-    inline: number
+    butt: number
+    /**
+     * 旋转扣件 is also required for every 搭接 lap — 3 per longitudinal lap and at
+     * least 2 per post lap (JGJ 130-2011 §6.2.1-2-2 / §6.3.6-2) — plus 剪刀撑,
+     * 抛撑 and 横向斜撑. This model butt-splices every member with 对接扣件, so no
+     * lap exists and the count stays unknown until laps or braces are modelled.
+     */
+    swivel: number | null
   }
-  pendingMaterialSummary: {
-    brace: null
-  }
+  channelSteel: ChannelSteelSummary
+  pendingMaterials: PendingMaterial[]
   deckCount: number
   deckArea: number
   assemblyPlans: PipeAssemblyPlan[]
@@ -97,6 +169,7 @@ export type ScaffoldLayout = {
   pipeSegments: PipeSegment[]
   decks: DeckPanel[]
   connectors: ScaffoldConnector[]
+  baseChannels: BaseChannel[]
   warnings: LayoutWarning[]
   materials: MaterialResult
 }
@@ -107,13 +180,26 @@ export const DEFAULT_PARAMETERS: ScaffoldParameters = {
   deckSupportRailCount: 2,
   postSpacing: 1.8,
   liftHeight: 1.8,
+  sweepBarHeight: 0.3,
   tubeEndExtension: 0.1,
   postTopExtension: 0.2,
-  spliceOverlap: 1,
+  // 对接扣件 butts two tube ends inside a sleeve, so a joint consumes no length:
+  // consecutive segments meet end to end rather than lapping. Raise this only if
+  // the site actually laps, and note that a lap needs 旋转扣件 instead (see
+  // connectorSummary.swivel).
+  spliceOverlap: 0,
   deckLiftInterval: 1,
   pipeDiameter: 0.048,
-  stockLengths: [6, 5, 4, 3, 2],
+  stockLengths: [6, 4.5, 4, 3, 2.4, 2, 1.2, 0.8],
 }
+
+/** Materials listed in the BOM with a `--` quantity, in display order. */
+export const PENDING_MATERIALS: PendingMaterial[] = [
+  { id: 'brace', label: '剪刀撑', unit: '根', note: '剪刀撑规则待定' },
+  { id: 'bindingWire', label: '扎丝', unit: 'kg' },
+  { id: 'padPlate', label: '小垫板', unit: '块' },
+  { id: 'formwork', label: '支模板', unit: 'm²' },
+]
 
 const round = (value: number, precision = 3) => Number(value.toFixed(precision))
 const vectorDistance = (a: Vector3Tuple, b: Vector3Tuple) =>
@@ -190,7 +276,6 @@ function createPipeAssembly(
   member: ScaffoldMember,
   stockLengths: number[],
   requestedOverlap: number,
-  pipeDiameter: number,
 ): { segments: PipeSegment[]; connectors: ScaffoldConnector[]; plan: PipeAssemblyPlan } {
   const minimumStock = Math.min(...stockLengths)
   const overlap = Math.max(0, Math.min(requestedOverlap, minimumStock * 0.8))
@@ -203,15 +288,13 @@ function createPipeAssembly(
   const assemblyStart = member.type === 'post'
     ? start
     : start.subtract(direction.scale(excessLength / 2))
-  const lateral = direction.perpendicular().scale(pipeDiameter * 1.2)
   const segments: PipeSegment[] = []
   const spliceConnectors: ScaffoldConnector[] = []
   let cursor = assemblyStart
 
   selectedStocks.forEach((stockLength, index) => {
-    const offset = index % 2 === 1 ? lateral : Vector.ZERO
-    const segmentStart = cursor.add(offset)
-    const segmentEnd = cursor.add(direction.scale(stockLength)).add(offset)
+    const segmentStart = cursor
+    const segmentEnd = cursor.add(direction.scale(stockLength))
     const id = `S-${member.id}-${index + 1}`
     segments.push({
       id,
@@ -224,16 +307,16 @@ function createPipeAssembly(
       overlapWithPrevious: index === 0 ? 0 : overlap,
     })
 
+    // A 对接扣件 is one sleeve that two tube ends butt into, so a butt joint
+    // takes exactly ONE coupler. The previous model emitted two per joint
+    // because it assumed a lap clamped at both ends.
     if (index > 0) {
-      const overlapStart = cursor
-      for (const positionRatio of [0.25, 0.75]) {
-        spliceConnectors.push({
-          id: `C-${member.id}-splice-${index}-${positionRatio}`,
-          type: 'inline',
-          position: overlapStart.add(direction.scale(overlap * positionRatio)).add(lateral.scale(0.5)).toTuple(),
-          memberId: member.id,
-        })
-      }
+      spliceConnectors.push({
+        id: `C-${member.id}-splice-${index}`,
+        type: 'butt',
+        position: cursor.toTuple(),
+        memberId: member.id,
+      })
     }
     cursor = cursor.add(direction.scale(stockLength - overlap))
   })
@@ -293,6 +376,7 @@ function calculateMaterials(
   pipeSegments: PipeSegment[],
   decks: DeckPanel[],
   connectors: ScaffoldConnector[],
+  baseChannels: BaseChannel[],
   assemblyPlans: PipeAssemblyPlan[],
 ): MaterialResult {
   const theoreticalLength = round(members.reduce((sum, member) => sum + member.length, 0))
@@ -312,10 +396,22 @@ function calculateMaterials(
     stockSummary,
     connectorSummary: {
       cross: connectors.filter((connector) => connector.type === 'cross').length,
-      universal: null,
-      inline: connectors.filter((connector) => connector.type === 'inline').length,
+      butt: connectors.filter((connector) => connector.type === 'butt').length,
+      swivel: null,
     },
-    pendingMaterialSummary: { brace: null },
+    // 槽钢 is bought by the piece, so report both the piece count and the run
+    // length rather than folding it into the tube figures.
+    channelSteel: (() => {
+      const totalLength = round(baseChannels.reduce((sum, channel) => sum + channel.length, 0))
+      return {
+        size: CHANNEL_STEEL.size,
+        count: baseChannels.length,
+        lengthPerPiece: baseChannels.length ? round(baseChannels[0].length) : 0,
+        totalLength,
+        totalMass: round(totalLength * CHANNEL_STEEL.massPerMeter, 1),
+      }
+    })(),
+    pendingMaterials: PENDING_MATERIALS,
     deckCount: decks.length,
     deckArea: round(decks.reduce((sum, deck) => sum + deck.area, 0)),
     assemblyPlans,
@@ -336,8 +432,10 @@ export function calculateScaffold(
   const physical = getPhysicalPoints(points, segmentLengths)
   const members: ScaffoldMember[] = []
   const decks: DeckPanel[] = []
+  const baseChannels: BaseChannel[] = []
   const warnings: LayoutWarning[] = []
   const postKeys = new Set<string>()
+  const channelKeys = new Set<string>()
   let memberSequence = 1
 
   const addMember = (
@@ -411,6 +509,30 @@ export function calculateScaffold(
           )
         }
       }
+
+      // 槽钢 base beam: one piece under each pair of posts, running in the same
+      // direction as the transverse members, with a short bearing overhang past
+      // each post. Deduplicated by post pair so a shared path corner does not
+      // produce two identical beams.
+      const outerBase = postRows[0][station]
+      const innerBase = postRows[1][station]
+      const channelKey = [pointKey(outerBase), pointKey(innerBase)].sort().join('|')
+      if (!channelKeys.has(channelKey)) {
+        channelKeys.add(channelKey)
+        const [channelStart, channelEnd] = extendLine(
+          outerBase,
+          innerBase,
+          parameters.tubeEndExtension,
+          parameters.tubeEndExtension,
+        )
+        baseChannels.push({
+          id: `B${baseChannels.length + 1}`,
+          start: channelStart,
+          end: channelEnd,
+          length: round(vectorDistance(channelStart, channelEnd)),
+          pathSegment: segmentIndex,
+        })
+      }
     }
 
     const supportRows = Array.from({ length: supportRailCount }, (_, supportIndex) => {
@@ -425,9 +547,12 @@ export function calculateScaffold(
       })
     })
 
-    for (let layer = 1; layer <= layerCount; layer += 1) {
-      const elevation = Math.min(parameters.height, round(layer * parameters.liftHeight))
-      for (const row of supportRows) {
+    // The two post rows carry the ordinary 纵向水平杆. Any rows between them are
+    // 钢笆纵向支承杆 (deck-support rails), which only exist where a deck does.
+    const normalRows = [supportRows[0], supportRows[supportRows.length - 1]]
+
+    const addHorizontalBand = (elevation: number, layer: number, rows: Vector3Tuple[][], withDeck: boolean) => {
+      for (const row of rows) {
         const connectionPoints = row.map((point) => [point[0], elevation, point[2]] as Vector3Tuple)
         addMember(
           'longitudinal',
@@ -445,7 +570,7 @@ export function calculateScaffold(
         if (isInternalPathNode) return
 
         const innerPoint = postRows[1][station]
-        const transverseConnections = supportRows.map((row) => [row[station][0], elevation, row[station][2]] as Vector3Tuple)
+        const transverseConnections = rows.map((row) => [row[station][0], elevation, row[station][2]] as Vector3Tuple)
         addMember(
           'transverse',
           [outerPoint[0], elevation, outerPoint[2]],
@@ -456,27 +581,40 @@ export function calculateScaffold(
         )
       })
 
-      if (layer % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0) {
-        for (let bay = 0; bay < bayCount; bay += 1) {
-          const outerStart = postRows[0][bay]
-          const outerEnd = postRows[0][bay + 1]
-          const innerEnd = postRows[1][bay + 1]
-          const innerStart = postRows[1][bay]
-          const deckElevation = elevation + 0.055
-          decks.push({
-            id: `D${decks.length + 1}`,
-            corners: [
-              [outerStart[0], deckElevation, outerStart[2]],
-              [outerEnd[0], deckElevation, outerEnd[2]],
-              [innerEnd[0], deckElevation, innerEnd[2]],
-              [innerStart[0], deckElevation, innerStart[2]],
-            ],
-            area: round(bayLength * parameters.width),
-            layer,
-            pathSegment: segmentIndex,
-          })
-        }
+      if (!withDeck) return
+      for (let bay = 0; bay < bayCount; bay += 1) {
+        const outerStart = postRows[0][bay]
+        const outerEnd = postRows[0][bay + 1]
+        const innerEnd = postRows[1][bay + 1]
+        const innerStart = postRows[1][bay]
+        const deckElevation = elevation + 0.055
+        decks.push({
+          id: `D${decks.length + 1}`,
+          corners: [
+            [outerStart[0], deckElevation, outerStart[2]],
+            [outerEnd[0], deckElevation, outerEnd[2]],
+            [innerEnd[0], deckElevation, innerEnd[2]],
+            [innerStart[0], deckElevation, innerStart[2]],
+          ],
+          area: round(bayLength * parameters.width),
+          layer,
+          pathSegment: segmentIndex,
+        })
       }
+    }
+
+    // 扫地杆 layer. It gets ordinary transverse + longitudinal members only:
+    // there is no deck here, so no deck-support rails either.
+    if (parameters.sweepBarHeight > 0 && parameters.sweepBarHeight < parameters.height) {
+      addHorizontalBand(round(parameters.sweepBarHeight), SWEEP_BAR_LAYER, normalRows, false)
+    }
+
+    for (let layer = 1; layer <= layerCount; layer += 1) {
+      const elevation = Math.min(parameters.height, round(layer * parameters.liftHeight))
+      const withDeck = layer % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0
+      // Rails exist to carry a deck, so a deckless lift gets only the two normal
+      // longitudinal rows.
+      addHorizontalBand(elevation, layer, withDeck ? supportRows : normalRows, withDeck)
     }
 
     if (bayLength < parameters.postSpacing * 0.55) {
@@ -486,6 +624,26 @@ export function calculateScaffold(
       })
     }
   })
+
+  // JGJ 130-2011 §6.2.1-2-2 / §6.3.6-2 require 旋转扣件 for a 搭接: 3 per
+  // longitudinal lap, at least 2 per post lap. This model only counts 对接扣件
+  // butt joints, so say so instead of quietly under-counting the couplers.
+  if (parameters.spliceOverlap >= 1) {
+    warnings.push({
+      id: 'lap-not-modelled',
+      message: '搭接长度 ≥ 1 m 属于搭接接头，按 JGJ 130-2011 应使用旋转扣件（纵向水平杆 3 个、立杆不少于 2 个），当前仅按对接扣件统计，请复核。',
+    })
+  }
+
+  // JGJ 130-2011 §6.3.2 caps the longitudinal sweep bar at 200 mm above the tube
+  // bottom. The site-confirmed 300 mm default is kept, but it has to be flagged
+  // rather than silently produced.
+  if (parameters.sweepBarHeight > 0.2) {
+    warnings.push({
+      id: 'sweep-bar-height',
+      message: `扫地杆高度 ${parameters.sweepBarHeight} m 超过 JGJ 130-2011 第 6.3.2 条“距钢管底端不大于 200 mm”的规定，请复核。`,
+    })
+  }
 
   const rawCrossConnectors: ScaffoldConnector[] = members.flatMap((member) => {
     if (member.type === 'post') return []
@@ -518,7 +676,7 @@ export function calculateScaffold(
       }
     }))
   const assemblies = members.map((member) =>
-    createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap, parameters.pipeDiameter))
+    createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap))
   const pipeSegments = assemblies.flatMap((assembly) => assembly.segments)
   const connectors = [
     ...crossConnectors,
@@ -531,8 +689,9 @@ export function calculateScaffold(
     pipeSegments,
     decks,
     connectors,
+    baseChannels,
     warnings,
-    materials: calculateMaterials(members, pipeSegments, decks, connectors, assemblyPlans),
+    materials: calculateMaterials(members, pipeSegments, decks, connectors, baseChannels, assemblyPlans),
   }
 }
 

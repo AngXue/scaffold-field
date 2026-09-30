@@ -1,5 +1,6 @@
 import { Download, FileSpreadsheet, Printer } from 'lucide-react'
-import type { ScaffoldLayout } from '../domain/scaffold'
+import type { ConnectorType, ScaffoldLayout } from '../domain/scaffold'
+import { CONNECTOR_LABELS } from '../domain/scaffold'
 import { saveTextFile } from '../platform/files'
 import { printDocument } from '../platform/print'
 
@@ -7,25 +8,22 @@ type MaterialViewProps = {
   layout: ScaffoldLayout
 }
 
-const connectorLabels = {
-  cross: '十字扣',
-  universal: '万向扣',
-  inline: '一字扣',
-}
-
 export function MaterialView({ layout }: MaterialViewProps) {
   const { materials } = layout
+  const connectorEntries = Object.entries(materials.connectorSummary) as Array<[ConnectorType, number | null]>
+  const pipeCount = Object.values(materials.stockSummary).reduce((sum, count) => sum + count, 0)
 
   const exportCsv = async () => {
-    const rows = [
+    const rows: Array<Array<string | number>> = [
       ['类别', '规格', '数量', '单位'],
       ...Object.entries(materials.stockSummary).map(([length, quantity]) => ['钢管', length, quantity, '根']),
-      ...Object.entries(materials.connectorSummary).map(([type, quantity]) => [
-        '扣件', connectorLabels[type as keyof typeof connectorLabels], quantity ?? '--', '个',
-      ]),
-      ['待定材料', '剪刀撑', materials.pendingMaterialSummary.brace ?? '--', '根'],
+      ...connectorEntries.map(([type, quantity]) => ['扣件', CONNECTOR_LABELS[type], quantity ?? '--', '个']),
+      ['型钢', `槽钢 ${materials.channelSteel.size} ${materials.channelSteel.lengthPerPiece}m`, materials.channelSteel.count, '根'],
+      ['型钢', '槽钢总长', materials.channelSteel.totalLength, 'm'],
+      ['型钢', '槽钢总重', materials.channelSteel.totalMass, 'kg'],
       ['铺设材料', '钢笆片', materials.deckCount, '片'],
       ['铺设材料', '钢笆覆盖面积', materials.deckArea, 'm²'],
+      ...materials.pendingMaterials.map((material) => ['待定材料', material.label, '--', material.unit]),
     ]
     const csv = `\uFEFF${rows.map((row) => row.join(',')).join('\n')}`
     try {
@@ -59,7 +57,7 @@ export function MaterialView({ layout }: MaterialViewProps) {
 
       <div className="material-columns">
         <section className="material-section">
-          <div className="section-title"><div><span className="field-caption">PIPE INVENTORY</span><h2>标准钢管</h2></div><strong>{Object.values(materials.stockSummary).reduce((sum, count) => sum + count, 0)} 根</strong></div>
+          <div className="section-title"><div><span className="field-caption">PIPE INVENTORY</span><h2>标准钢管</h2></div><strong>{pipeCount} 根</strong></div>
           <div className="stock-list">
             {Object.entries(materials.stockSummary).sort(([a], [b]) => Number.parseFloat(b) - Number.parseFloat(a)).map(([length, quantity]) => (
               <div className="stock-row" key={length}>
@@ -71,12 +69,21 @@ export function MaterialView({ layout }: MaterialViewProps) {
         </section>
 
         <section className="material-section">
-          <div className="section-title"><div><span className="field-caption">CONNECTORS & DECK</span><h2>扣件与钢笆</h2></div></div>
+          <div className="section-title"><div><span className="field-caption">CONNECTORS & STEEL</span><h2>扣件与型钢</h2></div></div>
           <div className="connector-list">
-            {Object.entries(materials.connectorSummary).map(([type, quantity]) => (
-              <div key={type}><span className={`connector-icon ${type}`}><i /><i /></span><span>{connectorLabels[type as keyof typeof connectorLabels]}</span><strong>{quantity ?? '--'}</strong><small>个</small></div>
+            {connectorEntries.map(([type, quantity]) => (
+              <div key={type}>
+                <span className={`connector-icon ${type}`}><i /><i /></span>
+                <span>{CONNECTOR_LABELS[type]}</span>
+                <strong>{quantity ?? '--'}</strong><small>个</small>
+              </div>
             ))}
-            <div><span className="pending-material-icon">?</span><span>剪刀撑</span><strong>{materials.pendingMaterialSummary.brace ?? '--'}</strong><small>根</small></div>
+            <div>
+              <span className="channel-icon" />
+              <span>槽钢 {materials.channelSteel.size} <small>每根 {materials.channelSteel.lengthPerPiece.toFixed(2)} m · 共 {materials.channelSteel.totalLength.toFixed(1)} m · 约 {materials.channelSteel.totalMass.toFixed(0)} kg</small></span>
+              <strong>{materials.channelSteel.count}</strong>
+              <small>根</small>
+            </div>
             <div>
               <span className="deck-material-icon" />
               <span>钢笆片 <small>{materials.deckArea.toFixed(1)} m²</small></span>
@@ -86,6 +93,23 @@ export function MaterialView({ layout }: MaterialViewProps) {
           </div>
         </section>
       </div>
+
+      <section className="material-section pending-section">
+        <div className="section-title">
+          <div><span className="field-caption">NOT ESTIMATED</span><h2>待定材料</h2></div>
+          <span className="pending-note">现场需要，但暂不纳入估算范围，数量以 -- 表示</span>
+        </div>
+        <div className="connector-list pending-list">
+          {materials.pendingMaterials.map((material) => (
+            <div key={material.id}>
+              <span className="pending-material-icon">?</span>
+              <span>{material.label}{material.note ? <small>{material.note}</small> : null}</span>
+              <strong>--</strong>
+              <small>{material.unit}</small>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="export-actions">
         <button className="secondary-button" type="button" onClick={() => { void printMaterials() }}><Printer size={17} /> 打印 / PDF</button>
