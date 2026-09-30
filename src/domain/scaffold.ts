@@ -142,7 +142,6 @@ export type PendingMaterial = {
   id: 'brace' | 'bindingWire' | 'padPlate' | 'formwork'
   label: string
   unit: string
-  note?: string
 }
 
 export type LayoutWarning = {
@@ -172,7 +171,7 @@ export type ChannelSteelSummary = {
 
 export type MaterialResult = {
   theoreticalLength: number
-  purchasedLength: number
+  actualLength: number
   usedLength: number
   wasteLength: number
   utilization: number
@@ -242,11 +241,14 @@ export const DEFAULT_PARAMETERS: ScaffoldParameters = {
 
 /** Materials listed in the BOM with a `--` quantity, in display order. */
 export const PENDING_MATERIALS: PendingMaterial[] = [
-  { id: 'brace', label: '剪刀撑', unit: '根', note: '剪刀撑规则待定' },
-  { id: 'bindingWire', label: '扎丝', unit: 'kg' },
+  { id: 'brace', label: '剪刀撑', unit: '根' },
+  { id: 'bindingWire', label: '扎丝', unit: '捆' },
   { id: 'padPlate', label: '小垫板', unit: '块' },
   { id: 'formwork', label: '支模板', unit: 'm²' },
 ]
+
+/** Couplers are counted one by one but bought by the 包 (30 to a bag). */
+export const COUPLER_PACK_SIZE = 30
 
 /**
  * Keys for the manual quantity corrections a user can apply on top of the
@@ -449,7 +451,7 @@ function calculateMaterials(
   assemblyPlans: PipeAssemblyPlan[],
 ): MaterialResult {
   const theoreticalLength = round(members.reduce((sum, member) => sum + member.length, 0))
-  const purchasedLength = round(pipeSegments.reduce((sum, segment) => sum + segment.stockLength, 0))
+  const actualLength = round(pipeSegments.reduce((sum, segment) => sum + segment.stockLength, 0))
   const stockSummary = pipeSegments.reduce<Record<string, number>>((summary, segment) => {
     const key = `${segment.stockLength}m`
     summary[key] = (summary[key] ?? 0) + 1
@@ -458,10 +460,10 @@ function calculateMaterials(
 
   return {
     theoreticalLength,
-    purchasedLength,
+    actualLength,
     usedLength: theoreticalLength,
-    wasteLength: round(purchasedLength - theoreticalLength),
-    utilization: purchasedLength ? round((theoreticalLength / purchasedLength) * 100, 1) : 0,
+    wasteLength: round(actualLength - theoreticalLength),
+    utilization: actualLength ? round((theoreticalLength / actualLength) * 100, 1) : 0,
     stockSummary,
     connectorSummary: {
       cross: connectors.filter((connector) => connector.type === 'cross').length,

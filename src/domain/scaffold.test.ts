@@ -3,6 +3,7 @@ import {
   calculateScaffold,
   countMembers,
   CONNECTOR_LABELS,
+  COUPLER_PACK_SIZE,
   DEFAULT_PARAMETERS,
   GUARDRAIL_TOP_EDGE,
   SWEEP_BAR_LAYER,
@@ -34,7 +35,7 @@ describe('calculateScaffold', () => {
     const memberLength = layout.members.reduce((sum, member) => sum + member.length, 0)
 
     expect(layout.materials.theoreticalLength).toBeCloseTo(memberLength, 2)
-    expect(layout.materials.purchasedLength).toBeGreaterThanOrEqual(memberLength)
+    expect(layout.materials.actualLength).toBeGreaterThanOrEqual(memberLength)
     expect(layout.materials.utilization).toBeGreaterThan(0)
   })
 
@@ -331,7 +332,10 @@ describe('calculateScaffold', () => {
 
     expect(pending.map((material) => material.id)).toEqual(['brace', 'bindingWire', 'padPlate', 'formwork'])
     expect(pending.map((material) => material.label)).toEqual(['剪刀撑', '扎丝', '小垫板', '支模板'])
-    expect(pending.every((material) => material.unit.length > 0)).toBe(true)
+    // 扎丝 is bought as a bundle of wire, not by weight.
+    expect(pending.map((material) => material.unit)).toEqual(['根', '捆', '块', 'm²'])
+    // Couplers are counted individually but bagged 30 to a 包.
+    expect(COUPLER_PACK_SIZE).toBe(30)
   })
 
   it('keeps the sweep bar inside the 200 mm the standard allows, and flags it if raised', () => {

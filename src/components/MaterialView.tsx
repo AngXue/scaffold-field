@@ -1,6 +1,14 @@
-import { ChevronDown, ChevronUp, Download, FileSpreadsheet, Printer } from 'lucide-react'
-import type { ConnectorType, MaterialAdjustments, ScaffoldLayout } from '../domain/scaffold'
-import { CONNECTOR_LABELS, MATERIAL_KEYS } from '../domain/scaffold'
+import { Cable, ChevronDown, ChevronUp, Download, FileSpreadsheet, Frame, Printer, RectangleHorizontal, X, type LucideIcon } from 'lucide-react'
+import type { ConnectorType, MaterialAdjustments, PendingMaterial, ScaffoldLayout } from '../domain/scaffold'
+import { CONNECTOR_LABELS, COUPLER_PACK_SIZE, MATERIAL_KEYS } from '../domain/scaffold'
+
+/** One glyph per 待定材料, keyed by the domain id so the two cannot drift. */
+const PENDING_ICONS: Record<PendingMaterial['id'], LucideIcon> = {
+  brace: X,
+  bindingWire: Cable,
+  padPlate: RectangleHorizontal,
+  formwork: Frame,
+}
 import { saveTextFile } from '../platform/files'
 import { printDocument } from '../platform/print'
 
@@ -15,6 +23,8 @@ type QuantityControlProps = {
   /** `null` when the material is outside the calculation scope and shows `--`. */
   calculated: number | null
   unit?: string
+  /** Optional bulk unit, e.g. couplers bagged 30 to a 包. */
+  pack?: { size: number; unit: string }
   materialKey: string
   adjustments: MaterialAdjustments
   onAdjust: (key: string, delta: number) => void
@@ -35,6 +45,7 @@ type QuantityControlProps = {
 function QuantityControl({
   calculated,
   unit,
+  pack,
   materialKey,
   adjustments,
   onAdjust,
@@ -50,28 +61,39 @@ function QuantityControl({
 
   return (
     <span className={adjusted ? 'qty-control adjusted' : 'qty-control'}>
-      <button
-        className="qty-step"
-        type="button"
-        title="减少"
-        disabled={quantity <= 0}
-        onClick={() => onAdjust(materialKey, -1)}
-      >
-        <ChevronDown size={14} />
-      </button>
-      <strong className={unknown ? 'qty-value unknown' : 'qty-value'}>{unknown ? '--' : quantity}</strong>
-      <button className="qty-step" type="button" title="增加" onClick={() => onAdjust(materialKey, 1)}>
-        <ChevronUp size={14} />
-      </button>
+      {/* The correction opens to the LEFT of the stepper, and the whole control is
+          right-aligned, so it grows leftward and the ▲/▼ buttons keep the exact
+          same screen position before and after a correction. A button that moves
+          under the finger is a bug. */}
       {adjusted ? (
-        <>
+        <span className="qty-expand">
           <em className="qty-delta">{delta > 0 ? `+${delta}` : delta}</em>
           <button className="qty-reset" type="button" title="恢复为计算值" onClick={() => onResetAdjustment(materialKey)}>
             原 {calculated === null ? '--' : calculated}
           </button>
-        </>
+        </span>
       ) : null}
+      <span className="qty-stepper">
+        <button
+          className="qty-step"
+          type="button"
+          title="减少"
+          disabled={quantity <= 0}
+          onClick={() => onAdjust(materialKey, -1)}
+        >
+          <ChevronDown size={14} />
+        </button>
+        <strong className={unknown ? 'qty-value unknown' : 'qty-value'}>{unknown ? '--' : quantity}</strong>
+        <button className="qty-step" type="button" title="增加" onClick={() => onAdjust(materialKey, 1)}>
+          <ChevronUp size={14} />
+        </button>
+      </span>
       {unit ? <small className="qty-unit">{unit}</small> : null}
+      {/* Rendered even when empty so that reaching the first 包 does not shove the
+          stepper sideways. */}
+      {pack ? (
+        <small className="qty-pack">{quantity > 0 ? `${Math.ceil(quantity / pack.size)} ${pack.unit}` : ''}</small>
+      ) : null}
     </span>
   )
 }
@@ -143,14 +165,12 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
     }
   }
 
-  const correctionCount = Object.values(adjustments).filter((delta) => delta !== 0).length
-
   return (
     <div className="materials-view">
       <div className="material-kpis">
         <div><span>理论需求</span><strong>{materials.theoreticalLength.toFixed(1)}<small> m</small></strong></div>
-        <div><span>采购总长</span><strong>{materials.purchasedLength.toFixed(1)}<small> m</small></strong></div>
-        <div><span>搭接及富余</span><strong>{materials.wasteLength.toFixed(1)}<small> m</small></strong></div>
+        <div><span>实际总长</span><strong>{materials.actualLength.toFixed(1)}<small> m</small></strong></div>
+        <div><span>富余长度</span><strong>{materials.wasteLength.toFixed(1)}<small> m</small></strong></div>
         <div className="accent-kpi"><span>综合利用率</span><strong>{materials.utilization}<small> %</small></strong></div>
       </div>
 
@@ -190,6 +210,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
                 <QuantityControl
                   calculated={quantity}
                   unit="个"
+                  pack={{ size: COUPLER_PACK_SIZE, unit: '包' }}
                   materialKey={MATERIAL_KEYS.connector(type)}
                   adjustments={adjustments}
                   onAdjust={onAdjust}
@@ -199,7 +220,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
             ))}
             <div>
               <span className="channel-icon" />
-              <span>槽钢 <small>每根 {materials.channelSteel.lengthPerPiece.toFixed(2)} m · 共 {materials.channelSteel.totalLength.toFixed(1)} m</small></span>
+              <span>槽钢</span>
               <QuantityControl
                 calculated={materials.channelSteel.count}
                 unit="根"
@@ -211,7 +232,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
             </div>
             <div>
               <span className="deck-material-icon" />
-              <span>钢笆片 <small>{materials.deckArea.toFixed(1)} m²</small></span>
+              <span>钢笆片</span>
               <QuantityControl
                 calculated={materials.deckCount}
                 unit="片"
@@ -228,13 +249,15 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
       <section className="material-section pending-section">
         <div className="section-title">
           <div><span className="field-caption">NOT ESTIMATED</span><h2>待定材料</h2></div>
-          <span className="pending-note">现场需要但不参与计算，数量以 -- 表示；可用箭头手动填入</span>
         </div>
         <div className="connector-list pending-list">
           {materials.pendingMaterials.map((material) => (
             <div key={material.id}>
-              <span className="pending-material-icon">?</span>
-              <span>{material.label}{material.note ? <small>{material.note}</small> : null}</span>
+              <span className="pending-material-icon">{(() => {
+                const Icon = PENDING_ICONS[material.id]
+                return <Icon size={15} />
+              })()}</span>
+              <span>{material.label}</span>
               <QuantityControl
                 calculated={null}
                 unit={material.unit}
@@ -249,11 +272,6 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
       </section>
 
       <div className="export-actions">
-        <span className="adjust-note">
-          {correctionCount > 0
-            ? `已手动调整 ${correctionCount} 项，箭头旁为调整量，小字为程序计算值`
-            : '用上下箭头可按现场需要调整数量，调整后会在小字中保留计算值'}
-        </span>
         <button className="secondary-button" type="button" onClick={() => { void printMaterials() }}><Printer size={17} /> 打印 / PDF</button>
         <button className="primary-button export-button" type="button" onClick={() => { void exportCsv() }}><FileSpreadsheet size={18} /> 导出 Excel CSV <Download size={16} /></button>
       </div>

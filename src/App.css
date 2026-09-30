@@ -102,6 +102,16 @@
 .parameter-section { padding: 18px 0; box-shadow: inset 0 -1px 0 var(--nm-dark); }
 .parameter-section h2 { margin: 0 0 13px; font-size: 12px; font-weight: 700; }
 .parameter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+/* Secondary parameters stay folded away until asked for. The summary is a
+   control, so it gets a hairline divider rather than a shadow. */
+.parameter-more { margin-top: 12px; border-top: 1px solid var(--nm-border); }
+.parameter-more > summary { padding: 9px 2px; color: var(--muted); font-size: 12px; cursor: pointer; list-style: none; }
+.parameter-more > summary::-webkit-details-marker { display: none; }
+.parameter-more > summary::after { content: '▾'; float: right; }
+.parameter-more[open] > summary::after { content: '▴'; }
+.parameter-more > summary:hover { color: var(--ink); }
+.parameter-more[open] > summary { padding-bottom: 4px; }
+.parameter-more .stock-spec-note { padding-bottom: 4px; }
 .stock-spec-note { margin: 12px 0 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .parameter-field { min-width: 0; display: grid; gap: 6px; color: var(--muted); font-size: 11px; }
 /* Recessed = editable. The shadow alone is only ~1.2:1, so the inset ring
@@ -153,14 +163,20 @@
 /* non-scaling-stroke keeps line weights constant on screen at any zoom, matching
    the node labels which are counter-scaled in the JSX. */
 .segment-hit { stroke: transparent; stroke-width: 28; vector-effect: non-scaling-stroke; }
-.segment-line { stroke: #1d2224; stroke-width: 6; stroke-linecap: square; vector-effect: non-scaling-stroke; }
-.segment-line.selected { stroke: var(--accent); stroke-width: 8; }
+/* ONE weight for every segment, selected or not, so the path never appears to be
+   built from parts of different sizes. */
+.segment-line { stroke: #1d2224; stroke-width: 2.5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+/* Selection is a halo BEHIND the line rather than extra weight. The monochrome
+   theme's --accent (#16191b) is all but identical to the line colour (#1d2224),
+   so colour alone could not carry the state either — this grey reads clearly
+   against --canvas and is distinct from the grid. */
+.segment-halo { stroke: #9aa4a8; stroke-width: 9; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .length-label-bg { fill: white; stroke: var(--line); stroke-width: 1; }
 .length-label { fill: var(--ink); font: 700 12px monospace; }
 .plan-node { cursor: grab; touch-action: none; }
 .plan-node:active { cursor: grabbing; }
 .node-hit { fill: transparent; }
-.node-dot { fill: var(--mark); stroke: white; stroke-width: 3; }
+.node-dot { fill: var(--mark); stroke: white; stroke-width: 2.5; }
 .node-label-bg { fill: rgba(255, 255, 255, 0.96); stroke: var(--line); stroke-width: 1; }
 .node-label { fill: var(--ink); font: 700 12px monospace; user-select: none; }
 .grid-minor { stroke: #e2e5e7; stroke-width: 0.7; vector-effect: non-scaling-stroke; }
@@ -251,27 +267,34 @@ body.has-fullscreen { overflow: hidden; }
 .connector-icon.butt i { border-left: 4px solid var(--mark); border-right: 4px solid var(--mark); }
 /* 槽钢 section: a C profile. */
 .channel-icon { display: block; width: 22px; height: 16px; border: 2px solid #6f7a7d; border-right: 0; }
-.pending-material-icon { width: 24px; height: 24px; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--nm-border); font: 700 12px monospace; }
+.pending-material-icon { width: 24px; height: 24px; display: grid; place-items: center; color: var(--muted); border: 1px dashed var(--nm-border); }
 .deck-material-icon { width: 24px; height: 18px; border: 1px solid #6a7276; background: repeating-linear-gradient(0deg, transparent, transparent 4px, #8b9296 4px, #8b9296 5px), repeating-linear-gradient(90deg, transparent, transparent 5px, #8b9296 5px, #8b9296 6px); transform: skewY(-8deg); }
 .connector-list > div > span:nth-child(2) small { display: block; margin-top: 2px; color: var(--muted); font: 10px monospace; }
 
 /* Manual quantity correction. The arrows are the control; an adjusted row is
    tinted and ringed so it cannot be mistaken for a pure calculation, and the
    original number stays visible in the small "原 N" reset button. */
-.qty-control { display: flex; align-items: center; gap: 4px; justify-self: end; }
-.qty-control.adjusted { padding: 2px 7px 2px 4px; border-radius: var(--nm-r-1); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--nm-border); }
+/* The correction opens to the LEFT of the stepper, and the control is
+   right-aligned, so it grows leftward and the ▲/▼ buttons never move. The padding
+   is constant (the adjusted state only paints a background and a ring) and every
+   element to the right of the stepper has a fixed width, because a control that
+   shifts under the finger after the first tap is a bug. */
+.qty-control { display: flex; align-items: center; gap: 4px; justify-self: end; padding: 2px 7px 2px 4px; border-radius: var(--nm-r-1); }
+.qty-control.adjusted { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--nm-border); }
+.qty-expand { display: flex; align-items: center; gap: 4px; }
+.qty-stepper { display: flex; align-items: center; gap: 4px; }
 .qty-step { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; color: var(--muted); background: var(--nm-surface); border: 0; border-radius: 6px; box-shadow: var(--nm-e1), var(--nm-edge); cursor: pointer; touch-action: manipulation; }
 .qty-step:active:not(:disabled) { box-shadow: var(--nm-i1), var(--nm-edge); }
 .qty-step:disabled { opacity: 0.35; cursor: not-allowed; }
-.qty-value { min-width: 32px; text-align: center; color: var(--ink); font: 700 15px/1 monospace; font-variant-numeric: tabular-nums; }
+.qty-value { width: 42px; text-align: center; color: var(--ink); font: 700 15px/1 monospace; font-variant-numeric: tabular-nums; }
 .qty-control.adjusted .qty-value { color: var(--accent-strong); }
 .qty-delta { color: var(--ink); font: 700 11px/1 monospace; font-style: normal; }
 .qty-reset { padding: 2px 4px; color: var(--muted); background: transparent; border: 0; border-bottom: 1px dashed var(--nm-border); font-size: 10px; cursor: pointer; }
 .qty-unit { color: var(--muted); }
-.adjust-note { margin-right: auto; color: var(--muted); font-size: 11px; }
+/* Bulk count beside the base unit. Flat with a hairline: it is read, not pressed. */
+.qty-pack { min-width: 54px; text-align: center; margin-left: 2px; padding: 1px 5px; color: var(--muted); border: 1px solid var(--nm-border); border-radius: 5px; font: 700 10px/1.4 monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .export-actions { justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .pending-section { margin-top: 14px; }
-.pending-note { color: var(--muted); font-size: 11px; }
 .pending-list { grid-template-columns: 1fr 1fr; }
 .export-actions .secondary-button { min-height: 43px; }
 .export-button { width: auto; min-width: 205px; }

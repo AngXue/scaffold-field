@@ -300,7 +300,12 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
               return (
                 <g key={`${point.id}-${next.id}`} onClick={() => setSelectedSegment(index)} className="plan-segment">
                   <line x1={point.x} y1={point.y} x2={next.x} y2={next.y} className="segment-hit" />
-                  <line x1={point.x} y1={point.y} x2={next.x} y2={next.y} className={selected ? 'segment-line selected' : 'segment-line'} />
+                  {/* Selection is a halo behind the line, not extra weight: a
+                      thicker selected segment reads as a different element. */}
+                  {selected ? (
+                    <line x1={point.x} y1={point.y} x2={next.x} y2={next.y} className="segment-halo" />
+                  ) : null}
+                  <line x1={point.x} y1={point.y} x2={next.x} y2={next.y} className="segment-line" />
                   <g transform={`translate(${midpoint.x}, ${midpoint.y}) scale(${1 / view.k})`}>
                     <rect x="-38" y="-17" width="76" height="34" rx="4" className="length-label-bg" />
                     <text textAnchor="middle" dominantBaseline="middle" className="length-label">{(lengths[index] ?? 0).toFixed(2)} m</text>
@@ -321,7 +326,7 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
                 }}
               >
                 <circle r="14" className="node-hit" />
-                <circle r="7" className="node-dot" />
+                <circle r="6" className="node-dot" />
                 <rect x="-17" y="-38" width="34" height="20" rx="3" className="node-label-bg" />
                 <text y="-24" textAnchor="middle" className="node-label">{point.id}</text>
               </g>

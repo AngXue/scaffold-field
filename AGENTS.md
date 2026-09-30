@@ -39,7 +39,8 @@
 - **The material list must not show 防护栏杆 as a separate line.** The rails are φ48.3 stock like everything else, so they belong inside `stockSummary` and the 标准钢管 rows; `materials.guardrail` is only a breakdown for tests and diagnostics. They keep their own **3D layer** so they can be isolated visually. Do not add a second material line, and never add their length to the pipe totals a second time.
 - 密目式安全立网, 安全平网 and 挡脚板 are **out of scope by decision** (the 挡脚板 was removed on request). Do not reintroduce them, and do not emit a quantity for any of them.
 - Wall ties are intentionally excluded. Braces are not calculated or rendered. Do not invent either rule without an explicit engineering specification.
-- 扎丝, 小垫板, 支模板 and 剪刀撑 are listed through `PENDING_MATERIALS` with a `--` quantity because they are outside the calculation scope. Never emit a computed-looking number for them — but they **are** manually adjustable, so the user can record what the site actually needs. They read `--` until a correction is entered, and their 备注 in the export says `计算值 --`.
+- 扎丝, 小垫板, 支模板 and 剪刀撑 are listed through `PENDING_MATERIALS` with a `--` quantity because they are outside the calculation scope. Never emit a computed-looking number for them — but they **are** manually adjustable, so the user can record what the site actually needs. They read `--` until a correction is entered, and their 备注 in the export says `计算值 --`. Units follow the site: 扎丝 is a bundle of wire (`捆`), not a weight.
+- Couplers are counted in `个` as the base unit and also shown in `包` using `COUPLER_PACK_SIZE` (30 to a bag). The 包 figure is derived from the quantity **actually shown** — after any manual correction, rounded up — so the two can never disagree. Any bulk unit added later must be derived the same way rather than stored.
 - Manual quantity corrections live in `MaterialAdjustments`: a **delta** keyed by `MATERIAL_KEYS`, not an absolute override, so a parameter change keeps flowing through the calculation with the user's fix still on top. They are part of the saved project and must be reflected in the CSV export (which records the original calculation in its 备注 column). Any adjusted row keeps the calculated value visible next to it — never let a corrected number pass for a computed one.
 - Preserve the local-storage key `scaffold-project`, merge stored parameters with defaults, and keep the legacy `rowCount -> deckSupportRailCount` migration.
 
@@ -59,6 +60,8 @@ The UI is a neumorphic ("soft UI") theme in **white + black** — deliberately c
 - Print must stay flat black-on-white: the `@media print` block in [src/index.css](src/index.css) zeroes every shadow and background image, because the Android print framework renders through this same stylesheet.
 - `color-scheme: light` plus `android:forceDarkAllowed="false"` in the manifest are required: WebView algorithmic darkening recomputes every shadow and inverts the light source.
 - There is **no per-tab heading block**. The single 60px topbar carries the brand, the workflow tabs and the project actions; each tab's own toolbar is the panel's first row.
+- **The material list does not explain itself.** Assume the reader knows the trade: do not add inline help text, captions restating what a control does, or small print describing a material's physical properties (a 槽钢's per-piece length, a 钢笆's area). A row is a label, a quantity, its unit, and — only when bulk — the derived bulk count. The `--` of a pending material already says it is not estimated.
+- The parameter panel shows only the four inputs that drive most of the estimate (搭设高度, 钢笆纵向杆数, 扫地杆高度, 防护栏杆侧数); the rest live inside the collapsed 更多参数 `<details>`. Add a new parameter to the folded group unless it is one a user changes routinely.
 
 ## 2D Canvas
 
@@ -68,6 +71,7 @@ The drawing surface is an **unbounded plane**, not a fixed view box:
 - Never reintroduce coordinate clamping for nodes or added segments; the whole point is that geometry can sit anywhere.
 - The SVG `viewBox` tracks the element's real pixel size (via `ResizeObserver`) so one user unit equals one CSS pixel, and the grid rect covers exactly the visible model area rather than a giant fixed rect.
 - Grid and geometry strokes use `vector-effect: non-scaling-stroke`; node labels are counter-scaled by `1 / k`. Keep line weights and label sizes constant on screen at any zoom.
+- **Every path segment is drawn at one identical weight and colour.** Selection is a halo (`segment-halo`) behind the line, never extra stroke weight: a thicker selected segment reads as a different element, which is exactly the inconsistency to avoid. Colour alone cannot carry selection either, because the monochrome `--accent` is all but identical to the line colour.
 - The 1 m scale bar lives in screen space and multiplies by `k`, so it always reports the true on-screen length.
 - Snapping still rounds to the absolute `GRID_SIZE` lattice in model space.
 

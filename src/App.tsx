@@ -218,25 +218,33 @@ function App() {
           <div className="inspector-heading"><Settings2 size={18} /><strong>脚手架参数</strong><span>住宅模板</span></div>
           <div className="parameter-section">
             <h2>几何参数</h2>
+            {/* The four that carry most of the estimate stay in the open; the rest
+                are refinements a user only reaches for deliberately. */}
             <div className="parameter-grid">
               <NumberField label="搭设高度" value={parameters.height} onChange={(value) => updateParameter('height', value)} />
-              <NumberField label="脚手架宽度" value={parameters.width} onChange={(value) => updateParameter('width', value)} />
               <NumberField label="钢笆纵向杆数" value={parameters.deckSupportRailCount} unit="根" step={1} min={2} max={4} onChange={(value) => updateParameter('deckSupportRailCount', Math.round(value))} />
-              <NumberField label="立杆纵距" value={parameters.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
-              <NumberField label="步距" value={parameters.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
               <NumberField label="扫地杆高度" value={parameters.sweepBarHeight} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('sweepBarHeight', value)} />
-              <NumberField label="管端外伸" value={parameters.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
-              <NumberField label="立杆顶端外伸" value={parameters.postTopExtension} step={0.1} min={0} max={2} onChange={(value) => updateParameter('postTopExtension', value)} />
-              {/* 对接扣件 butts two tubes, so the joint consumes no length; raise
-                  this past 1 m and the connection becomes a 搭接, which needs
-                  旋转扣件 and is flagged as not modelled. */}
-              <NumberField label="搭接长度" value={parameters.spliceOverlap} step={0.1} min={0} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
-              <NumberField label="钢笆铺设间隔" value={parameters.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
               {/* JGJ 130-2011 §7.3.12 mandates the outer row only; 2 is the common
                   site rule and is required when the inner face is open. */}
               <NumberField label="防护栏杆侧数" value={parameters.guardrailSides} unit="侧" step={1} min={0} max={2} onChange={(value) => updateParameter('guardrailSides', Math.round(value))} />
             </div>
-            <p className="stock-spec-note">库存钢管规格：{parameters.stockLengths.join(' / ')} m</p>
+
+            <details className="parameter-more">
+              <summary>更多参数</summary>
+              <div className="parameter-grid">
+                <NumberField label="脚手架宽度" value={parameters.width} onChange={(value) => updateParameter('width', value)} />
+                <NumberField label="立杆纵距" value={parameters.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
+                <NumberField label="步距" value={parameters.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
+                <NumberField label="管端外伸" value={parameters.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
+                <NumberField label="立杆顶端外伸" value={parameters.postTopExtension} step={0.1} min={0} max={2} onChange={(value) => updateParameter('postTopExtension', value)} />
+                {/* 对接扣件 butts two tubes, so the joint consumes no length; raise
+                    this past 1 m and the connection becomes a 搭接, which needs
+                    旋转扣件 and is flagged as not modelled. */}
+                <NumberField label="搭接长度" value={parameters.spliceOverlap} step={0.1} min={0} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
+                <NumberField label="钢笆铺设间隔" value={parameters.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
+              </div>
+              <p className="stock-spec-note">库存钢管规格：{parameters.stockLengths.join(' / ')} m</p>
+            </details>
           </div>
 
           <div className="live-summary">
