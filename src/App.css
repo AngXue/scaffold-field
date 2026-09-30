@@ -234,7 +234,12 @@ body.has-fullscreen { overflow: hidden; }
 .member-popover dt { color: var(--muted); }
 .member-popover dd { margin: 0; font-family: monospace; font-weight: 700; }
 
-.materials-view { padding: 22px 24px 28px; background: var(--nm-surface); }
+/* The 2D and 3D canvases claim every remaining pixel inside .work-surface, which
+   therefore clips its overflow. The material list is ordinary flow content and
+   can be taller than the viewport, so it has to scroll inside that same box:
+   `min-height: 0` is what lets a flex child shrink below its content and hand the
+   overflow to the scrollbar. */
+.materials-view { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 22px 24px 28px; background: var(--nm-surface); }
 .material-kpis { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: var(--nm-r-1); overflow: hidden; background: var(--paper); }
 .material-kpis > div { min-height: 96px; padding: 17px 20px; display: grid; align-content: center; gap: 8px; border-right: 1px solid var(--line); }
 .material-kpis > div:last-child { border-right: 0; }
