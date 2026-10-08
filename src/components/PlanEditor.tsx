@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Focus, Magnet, Maximize2, Minimize2, MousePointer2, Plus, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
+import { NumberField } from './NumberField'
 import type { Point2D } from '../domain/scaffold'
-import { GRID_SIZE, measurePath, PIXELS_PER_METER, resizePathSegment } from '../domain/plan'
+import { GRID_SIZE, insertPathSegment, measurePath, PIXELS_PER_METER, resizePathSegment } from '../domain/plan'
 import { useCssFullscreen } from '../platform/fullscreen'
 
 type PlanEditorProps = {
@@ -16,6 +17,8 @@ const MIN_ZOOM = 0.15
 const MAX_ZOOM = 6
 /** Padding (in model px) left around the content by "fit to content". */
 const FIT_PADDING = PIXELS_PER_METER * 1.5
+/** Length a newly added path segment starts at, in metres. */
+const NEW_SEGMENT_LENGTH = 0.5
 
 /**
  * View transform only. Model coordinates stay in plan pixels at
@@ -116,6 +119,17 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
 
   const handleCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (modeRef.current === 'node') return
+
+    // Selection happens HERE, not in the segment's own onClick: panning captures the
+    // pointer on the <svg> below, and a captured pointer retargets the follow-up
+    // click away from the segment group — so that onClick never fired and no segment
+    // could be selected. Hit-testing the pressed element is capture-proof.
+    const segmentGroup = (event.target as Element | null)?.closest?.('[data-segment]')
+    if (segmentGroup) {
+      const index = Number(segmentGroup.getAttribute('data-segment'))
+      if (Number.isInteger(index)) setSelectedSegment(index)
+    }
+
     event.currentTarget.setPointerCapture(event.pointerId)
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
 
@@ -208,19 +222,18 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
     setSnapGuide({})
   }
 
+  /**
+   * Adding a segment inserts a SHORT one after the selected segment (see
+   * `insertPathSegment`), collinear with the outline and only 0.5 m long: a short
+   * handle is what makes the new direction and length easy to drag into place.
+   */
   const addSegment = () => {
-    const last = points.at(-1) ?? { x: 120, y: 160 }
-    const length = 4.2
-    const direction = points.length % 2 === 0
-      ? { x: 0, y: length * PIXELS_PER_METER }
-      : { x: length * PIXELS_PER_METER, y: 0 }
-    onPointsChange([...points, {
-      id: `P${points.length + 1}`,
-      x: last.x + direction.x,
-      y: last.y + direction.y,
-    }])
-    onLengthsChange([...lengths, length])
-    setSelectedSegment(lengths.length)
+    const index = Math.max(0, Math.min(selectedSegment, points.length - 2))
+    const nextPoints = insertPathSegment(points, index, NEW_SEGMENT_LENGTH)
+    if (nextPoints === points) return
+    onPointsChange(nextPoints)
+    onLengthsChange(measurePath(nextPoints))
+    setSelectedSegment(index + 1)
   }
 
   const reset = () => {
@@ -241,6 +254,10 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
     width: size.width / view.k,
     height: size.height / view.k,
   }
+
+  // A stored project can arrive with fewer segments than the current selection, so
+  // clamp: the strip and the length editor must always address a real segment.
+  const activeSegment = Math.min(selectedSegment, Math.max(0, points.length - 2))
 
   return (
     <div className={isFullscreen ? 'plan-editor is-fullscreen' : 'plan-editor'} ref={editorRef}>
@@ -296,9 +313,9 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
             {points.slice(0, -1).map((point, index) => {
               const next = points[index + 1]
               const midpoint = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }
-              const selected = selectedSegment === index
+              const selected = activeSegment === index
               return (
-                <g key={`${point.id}-${next.id}`} onClick={() => setSelectedSegment(index)} className="plan-segment">
+                <g key={`${point.id}-${next.id}`} data-segment={index} className="plan-segment">
                   <line x1={point.x} y1={point.y} x2={next.x} y2={next.y} className="segment-hit" />
                   {/* Selection is a halo behind the line, not extra weight: a
                       thicker selected segment reads as a different element. */}
@@ -345,26 +362,22 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
       <div className="segment-strip">
         <div>
           <span className="field-caption">当前路径段</span>
-          <strong>{points[selectedSegment]?.id} → {points[selectedSegment + 1]?.id}</strong>
+          <strong>{points[activeSegment]?.id} → {points[activeSegment + 1]?.id}</strong>
         </div>
-        <label className="inline-field">
-          <span>实际测量长度</span>
-          <span className="number-input">
-            <input
-              type="number"
-              min="0.1"
-              step="0.1"
-              value={lengths[selectedSegment] ?? 0}
-              onChange={(event) => {
-                const value = Math.max(0.1, Number(event.target.value))
-                const nextPoints = resizePathSegment(points, selectedSegment, value)
-                onPointsChange(nextPoints)
-                onLengthsChange(measurePath(nextPoints))
-              }}
-            />
-            <b>m</b>
-          </span>
-        </label>
+        {/* The same −/+ field the parameter panel uses: this one used to be a bare
+            number input, which a tablet soft keyboard handles badly. */}
+        <NumberField
+          className="inline-field"
+          label="实际测量长度"
+          value={lengths[activeSegment] ?? 0}
+          step={0.1}
+          min={0.1}
+          onChange={(value) => {
+            const nextPoints = resizePathSegment(points, activeSegment, value)
+            onPointsChange(nextPoints)
+            onLengthsChange(measurePath(nextPoints))
+          }}
+        />
         <span className="authority-note">画布与测量值同步 · 滚轮/双指缩放，拖拽空白平移</span>
       </div>
     </div>

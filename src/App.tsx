@@ -7,14 +7,13 @@ import {
   Layers3,
   Map,
   Menu,
-  Minus,
-  Plus,
   Save,
   Settings2,
   TriangleAlert,
 } from 'lucide-react'
 import './App.css'
 import { MaterialView } from './components/MaterialView'
+import { NumberField } from './components/NumberField'
 import { PlanEditor } from './components/PlanEditor'
 import { PIXELS_PER_METER } from './domain/plan'
 import { saveTextFile } from './platform/files'
@@ -24,6 +23,7 @@ import {
   calculateScaffold,
   countMembers,
   DEFAULT_PARAMETERS,
+  TOP_POST_EXTENSION,
   type MaterialAdjustments,
   type Point2D,
   type ScaffoldParameters,
@@ -54,106 +54,32 @@ function loadStoredProject() {
     const project = JSON.parse(stored) as {
       points: Point2D[]
       lengths: number[]
-      parameters: Partial<ScaffoldParameters> & { rowCount?: number }
+      parameters: Partial<ScaffoldParameters> & { rowCount?: number; height?: number }
       adjustments?: MaterialAdjustments
     }
+    // `height` is dropped on the way in: the migration below turns it into a 作业层
+    // count, and a stale copy would only confuse the domain merge.
+    const { height: legacyHeight, ...storedParameters } = project.parameters
+    // A project saved before `layerCount` carried a continuous 搭设高度: keep the
+    // 作业层 it stood for rather than silently resetting it to the default.
+    const layerCount = storedParameters.layerCount ?? (legacyHeight === undefined
+      ? DEFAULT_PARAMETERS.layerCount
+      : Math.max(1, Math.round(
+        (legacyHeight - TOP_POST_EXTENSION) / (storedParameters.liftHeight ?? DEFAULT_PARAMETERS.liftHeight),
+      )))
     return {
       ...project,
       adjustments: project.adjustments ?? {},
       parameters: {
         ...DEFAULT_PARAMETERS,
-        ...project.parameters,
-        deckSupportRailCount: project.parameters.deckSupportRailCount ?? project.parameters.rowCount ?? DEFAULT_PARAMETERS.deckSupportRailCount,
+        ...storedParameters,
+        layerCount,
+        deckSupportRailCount: storedParameters.deckSupportRailCount ?? storedParameters.rowCount ?? DEFAULT_PARAMETERS.deckSupportRailCount,
       },
     }
   } catch {
     return null
   }
-}
-
-function NumberField({ label, value, unit = 'm', step = 0.1, min = 0.1, max, onChange }: {
-  label: string
-  value: number
-  unit?: string
-  step?: number
-  min?: number
-  max?: number
-  onChange: (value: number) => void
-}) {
-  // While the user is typing, show exactly what they typed. A purely controlled
-  // numeric input rewrites "1." to "1" mid-edit, which makes decimals impossible
-  // to enter with a soft keyboard. The parsed value is still committed per
-  // keystroke, and the draft is dropped on blur so the field snaps back to the
-  // canonical clamped value.
-  const [draft, setDraft] = useState<string | null>(null)
-  const decimals = (String(step).split('.')[1] ?? '').length
-
-  const clamp = (raw: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min, raw))
-
-  /** Typing is free-form: a step is an increment, not a limit on precision. */
-  const commitTyped = (raw: number) => {
-    if (Number.isFinite(raw)) onChange(clamp(raw))
-  }
-
-  /**
-   * Stepping snaps to the step's own precision. Fractional steps accumulate float
-   * noise (0.1 + 0.2 = 0.30000000000000004), and the field must never show a
-   * number the user could not have typed.
-   */
-  const commitStepped = (raw: number) => {
-    if (Number.isFinite(raw)) onChange(Number(clamp(raw).toFixed(decimals)))
-  }
-
-  const nudge = (direction: number) => {
-    setDraft(null)
-    commitStepped(value + step * direction)
-  }
-
-  return (
-    <label className="parameter-field">
-      <span>{label}</span>
-      {/* Explicit −/+ buttons rather than the browser's native number spinners:
-          Android WebView draws none at all, so on the tablet these fields could
-          previously only be typed into. */}
-      <span className="number-input">
-        <button
-          className="number-step"
-          type="button"
-          title={`减小${label}`}
-          disabled={value <= min}
-          onClick={() => nudge(-1)}
-        >
-          <Minus size={15} />
-        </button>
-        {/* Deliberately a text input with a decimal keypad. A number input reports
-            its value as "" while the user is mid-way through "7." — the browser
-            rejects a partial number — so decimals cannot be typed with a soft
-            keyboard. Rendered value falls back to the model value when not
-            editing. */}
-        <input
-          type="text"
-          inputMode="decimal"
-          value={draft ?? String(value)}
-          onChange={(event) => {
-            const raw = event.target.value.replace(/[^0-9.]/g, '')
-            setDraft(raw)
-            if (raw !== '' && raw !== '.') commitTyped(Number(raw))
-          }}
-          onBlur={() => setDraft(null)}
-        />
-        <b>{unit}</b>
-        <button
-          className="number-step"
-          type="button"
-          title={`增大${label}`}
-          disabled={max !== undefined && value >= max}
-          onClick={() => nudge(1)}
-        >
-          <Plus size={15} />
-        </button>
-      </span>
-    </label>
-  )
 }
 
 function App() {
@@ -175,11 +101,19 @@ function App() {
     return false
   })
 
-  const layout = calculateScaffold(points, lengths, parameters)
+  /**
+   * The settings every consumer actually reads. State can carry an object that
+   * predates a field — an older saved project, or a hot reload that kept the previous
+   * state — and a field with no default would then render as unusable. Merging once
+   * here means the panel, the calculation and the export always see a complete set.
+   */
+  const settings: ScaffoldParameters = { ...DEFAULT_PARAMETERS, ...parameters }
+
+  const layout = calculateScaffold(points, lengths, settings)
   const counts = countMembers(layout)
 
   const updateParameter = (key: keyof ScaffoldParameters, value: number) => {
-    setParameters({ ...parameters, [key]: value })
+    setParameters({ ...settings, [key]: value })
     setSaved(false)
   }
 
@@ -199,12 +133,12 @@ function App() {
   }
 
   const saveProject = () => {
-    localStorage.setItem('scaffold-project', JSON.stringify({ points, lengths, parameters, adjustments }))
+    localStorage.setItem('scaffold-project', JSON.stringify({ points, lengths, parameters: settings, adjustments }))
     setSaved(true)
   }
 
   const exportProject = async () => {
-    const project = { version: '0.4', points, lengths, parameters, adjustments, layout }
+    const project = { version: '0.5', points, lengths, parameters: settings, adjustments, layout }
     try {
       await saveTextFile({
         fileName: '青岚别墅-脚手架项目.json',
@@ -280,30 +214,36 @@ function App() {
             <h2>几何参数</h2>
             {/* The four that carry most of the estimate stay in the open; the rest
                 are refinements a user only reaches for deliberately. */}
+            {/* 作业层数 is the one height input: every elevation follows from it, so
+                the scaffold grows in whole 步距 instead of stretching to a height. */}
             <div className="parameter-grid">
-              <NumberField label="搭设高度" value={parameters.height} onChange={(value) => updateParameter('height', value)} />
-              <NumberField label="钢笆纵向杆数" value={parameters.deckSupportRailCount} unit="根" step={1} min={2} max={4} onChange={(value) => updateParameter('deckSupportRailCount', Math.round(value))} />
-              <NumberField label="扫地杆高度" value={parameters.sweepBarHeight} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('sweepBarHeight', value)} />
-              {/* JGJ 130-2011 §7.3.12 mandates the outer row only; 2 is the common
-                  site rule and is required when the inner face is open. */}
-              <NumberField label="防护栏杆侧数" value={parameters.guardrailSides} unit="侧" step={1} min={0} max={2} onChange={(value) => updateParameter('guardrailSides', Math.round(value))} />
+              <NumberField label="作业层数" value={settings.layerCount} unit="层" step={1} min={1} max={20} onChange={(value) => updateParameter('layerCount', Math.round(value))} />
+              <NumberField label="钢笆纵向杆数" value={settings.deckSupportRailCount} unit="根" step={1} min={2} max={4} onChange={(value) => updateParameter('deckSupportRailCount', Math.round(value))} />
+              <NumberField label="扫地杆高度" value={settings.sweepBarHeight} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('sweepBarHeight', value)} />
+              {/* §7.3.12(2)(4) gives 上栏杆 + 中栏杆, but a site that only builds the
+                  上栏杆 has to be able to say so rather than have the 中栏杆 counted
+                  for it. */}
+              <NumberField label="栏杆根数" value={settings.guardrailRailCount} unit="根" step={1} min={1} max={2} onChange={(value) => updateParameter('guardrailRailCount', Math.round(value))} />
             </div>
 
             <details className="parameter-more">
               <summary>更多参数</summary>
               <div className="parameter-grid">
-                <NumberField label="脚手架宽度" value={parameters.width} onChange={(value) => updateParameter('width', value)} />
-                <NumberField label="立杆纵距" value={parameters.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
-                <NumberField label="步距" value={parameters.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
-                <NumberField label="管端外伸" value={parameters.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
-                <NumberField label="立杆顶端外伸" value={parameters.postTopExtension} step={0.1} min={0} max={2} onChange={(value) => updateParameter('postTopExtension', value)} />
+                <NumberField label="脚手架宽度" value={settings.width} onChange={(value) => updateParameter('width', value)} />
+                <NumberField label="立杆纵距" value={settings.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
+                <NumberField label="步距" value={settings.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
+                <NumberField label="管端外伸" value={settings.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
+                {/* JGJ 130-2011 §7.3.12 mandates 外立杆 only, so 1 is the code minimum and
+                    the default; 2 is required when the inner face is genuinely 临空, and
+                    it is what builds the whole inner row to the railed height. */}
+                <NumberField label="防护栏杆侧数" value={settings.guardrailSides} unit="侧" step={1} min={0} max={2} onChange={(value) => updateParameter('guardrailSides', Math.round(value))} />
                 {/* 对接扣件 butts two tubes, so the joint consumes no length; raise
                     this past 1 m and the connection becomes a 搭接, which needs
                     旋转扣件 and is flagged as not modelled. */}
-                <NumberField label="搭接长度" value={parameters.spliceOverlap} step={0.1} min={0} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
-                <NumberField label="钢笆铺设间隔" value={parameters.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
+                <NumberField label="搭接长度" value={settings.spliceOverlap} step={0.1} min={0} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
+                <NumberField label="钢笆铺设间隔" value={settings.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
               </div>
-              <p className="stock-spec-note">库存钢管规格：{parameters.stockLengths.join(' / ')} m</p>
+              <p className="stock-spec-note">库存钢管规格：{settings.stockLengths.join(' / ')} m</p>
             </details>
           </div>
 
@@ -314,6 +254,13 @@ function App() {
               <div><span>水平杆</span><strong>{counts.longitudinal}</strong></div>
               <div><span>横向杆</span><strong>{counts.transverse}</strong></div>
               <div><span>防护栏杆</span><strong>{counts.guardrail}</strong></div>
+            </div>
+            {/* The height model in one line: the user sets 作业层数, everything else is
+                derived, and the two 立杆 rows come out different lengths. */}
+            <div className="utilization-row"><span>理论搭设高度</span><strong>{layout.materials.postHeights.theoretical} m</strong></div>
+            <div className="utilization-row">
+              <span>立杆 内 / 外</span>
+              <strong>{layout.materials.postHeights.inner} / {layout.materials.postHeights.outer} m</strong>
             </div>
             <div className="utilization-row"><span>钢管利用率</span><strong>{layout.materials.utilization}%</strong></div>
             <div className="utilization-track"><i style={{ width: `${layout.materials.utilization}%` }} /></div>

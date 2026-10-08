@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { measurePath, PIXELS_PER_METER, resizePathSegment } from './plan'
+import { insertPathSegment, measurePath, PIXELS_PER_METER, resizePathSegment } from './plan'
 
 const points = [
   { id: 'P1', x: 100, y: 100 },
@@ -17,5 +17,42 @@ describe('plan geometry', () => {
 
     expect(measurePath(resized)).toEqual([5.8, 4.8])
     expect(resized[2].x - resized[1].x).toBe(0)
+  })
+
+  it('inserts a short segment after the selected one without moving the outline', () => {
+    const inserted = insertPathSegment(points, 0, 0.5)
+    const lengths = measurePath(inserted)
+
+    // P1 -> P2 -> new -> P3: the new node sits 0.5 m down the LEG THAT FOLLOWS the
+    // selected segment, so the outline through P2 is unchanged.
+    expect(inserted.map((point) => point.id)).toEqual(['P1', 'P2', 'P4', 'P3'])
+    expect(lengths).toEqual([7.2, 0.5, 4.3])
+    expect(lengths[1] + lengths[2]).toBeCloseTo(4.8, 2)
+    // Ids stay unique however often a segment is inserted.
+    expect(new Set(insertPathSegment(inserted, 1, 0.5).map((point) => point.id)).size).toBe(5)
+  })
+
+  it('grows the path at its end along the selected segment', () => {
+    const extended = insertPathSegment(points, 1, 0.5)
+
+    // No following node, so the new node continues the selected segment's own
+    // direction: +y, another 0.5 m.
+    expect(measurePath(extended)).toEqual([7.2, 4.8, 0.5])
+    expect(extended[3].x).toBe(extended[2].x)
+  })
+
+  it('never overshoots the node it is inserted before', () => {
+    // A 0.3 m leg cannot take a 0.5 m insertion: the new node is held at the halfway
+    // point, so it never passes the node it aims at.
+    const short = [
+      { id: 'P1', x: 0, y: 0 },
+      { id: 'P2', x: 200, y: 0 },
+      { id: 'P3', x: 200, y: 0.3 * PIXELS_PER_METER },
+    ]
+    const lengths = measurePath(insertPathSegment(short, 0, 0.5))
+
+    expect(lengths[1]).toBeLessThan(0.3)
+    expect(lengths[1]).toBeLessThanOrEqual(0.5)
+    expect(lengths[1] + lengths[2]).toBeCloseTo(0.3, 2)
   })
 })

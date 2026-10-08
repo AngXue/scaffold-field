@@ -37,6 +37,18 @@ const END_INSET_END = 0.0026
 const SELECTED_COLOR = '#ffb02e'
 
 /**
+ * Selection priority for picking.
+ *
+ * The 钢笆 surface lies `DECK_SURFACE_OFFSET` ABOVE the tubes of its lift, so from
+ * almost any angle it is the nearest thing under the pointer. r3f hands an event to
+ * the nearest hit first and `stopPropagation()` cuts the rest off, which meant a
+ * click aimed at a pipe, coupler or 槽钢 was answered by the deck lying over it.
+ * Parts carry `PICK_PART` and always win; the deck only answers a click that hits no
+ * part at all.
+ */
+const PICK_PART = { pick: 'part' } as const
+
+/**
  * These are deliberately brighter than the UI accents: under ACES tone mapping a
  * #2f3c40 post survives as ~20 % grey and reads as dead metal rather than a
  * coloured part.
@@ -161,6 +173,7 @@ function Pipe({ segment, selected, onSelect }: {
     <mesh
       position={tubeCenter}
       quaternion={quaternion}
+      userData={PICK_PART}
       onClick={(event) => { event.stopPropagation(); onSelect() }}
     >
       {/* Constant geometry across selection states: resizing on select rebuilt
@@ -213,7 +226,16 @@ function SteelDeck({ deck, selected, onSelect }: {
   }
 
   return (
-    <group onClick={(event) => { event.stopPropagation(); onSelect() }}>
+    <group
+      userData={PICK_PART}
+      onClick={(event) => {
+        // The deck is usually the nearest hit (it lies above its lift's tubes), so it
+        // must step aside whenever a part is also under the pointer.
+        if (event.intersections.some((hit) => hit.object.userData.pick === 'part')) return
+        event.stopPropagation()
+        onSelect()
+      }}
+    >
       <mesh renderOrder={1}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[surfaceVertices, 3]} />
@@ -348,7 +370,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
               <SteelDeck key={deck.id} deck={deck} selected={deck.id === selectedId} onSelect={() => setSelectedId(deck.id)} />
             ))}
             {visibility.connector && layout.connectors.map((connector) => (
-              <mesh key={connector.id} position={connector.position} onClick={(event) => { event.stopPropagation(); setSelectedId(connector.id) }}>
+              <mesh key={connector.id} position={connector.position} userData={PICK_PART} onClick={(event) => { event.stopPropagation(); setSelectedId(connector.id) }}>
                 {/* A clamp is a bright, tight-highlight fitting rather than a
                     tangent blob: high metalness and low roughness against the
                     tube's broad soft highlight is what says "two parts". */}
@@ -373,6 +395,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
                   key={channel.id}
                   position={[midpoint.x, CHANNEL_HEIGHT / 2, midpoint.z]}
                   rotation={[0, angle, 0]}
+                  userData={PICK_PART}
                   onClick={(event) => { event.stopPropagation(); setSelectedId(channel.id) }}
                 >
                   <boxGeometry args={[CHANNEL_FLANGE, CHANNEL_HEIGHT, channel.length]} />
