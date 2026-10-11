@@ -705,6 +705,61 @@ describe('calculateScaffold', () => {
     expect(layout.materials.deckCount).toBe(75)
   })
 
+  it('runs the corner band as one channel direction and one 填芯 length', () => {
+    // The shape drawn on the tablet, with the 填芯 rod switched on so the middle row of
+    // the deck band exists.
+    const layout = calculateScaffold([
+      { id: 'P1', x: 0, y: 0 },
+      { id: 'P2', x: 7.1 * 50, y: 0 },
+      { id: 'P3', x: 7.1 * 50, y: -4.3 * 50 },
+    ], [7.1, 4.3], { ...DEFAULT_PARAMETERS, deckSupportRailCount: 3, swapInnerOuter: true })
+    const plan = (id: string) => layout.materials.assemblyPlans.find((entry) => entry.memberId === id)!
+    const postAt = (x: number, z: number) => layout.members.find(
+      (member) => member.type === 'post'
+        && Math.abs(member.start[0] - x) < 0.001 && Math.abs(member.start[2] - z) < 0.001,
+    )!
+    const runOf = (startX: number, startZ: number) => layout.members.find(
+      (member) => member.type === 'longitudinal' && member.layer === 1
+        && Math.abs(member.start[0] - startX) < 0.001
+        && Math.abs(member.start[2] - startZ) < 0.001,
+    )!
+
+    // The incoming leg's 填芯 follows the deck into the corner, so it is the same length
+    // as the 外排 — while the 内排 keeps its own leg's length (its 0.9 m shortfall is the
+    // junction's 横向杆, and the outgoing leg's 填芯 stops at its own first station so
+    // the two 填芯 cannot cross each other at the corner).
+    expect(runOf(-0.1, 0.45)!.length).toBe(runOf(-0.1, 0.9)!.length)
+    expect(runOf(-0.1, 0)!.length).toBeLessThan(runOf(-0.1, 0.9)!.length)
+    expect(runOf(7.55, 0.1)!.length).toBeLessThan(runOf(8, 1)!.length)
+
+    // The corner post is the cheapest mix for the railed 11.88 m and both posts beside
+    // it are the staggered one, so no two neighbours share their butt joints.
+    expect(plan(postAt(8, 0.9).id).stockLengths).toEqual([6, 6])
+    expect(plan(postAt(7.1, 0.9).id).stockLengths).toEqual([2.4, 6, 4])
+    expect(plan(postAt(8, 0).id).stockLengths).toEqual([2.4, 6, 4])
+    expect(plan(postAt(5.325, 0.9).id).stockLengths).toEqual([6, 6])
+
+    // One channel direction through the corner: the outgoing leg's first station lays
+    // none (it would cross the incoming leg's last), and the corner's own beam covers
+    // both corner posts. 6 across the 7.1 m leg + 1 at the corner, 3 along the 4.3 m leg.
+    const beams = layout.baseChannels
+    const across = beams.filter((beam) => Math.abs(beam.start[0] - beam.end[0]) < 0.001)
+    const along = beams.filter((beam) => Math.abs(beam.start[2] - beam.end[2]) < 0.001)
+
+    expect(layout.materials.channelSteel.count).toBe(9)
+    expect(across).toHaveLength(6)
+    expect(along).toHaveLength(3)
+    expect(across.some((beam) => Math.abs((beam.start[0] + beam.end[0]) / 2 - 8) < 0.001
+      && Math.abs((beam.start[2] + beam.end[2]) / 2 - 0.45) < 0.001)).toBe(true)
+    // No two beams cross: parallel within each direction, and the two directions never
+    // overlap along the other axis.
+    expect(along.every((beam) => across.every((other) =>
+      Math.min(beam.start[0], beam.end[0]) > Math.max(other.start[0], other.end[0])
+      || Math.max(beam.start[0], beam.end[0]) < Math.min(other.start[0], other.end[0])
+      || Math.min(beam.start[2], beam.end[2]) > Math.max(other.start[2], other.end[2])
+      || Math.max(beam.start[2], beam.end[2]) < Math.min(other.start[2], other.end[2])))).toBe(true)
+  })
+
   it('leaves no run hanging at a junction', () => {
     // Whatever a junction does — drop two posts for one on the crossing, carry a run
     // on to a convex corner, or leave it alone — every 纵向水平杆 end must have an

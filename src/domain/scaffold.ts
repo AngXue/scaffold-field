@@ -940,6 +940,13 @@ export function calculateScaffold(
   const offsetRowExtensions: Array<{ atStart?: Vector3Tuple; atEnd?: Vector3Tuple }> =
     physical.slice(0, -1).map(() => ({}))
   /**
+   * Stations that get no 槽钢: at a turning junction the outgoing leg's first station
+   * would lay its beam across the incoming leg's last one — two channels crossing at
+   * the corner post. The site picks ONE direction through the corner and keeps it, so
+   * that station is left out and the corner's own beam (below) covers both posts.
+   */
+  const skippedChannels = new Set<string>()
+  /**
    * The corner square of a convex junction — the 0.9 x 0.9 m between the building's
    * corner post and the carried-on runs. It is framed on all four sides (the two
    * 横向杆 of the junction and the two extensions), so a 作业层 lays a 钢笆 piece there
@@ -947,7 +954,13 @@ export function calculateScaffold(
    */
   const cornerDecks: Array<{ points: Vector3Tuple[]; pathSegment: number }> = []
   /** The one offset-row post each corner keeps, standing on the mitre point. */
-  const mitrePosts: Array<{ point: Vector3Tuple; normal: [number, number]; pathSegment: number; parity: number }> = []
+  const mitrePosts: Array<{
+    point: Vector3Tuple
+    normal: [number, number]
+    pathSegment: number
+    parity: number
+    beamCentre: Vector3Tuple
+  }> = []
   for (let junction = 0; junction + 2 < physical.length; junction += 1) {
     if (!turnIsCorner(junction)) continue
     // Nothing is dropped unless the replacement can stand there. A short leg, a wide
@@ -956,6 +969,10 @@ export function calculateScaffold(
     // with no uprights at all, which is exactly what it must never do.
     const crossing = offsetRowCrossing(junction)
     if (!crossing) continue
+    skippedChannels.add(`${junction + 1}:0`)
+    const incomingParity = (1 + stationOffsets[junction] + segmentBays[junction]) % 2
+    let mitreParity = incomingParity
+    let beamCentre = crossing.point
     if (crossing.inside) {
       skippedOffsetPosts.add(`${junction}:${segmentBays[junction]}`)
       skippedOffsetPosts.add(`${junction + 1}:0`)
@@ -965,6 +982,22 @@ export function calculateScaffold(
       // are what carries the extension.
       if (crossing.reachesFromA) offsetRowExtensions[junction].atEnd = crossing.point
       if (crossing.reachesFromB) offsetRowExtensions[junction + 1].atStart = crossing.point
+      // The corner post continues the incoming row, so it must be staggered against the
+      // post it carries on from — the opposite parity — and the outgoing leg's first
+      // post then has to differ from IT, which flips that leg and everything after it.
+      mitreParity = (incomingParity + 1) % 2
+      // One beam under both corner posts, in the incoming leg's direction: the corner
+      // region keeps ONE channel direction instead of two crossing each other.
+      const partner: Vector3Tuple = [
+        round(physical[junction + 1][0] + crossing.bNormal[0] * parameters.width),
+        0,
+        round(physical[junction + 1][1] + crossing.bNormal[1] * parameters.width),
+      ]
+      beamCentre = [
+        round((crossing.point[0] + partner[0]) / 2),
+        0,
+        round((crossing.point[2] + partner[2]) / 2),
+      ]
 
       const corner = physical[junction + 1]
       const offsetBy = (normal: [number, number]): Vector3Tuple => [
@@ -986,7 +1019,8 @@ export function calculateScaffold(
       point: crossing.point,
       normal: crossing.normal,
       pathSegment: junction,
-      parity: (1 + stationOffsets[junction] + segmentBays[junction]) % 2,
+      parity: mitreParity,
+      beamCentre,
     })
   }
 
@@ -1015,14 +1049,14 @@ export function calculateScaffold(
     }
     const half = transverseTubeLength / 2
     const channelStart: Vector3Tuple = [
-      round(mitre.point[0] - mitre.normal[0] * half),
+      round(mitre.beamCentre[0] - mitre.normal[0] * half),
       0,
-      round(mitre.point[2] - mitre.normal[1] * half),
+      round(mitre.beamCentre[2] - mitre.normal[1] * half),
     ]
     const channelEnd: Vector3Tuple = [
-      round(mitre.point[0] + mitre.normal[0] * half),
+      round(mitre.beamCentre[0] + mitre.normal[0] * half),
       0,
-      round(mitre.point[2] + mitre.normal[1] * half),
+      round(mitre.beamCentre[2] + mitre.normal[1] * half),
     ]
     const channelKey = [pointKey(channelStart), pointKey(channelEnd)].sort().join('|')
     if (!channelKeys.has(channelKey)) {
@@ -1115,7 +1149,7 @@ export function calculateScaffold(
       const outerBase = postRows[0][station]
       const innerBase = postRows[1][station]
       const channelKey = [pointKey(outerBase), pointKey(innerBase)].sort().join('|')
-      if (!channelKeys.has(channelKey)) {
+      if (!skippedChannels.has(`${segmentIndex}:${station}`) && !channelKeys.has(channelKey)) {
         channelKeys.add(channelKey)
         const channelCentre: Vector3Tuple = [
           round((outerBase[0] + innerBase[0]) / 2),
@@ -1167,7 +1201,20 @@ export function calculateScaffold(
     // `supportRows` stays on the station grid — the 横向杆 tie to it, and a deck gets
     // its corners from it. Only the MEMBERS of a decked lift follow the outer row on
     // to a convex corner, which is why the extended row is a separate array.
-    const memberRows = [...supportRows]
+    const memberRows = supportRows.map((row, rowIndex) => {
+      const ratio = supportRailCount > 1 ? rowIndex / (supportRailCount - 1) : 1
+      if (!extension.atEnd || ratio <= 0) return row
+      // 钢笆纵向支承杆 follow the deck into the corner, so they are carried on to the
+      // crossing's own station on THEIR line — the path row stays the building's line,
+      // and the outgoing leg's 填芯 stops at its first station (the incoming one and the
+      // two outer runs already carry that corner piece).
+      const shift = (1 - ratio) * parameters.width
+      return [...row, [
+        round(extension.atEnd[0] - normal[0] * shift),
+        0,
+        round(extension.atEnd[2] - normal[1] * shift),
+      ] as Vector3Tuple]
+    })
     if (offsetRowPoints.length !== postRows[1].length) {
       memberRows[memberRows.length - 1] = offsetRowPoints
     }
