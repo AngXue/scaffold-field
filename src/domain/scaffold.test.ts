@@ -693,10 +693,16 @@ describe('calculateScaffold', () => {
 
     expect(railPoints).toContain('8,0.9')
 
-    // Nothing is laid in the notch beyond the corner: the 钢笆 still covers the bays.
-    expect(layout.decks.some((deck) => deck.corners.some(
-      (corner) => corner[0] > 7.101 && corner[2] > 0.001,
-    ))).toBe(false)
+    // The corner square is framed on all four sides — the two 横向杆 of the junction
+    // and the two carried-on runs — so each decked lift lays one cut 钢笆 piece there
+    // and the platform walks around the building's corner instead of stopping at it.
+    const cornerPieces = layout.decks.filter((deck) => deck.corners.some(
+      (corner) => corner[0] === 8 && corner[2] === 0.9,
+    ))
+
+    expect(cornerPieces).toHaveLength(DEFAULT_PARAMETERS.layerCount)
+    expect(cornerPieces.every((piece) => piece.area === 0.81)).toBe(true)
+    expect(layout.materials.deckCount).toBe(75)
   })
 
   it('leaves no run hanging at a junction', () => {

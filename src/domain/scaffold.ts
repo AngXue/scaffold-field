@@ -919,6 +919,8 @@ export function calculateScaffold(
     if (!inside && !meetsAtTheEnd) return null
     return {
       inside,
+      aNormal: a.normal,
+      bNormal: b.normal,
       // Which side actually falls short: a run that already passes the crossing (or
       // ends on it) is left alone, only the short one is carried on.
       reachesFromA: alongA > a.length + 0.001,
@@ -937,6 +939,13 @@ export function calculateScaffold(
    */
   const offsetRowExtensions: Array<{ atStart?: Vector3Tuple; atEnd?: Vector3Tuple }> =
     physical.slice(0, -1).map(() => ({}))
+  /**
+   * The corner square of a convex junction — the 0.9 x 0.9 m between the building's
+   * corner post and the carried-on runs. It is framed on all four sides (the two
+   * 横向杆 of the junction and the two extensions), so a 作业层 lays a 钢笆 piece there
+   * and the platform continues around the corner instead of stopping at it.
+   */
+  const cornerDecks: Array<{ points: Vector3Tuple[]; pathSegment: number }> = []
   /** The one offset-row post each corner keeps, standing on the mitre point. */
   const mitrePosts: Array<{ point: Vector3Tuple; normal: [number, number]; pathSegment: number; parity: number }> = []
   for (let junction = 0; junction + 2 < physical.length; junction += 1) {
@@ -956,6 +965,22 @@ export function calculateScaffold(
       // are what carries the extension.
       if (crossing.reachesFromA) offsetRowExtensions[junction].atEnd = crossing.point
       if (crossing.reachesFromB) offsetRowExtensions[junction + 1].atStart = crossing.point
+
+      const corner = physical[junction + 1]
+      const offsetBy = (normal: [number, number]): Vector3Tuple => [
+        round(corner[0] + normal[0] * parameters.width),
+        0,
+        round(corner[1] + normal[1] * parameters.width),
+      ]
+      cornerDecks.push({
+        points: [
+          [round(corner[0]), 0, round(corner[1])],
+          offsetBy(crossing.aNormal),
+          crossing.point,
+          offsetBy(crossing.bNormal),
+        ],
+        pathSegment: junction,
+      })
     }
     mitrePosts.push({
       point: crossing.point,
@@ -1139,17 +1164,26 @@ export function calculateScaffold(
       })
     })
 
-    // The outermost row of the deck band IS the offset post row, so a convex corner
-    // extends it here too — that is the row a decked lift builds its members from.
+    // `supportRows` stays on the station grid — the 横向杆 tie to it, and a deck gets
+    // its corners from it. Only the MEMBERS of a decked lift follow the outer row on
+    // to a convex corner, which is why the extended row is a separate array.
+    const memberRows = [...supportRows]
     if (offsetRowPoints.length !== postRows[1].length) {
-      supportRows[supportRows.length - 1] = offsetRowPoints
+      memberRows[memberRows.length - 1] = offsetRowPoints
     }
 
     // The two post rows carry the ordinary 纵向水平杆. Any rows between them are
     // 钢笆纵向支承杆 (deck-support rails), which only exist where a deck does.
     const normalRows = [supportRows[0], offsetRowPoints]
+    const normalStationRows = [supportRows[0], postRows[1]]
 
-    const addHorizontalBand = (elevation: number, layer: number, rows: Vector3Tuple[][], withDeck: boolean) => {
+    const addHorizontalBand = (
+      elevation: number,
+      layer: number,
+      rows: Vector3Tuple[][],
+      stationRows: Vector3Tuple[][],
+      withDeck: boolean,
+    ) => {
       for (const row of rows) {
         const connectionPoints = row.map((point) => [point[0], elevation, point[2]] as Vector3Tuple)
         addMember(
@@ -1168,7 +1202,11 @@ export function calculateScaffold(
         if (isInternalPathNode) return
 
         const innerPoint = postRows[1][station]
-        const transverseConnections = rows.map((row) => [row[station][0], elevation, row[station][2]] as Vector3Tuple)
+        // Ties come off the STATION rows: the extended row of a convex corner carries
+        // an extra point at its end, so indexing it by station would shift every tie.
+        const transverseConnections = stationRows.map(
+          (row) => [row[station][0], elevation, row[station][2]] as Vector3Tuple,
+        )
         addMember(
           'transverse',
           [outerPoint[0], elevation, outerPoint[2]],
@@ -1296,7 +1334,7 @@ export function calculateScaffold(
     // 扫地杆 layer. It gets ordinary transverse + longitudinal members only:
     // there is no deck here, so no deck-support rails and no edge protection.
     if (sweepElevation > 0) {
-      addHorizontalBand(sweepElevation, SWEEP_BAR_LAYER, normalRows, false)
+      addHorizontalBand(sweepElevation, SWEEP_BAR_LAYER, normalRows, normalStationRows, false)
     }
 
     for (let layer = 1; layer <= layerCount; layer += 1) {
@@ -1308,7 +1346,13 @@ export function calculateScaffold(
       // A decked lift is a 作业层 and gets its rails; a deckless lift gets only the
       // two normal longitudinal rows — except the top lift, which always carries
       // the 架顶栏杆 that carries the top of the scaffold.
-      addHorizontalBand(elevation, layer, withDeck ? supportRows : normalRows, withDeck)
+      addHorizontalBand(
+        elevation,
+        layer,
+        withDeck ? memberRows : normalRows,
+        withDeck ? supportRows : normalStationRows,
+        withDeck,
+      )
     }
 
     if (bayLength < parameters.postSpacing * 0.55) {
@@ -1318,6 +1362,36 @@ export function calculateScaffold(
       })
     }
   })
+
+  // The corner square of a convex junction is framed on all four sides — the two
+  // 横向杆 of the junction and the two carried-on runs — so the 作业层 platform
+  // continues around the building's corner instead of stopping at it. One 钢笆 piece
+  // per decked lift, cut to the square, and only for the lifts that carry a deck.
+  if (cornerDecks.length > 0) {
+    const deckInterval = Math.max(1, Math.round(parameters.deckLiftInterval))
+    for (const corner of cornerDecks) {
+      for (let layer = 1; layer <= layerCount; layer += 1) {
+        if (layer % deckInterval !== 0) continue
+        const deckElevation = round(round(layer * parameters.liftHeight) + DECK_SURFACE_OFFSET)
+        const corners = corner.points.map(
+          (point) => [point[0], deckElevation, point[2]] as Vector3Tuple,
+        ) as [Vector3Tuple, Vector3Tuple, Vector3Tuple, Vector3Tuple]
+        let twiceArea = 0
+        for (let index = 0; index < corners.length; index += 1) {
+          const current = corners[index]
+          const next = corners[(index + 1) % corners.length]
+          twiceArea += current[0] * next[2] - next[0] * current[2]
+        }
+        decks.push({
+          id: `D${decks.length + 1}`,
+          corners,
+          area: round(Math.abs(twiceArea) / 2),
+          layer,
+          pathSegment: corner.pathSegment,
+        })
+      }
+    }
+  }
 
   // A rail the 立杆 cannot reach was dropped rather than floated. The 内侧 row is the
   // short one on purpose (it is the row against the building), so an open end's top
