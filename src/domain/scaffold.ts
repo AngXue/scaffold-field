@@ -921,10 +921,14 @@ export function calculateScaffold(
   const mitrePosts: Array<{ point: Vector3Tuple; normal: [number, number]; pathSegment: number; parity: number }> = []
   for (let junction = 0; junction + 2 < physical.length; junction += 1) {
     if (!turnIsCorner(junction)) continue
-    skippedOffsetPosts.add(`${junction}:${segmentBays[junction]}`)
-    skippedOffsetPosts.add(`${junction + 1}:0`)
+    // Nothing is dropped unless the replacement can stand there. A short leg, a wide
+    // turn or a stub inserted by hand can put the crossing outside both runs, and
+    // dropping the two posts then would leave the corner — or a whole short leg —
+    // with no uprights at all, which is exactly what it must never do.
     const crossing = offsetRowCrossing(junction)
     if (!crossing) continue
+    skippedOffsetPosts.add(`${junction}:${segmentBays[junction]}`)
+    skippedOffsetPosts.add(`${junction + 1}:0`)
     mitrePosts.push({
       ...crossing,
       pathSegment: junction,

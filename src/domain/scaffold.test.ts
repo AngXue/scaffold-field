@@ -651,6 +651,29 @@ describe('calculateScaffold', () => {
       .toHaveLength(1)
   })
 
+  it('never empties a junction it cannot replace', () => {
+    // A short second leg: the two offset rows would cross beyond the end of it, so
+    // there is nowhere to put the replacement post — and then nothing may be removed.
+    const layout = calculateScaffold([
+      { id: 'P1', x: 0, y: 0 },
+      { id: 'P2', x: 3.6 * 50, y: 0 },
+      { id: 'P3', x: 3.6 * 50, y: 0.5 * 50 },
+    ], [3.6, 0.5], DEFAULT_PARAMETERS)
+    const postAt = (x: number, z: number) => layout.members.filter(
+      (member) => member.type === 'post'
+        && Math.abs(member.start[0] - x) < 0.001 && Math.abs(member.start[2] - z) < 0.001,
+    )
+
+    expect(postAt(3.6, 0.9)).toHaveLength(1)
+    expect(postAt(2.7, 0)).toHaveLength(1)
+    expect(postAt(2.7, 0.9)).toHaveLength(0)
+    // The short leg keeps an upright at both of its stations.
+    const legPosts = layout.members.filter(
+      (member) => member.type === 'post' && Math.abs(member.start[0] - 2.7) < 0.001,
+    )
+    expect(legPosts.map((member) => member.start[2]).sort()).toEqual([0, 0.5])
+  })
+
   it('keeps rendered connector positions unique', () => {
     const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
     const positions = layout.connectors.map((connector) => connector.position.join(':'))
