@@ -651,27 +651,78 @@ describe('calculateScaffold', () => {
       .toHaveLength(1)
   })
 
-  it('never empties a junction it cannot replace', () => {
-    // A short second leg: the two offset rows would cross beyond the end of it, so
-    // there is nowhere to put the replacement post — and then nothing may be removed.
+  it('meets the two offset rows at a convex corner', () => {
+    // Here the path turns the other way, so the offset rows are on the OUTSIDE of the
+    // corner and each stops one 排距 short of the other's line: (7.1, 0.9) reaching for
+    // (8, 0) leaves the two frames visibly apart. Each run is carried on to where their
+    // lines cross, and the corner post stands there. This is the shape drawn on the
+    // tablet, mirrored from the built-in example.
     const layout = calculateScaffold([
       { id: 'P1', x: 0, y: 0 },
-      { id: 'P2', x: 3.6 * 50, y: 0 },
-      { id: 'P3', x: 3.6 * 50, y: 0.5 * 50 },
-    ], [3.6, 0.5], DEFAULT_PARAMETERS)
+      { id: 'P2', x: 7.1 * 50, y: 0 },
+      { id: 'P3', x: 7.1 * 50, y: -4.3 * 50 },
+    ], [7.1, 4.3], DEFAULT_PARAMETERS)
+    const offsetRunPoints = layout.members
+      .filter((member) => member.type === 'longitudinal' && member.layer === 1)
+      .flatMap((member) => member.connectionPoints)
+      .map((point) => `${point[0]},${point[2]}`)
     const postAt = (x: number, z: number) => layout.members.filter(
       (member) => member.type === 'post'
         && Math.abs(member.start[0] - x) < 0.001 && Math.abs(member.start[2] - z) < 0.001,
     )
 
-    expect(postAt(3.6, 0.9)).toHaveLength(1)
-    expect(postAt(2.7, 0)).toHaveLength(1)
-    expect(postAt(2.7, 0.9)).toHaveLength(0)
-    // The short leg keeps an upright at both of its stations.
-    const legPosts = layout.members.filter(
-      (member) => member.type === 'post' && Math.abs(member.start[0] - 2.7) < 0.001,
-    )
-    expect(legPosts.map((member) => member.start[2]).sort()).toEqual([0, 0.5])
+    // Both legs' offset rows now reach the crossing, and one post stands on it.
+    expect(offsetRunPoints).toContain('8,0.9')
+    expect(postAt(8, 0.9)).toHaveLength(1)
+    // The posts that carry the extensions stay; nothing was removed.
+    expect(postAt(7.1, 0.9)).toHaveLength(1)
+    expect(postAt(8, 0)).toHaveLength(1)
+    // 2 rows × (5 + 4) stations, less the shared path corner, plus the corner post.
+    expect(layout.members.filter((member) => member.type === 'post')).toHaveLength(18)
+    // The same holds with the 栏杆 on the offset row instead, which is the setting a
+    // path drawn along the building needs: the rail is carried to the corner post too.
+    const swapped = calculateScaffold([
+      { id: 'P1', x: 0, y: 0 },
+      { id: 'P2', x: 7.1 * 50, y: 0 },
+      { id: 'P3', x: 7.1 * 50, y: -4.3 * 50 },
+    ], [7.1, 4.3], { ...DEFAULT_PARAMETERS, swapInnerOuter: true })
+    const railPoints = swapped.members
+      .filter((member) => member.type === 'guardrail')
+      .flatMap((member) => member.connectionPoints)
+      .map((point) => `${point[0]},${point[2]}`)
+
+    expect(railPoints).toContain('8,0.9')
+
+    // Nothing is laid in the notch beyond the corner: the 钢笆 still covers the bays.
+    expect(layout.decks.some((deck) => deck.corners.some(
+      (corner) => corner[0] > 7.101 && corner[2] > 0.001,
+    ))).toBe(false)
+  })
+
+  it('leaves no run hanging at a junction', () => {
+    // Whatever a junction does — drop two posts for one on the crossing, carry a run
+    // on to a convex corner, or leave it alone — every 纵向水平杆 end must have an
+    // upright within a bay of it, or the two legs are not connected at all.
+    const shapes: Array<[Array<{ id: string; x: number; y: number }>, number[]]> = [
+      [[{ id: 'P1', x: 0, y: 0 }, { id: 'P2', x: 360, y: 0 }, { id: 'P3', x: 360, y: 240 }], [7.2, 4.8]],
+      [[{ id: 'P1', x: 0, y: 0 }, { id: 'P2', x: 355, y: 0 }, { id: 'P3', x: 355, y: -215 }], [7.1, 4.3]],
+      [[{ id: 'P1', x: 0, y: 0 }, { id: 'P2', x: 360, y: 0 }, { id: 'P3', x: 360, y: 25 }], [7.2, 0.5]],
+      [[{ id: 'P1', x: 0, y: 0 }, { id: 'P2', x: 180, y: 0 }, { id: 'P3', x: 180, y: 25 }, { id: 'P4', x: 180, y: 205 }], [3.6, 0.5, 3.6]],
+      [[{ id: 'P1', x: 0, y: 0 }, { id: 'P2', x: 200, y: 0 }, { id: 'P3', x: 393, y: -100 }], [4, 4]],
+    ]
+
+    for (const [shape, lengths] of shapes) {
+      const layout = calculateScaffold(shape, lengths, DEFAULT_PARAMETERS)
+      const posts = layout.members.filter((member) => member.type === 'post')
+      const reach = DEFAULT_PARAMETERS.postSpacing + DEFAULT_PARAMETERS.width + 0.001
+      const hanging = layout.members
+        .filter((member) => member.type === 'longitudinal')
+        .flatMap((member) => [member.start, member.end])
+        .filter((point) => !posts.some((post) =>
+          Math.hypot(post.start[0] - point[0], post.start[2] - point[2]) <= reach))
+
+      expect({ shape: lengths.join('+'), hanging: hanging.length }).toEqual({ shape: lengths.join('+'), hanging: 0 })
+    }
   })
 
   it('keeps rendered connector positions unique', () => {

@@ -907,8 +907,22 @@ export function calculateScaffold(
     const dy = b.origin[1] - a.origin[1]
     const alongA = (dx * b.direction[1] - dy * b.direction[0]) / denominator
     const alongB = (dx * a.direction[1] - dy * a.direction[0]) / denominator
-    if (alongA < 0 || alongA > a.length || alongB < 0 || alongB > b.length) return null
+    const inside = alongA >= -0.001 && alongA <= a.length + 0.001
+      && alongB >= -0.001 && alongB <= b.length + 0.001
+    // The offset rows are laid to the LEFT of each leg, so a turn that way puts them
+    // inside the corner and they cross within both runs. A turn the other way leaves
+    // them outside it, each stopping one 排距 short of the other — the convex corner,
+    // where the rows have to be carried on to their crossing, or the two frames never
+    // meet. Further apart than that is not this junction's corner at all.
+    const slack = parameters.width + 0.001
+    const meetsAtTheEnd = Math.abs(alongA - a.length) <= slack && Math.abs(alongB) <= slack
+    if (!inside && !meetsAtTheEnd) return null
     return {
+      inside,
+      // Which side actually falls short: a run that already passes the crossing (or
+      // ends on it) is left alone, only the short one is carried on.
+      reachesFromA: alongA > a.length + 0.001,
+      reachesFromB: alongB < -0.001,
       point: [
         round(a.origin[0] + a.direction[0] * alongA),
         0,
@@ -917,6 +931,12 @@ export function calculateScaffold(
       normal: a.normal,
     }
   }
+  /**
+   * Where a convex corner carries its offset row on to the crossing — one entry per
+   * path segment, holding the crossing at whichever end reaches for it.
+   */
+  const offsetRowExtensions: Array<{ atStart?: Vector3Tuple; atEnd?: Vector3Tuple }> =
+    physical.slice(0, -1).map(() => ({}))
   /** The one offset-row post each corner keeps, standing on the mitre point. */
   const mitrePosts: Array<{ point: Vector3Tuple; normal: [number, number]; pathSegment: number; parity: number }> = []
   for (let junction = 0; junction + 2 < physical.length; junction += 1) {
@@ -927,10 +947,19 @@ export function calculateScaffold(
     // with no uprights at all, which is exactly what it must never do.
     const crossing = offsetRowCrossing(junction)
     if (!crossing) continue
-    skippedOffsetPosts.add(`${junction}:${segmentBays[junction]}`)
-    skippedOffsetPosts.add(`${junction + 1}:0`)
+    if (crossing.inside) {
+      skippedOffsetPosts.add(`${junction}:${segmentBays[junction]}`)
+      skippedOffsetPosts.add(`${junction + 1}:0`)
+    } else {
+      // Convex corner: the runs stop up to one 排距 short of the crossing, so each one
+      // that falls short is carried on to it. The posts at their old ends stay — they
+      // are what carries the extension.
+      if (crossing.reachesFromA) offsetRowExtensions[junction].atEnd = crossing.point
+      if (crossing.reachesFromB) offsetRowExtensions[junction + 1].atStart = crossing.point
+    }
     mitrePosts.push({
-      ...crossing,
+      point: crossing.point,
+      normal: crossing.normal,
       pathSegment: junction,
       parity: (1 + stationOffsets[junction] + segmentBays[junction]) % 2,
     })
@@ -1089,6 +1118,15 @@ export function calculateScaffold(
       }
     }
 
+    // The 纵向水平杆 of the offset row runs on to the corner crossing when this end is
+    // a convex corner, so the two legs' frames — and the 栏杆 tied to that row — meet
+    // there. The deck quads, the 横向杆 and any support rail between the rows stay
+    // inside the bay grid: nothing is laid in the notch beyond the corner.
+    const extension = offsetRowExtensions[segmentIndex]
+    const offsetRowPoints = [...postRows[1]]
+    if (extension.atStart) offsetRowPoints.unshift(extension.atStart)
+    if (extension.atEnd) offsetRowPoints.push(extension.atEnd)
+
     const supportRows = Array.from({ length: supportRailCount }, (_, supportIndex) => {
       const ratio = supportIndex / (supportRailCount - 1)
       return postRows[0].map((outerPoint, station) => {
@@ -1101,9 +1139,15 @@ export function calculateScaffold(
       })
     })
 
+    // The outermost row of the deck band IS the offset post row, so a convex corner
+    // extends it here too — that is the row a decked lift builds its members from.
+    if (offsetRowPoints.length !== postRows[1].length) {
+      supportRows[supportRows.length - 1] = offsetRowPoints
+    }
+
     // The two post rows carry the ordinary 纵向水平杆. Any rows between them are
     // 钢笆纵向支承杆 (deck-support rails), which only exist where a deck does.
-    const normalRows = [supportRows[0], supportRows[supportRows.length - 1]]
+    const normalRows = [supportRows[0], offsetRowPoints]
 
     const addHorizontalBand = (elevation: number, layer: number, rows: Vector3Tuple[][], withDeck: boolean) => {
       for (const row of rows) {
@@ -1181,7 +1225,7 @@ export function calculateScaffold(
       // parameter that changes this — only `swapInnerOuter`, which says WHICH side of
       // the drawing the building is on.
       if (guardedRails.length > 0) {
-        const railRow = postRows[outerRow]
+        const railRow = outerRow === 1 ? offsetRowPoints : postRows[0]
         for (const { elevation: railElevation } of railsWithin(rowTopEdge(outerRow), railsAboveRow[outerRow])) {
           const points = railRow.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
           addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points)
