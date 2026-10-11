@@ -371,3 +371,104 @@ body.has-fullscreen { overflow: hidden; }
   .material-kpis strong { font-size: 20px; }
   .stock-row { grid-template-columns: 95px 45px 1fr; }
 }
+/* 历史记录: a control-plane overlay. The rows inside stay flat — hairline separated,
+   no shadow — because they are data, not controls. */
+.icon-button {
+  position: relative;
+}
+
+.history-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  background: rgba(23, 23, 23, 0.06);
+  cursor: default;
+}
+
+.history-panel {
+  position: fixed;
+  top: 64px;
+  right: 16px;
+  z-index: 41;
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(72vh, 580px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--nm-border);
+  border-radius: 14px;
+  background: var(--nm-surface);
+  box-shadow: var(--nm-e3);
+}
+
+.history-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-count {
+  margin-right: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--nm-border);
+}
+
+.history-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--nm-border);
+}
+
+.history-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.history-meta strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.history-meta span {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.history-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--nm-surface);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+}

@@ -3,6 +3,7 @@
 ## Start Here
 
 - Read [README.md](README.md) for product scope, engineering references, and known exclusions.
+- Read [docs/计算规则.md](docs/计算规则.md) for the field-facing rule book. It mirrors `src/domain/scaffold.ts` one for one: **a rule change updates the code, `scaffold.test.ts` AND that document in the same commit**.
 - Use [src/domain/scaffold.ts](src/domain/scaffold.ts) as the source of truth for scaffold geometry and materials.
 - Use [src/domain/plan.ts](src/domain/plan.ts) as the source of truth for 2D scale and measured path geometry.
 
@@ -51,6 +52,7 @@
 - 扎丝, 小垫板, 支模板 and 剪刀撑 are listed through `PENDING_MATERIALS` with a `--` quantity because they are outside the calculation scope. Never emit a computed-looking number for them — but they **are** manually adjustable, so the user can record what the site actually needs. They read `--` until a correction is entered, and their 备注 in the export says `计算值 --`. Units follow the site: 扎丝 is a bundle of wire (`捆`), not a weight.
 - Couplers are counted in `个` as the base unit and also shown in `包` using `COUPLER_PACK_SIZE` (30 to a bag). The 包 figure is derived from the quantity **actually shown** — after any manual correction, rounded up — so the two can never disagree. Any bulk unit added later must be derived the same way rather than stored.
 - Manual quantity corrections live in `MaterialAdjustments`: a **delta** keyed by `MATERIAL_KEYS`, not an absolute override, so a parameter change keeps flowing through the calculation with the user's fix still on top. They are part of the saved project and must be reflected in the CSV export (which records the original calculation in its 备注 column). Any adjusted row keeps the calculated value visible next to it — never let a corrected number pass for a computed one.
+- Keep the THIRD local-storage key, `scaffold-history`: the saved-project history (`src/domain/history.ts`), capped at `HISTORY_LIMIT` = 100 records with the oldest dropped past it. A record is `{ id, savedAt, label, points, lengths, parameters, adjustments }` — the same state `保存` writes — and the topbar's 历史 panel lists them newest first with 使用 (load it, which marks the project unsaved) and 删除. **保存 and 存入当前 both append a record**, and appending the project already at the top is a no-op rather than a duplicate row. `parseHistory` must keep tolerating junk and records from older builds (missing fields are filled from `DEFAULT_PARAMETERS`) — never let a bad stored list break the app. The panel is a control-plane overlay; its rows stay flat.
 - Keep the second local-storage key, `scaffold-default-demo` (`{ points, lengths, parameters }`): the drawing the app opens with and 「重置为默认示例」 returns to, written by the topbar's 设为默认示例 and only used when no project is saved. The built-in example is the fallback.
 - Preserve the local-storage key `scaffold-project`, merge stored parameters with defaults, and keep both legacy migrations: `rowCount -> deckSupportRailCount` and `height -> layerCount` (a stored continuous 搭设高度 is converted to the whole 作业层 it held, in `App.tsx`'s `loadStoredProject` and again in `calculateScaffold` for callers that pass a raw legacy object). A stored `guardrailSides` is dropped on load: the parameter is gone.
 
@@ -104,7 +106,7 @@ The tablet build is a Capacitor WebView shell around the same web bundle, so the
 - Put anything the WebView cannot do in `src/platform/`, never inline in a component. `saveTextFile` (Filesystem + Share) and `printDocument` (local `NativePrint` plugin) are the existing examples.
 - `window.print()` is a no-op in an Android WebView and an anchor `download` attribute is ignored for `blob:` URLs. Never reintroduce either; route through `src/platform/` instead.
 - Capacitor's `WebChromeClient.onShowCustomView` cancels the DOM Fullscreen API, so `requestFullscreen()` never takes effect in the APK. Use `useCssFullscreen()` from `src/platform/fullscreen.ts`, which overlays with CSS.
-- Android's back button belongs to the host, not the page. Keep `useAndroidBackButton` in `App.tsx`: exit fullscreen, then return to the first tab, then leave the app.
+- Android's back button belongs to the host, not the page. Keep `useAndroidBackButton` in `App.tsx`: close the 历史 panel, then exit fullscreen, then return to the first tab, then leave the app.
 - Keep `base: './'` in [vite.config.ts](vite.config.ts); the bundle is loaded from a local scheme.
 - The native plugin lives in `android/app/src/main/java/com/scaffoldfield/app/` and is registered in `MainActivity.onCreate` **before** `super.onCreate`.
 - `.toolchain/` holds the JDK, Android SDK and Gradle caches. It is gitignored and must never be committed; `scripts/setup-android-toolchain.sh` recreates it.

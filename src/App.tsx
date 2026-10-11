@@ -5,11 +5,13 @@ import {
   ClipboardCheck,
   Download,
   BookmarkPlus,
+  History,
   Layers3,
   Map,
   Menu,
   Save,
   Settings2,
+  Trash2,
   TriangleAlert,
 } from 'lucide-react'
 import './App.css'
@@ -18,6 +20,17 @@ import { NumberField } from './components/NumberField'
 import { OptionField } from './components/OptionField'
 import { PlanEditor } from './components/PlanEditor'
 import { measurePath, PIXELS_PER_METER } from './domain/plan'
+import {
+  addHistoryRecord,
+  formatHistoryTime,
+  HISTORY_KEY,
+  HISTORY_LIMIT,
+  parseHistory,
+  removeHistoryRecord,
+  serialiseHistory,
+  type HistoryRecord,
+  type HistorySnapshot,
+} from './domain/history'
 import { saveTextFile } from './platform/files'
 import { exitFullscreenIfActive } from './platform/fullscreen'
 import { useAndroidBackButton } from './platform/useAndroidBackButton'
@@ -123,6 +136,14 @@ function loadStoredProject() {
   }
 }
 
+function loadHistory(): HistoryRecord[] {
+  try {
+    return parseHistory(localStorage.getItem(HISTORY_KEY))
+  } catch {
+    return []
+  }
+}
+
 function App() {
   const [initialProject] = useState(loadStoredProject)
   const [defaultDemo, setDefaultDemo] = useState(loadDefaultDemo)
@@ -134,9 +155,15 @@ function App() {
   )
   const [adjustments, setAdjustments] = useState<MaterialAdjustments>(initialProject?.adjustments ?? {})
   const [saved, setSaved] = useState(false)
+  const [history, setHistory] = useState(loadHistory)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // Android back: leave fullscreen, then walk back to the first tab, then let Android close the app.
   useAndroidBackButton(() => {
+    if (historyOpen) {
+      setHistoryOpen(false)
+      return true
+    }
     if (exitFullscreenIfActive()) return true
     if (activeTab !== 'plan') {
       setActiveTab('plan')
@@ -207,8 +234,43 @@ function App() {
     setSaved(false)
   }
 
+  /** What a history record captures: everything a save stores and restores. */
+  const currentSnapshot = (): HistorySnapshot => ({ points, lengths, parameters: settings, adjustments })
+
+  const persistHistory = (next: HistoryRecord[]) => {
+    setHistory(next)
+    try {
+      localStorage.setItem(HISTORY_KEY, serialiseHistory(next))
+    } catch (error) {
+      window.alert(`历史记录写入失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  const saveToHistory = () => {
+    const next = addHistoryRecord(history, currentSnapshot())
+    if (next === history) {
+      window.alert('当前图纸与参数和最新一条记录相同，未重复添加。')
+      return
+    }
+    persistHistory(next)
+  }
+
+  const applyHistoryRecord = (record: HistoryRecord) => {
+    setPoints(record.points)
+    setLengths(record.lengths)
+    setParameters({ ...DEFAULT_PARAMETERS, ...record.parameters })
+    setAdjustments(record.adjustments ?? {})
+    setSaved(false)
+    setHistoryOpen(false)
+  }
+
+  const deleteHistoryRecord = (id: string) => {
+    persistHistory(removeHistoryRecord(history, id))
+  }
+
   const saveProject = () => {
     localStorage.setItem('scaffold-project', JSON.stringify({ points, lengths, parameters: settings, adjustments }))
+    persistHistory(addHistoryRecord(history, currentSnapshot()))
     setSaved(true)
   }
 
@@ -254,9 +316,41 @@ function App() {
         <div className="topbar-actions">
           <span className={saved ? 'save-state saved' : 'save-state'}>{saved ? '已保存到本机' : '有未保存更改'}</span>
           <button className="secondary-button" type="button" onClick={saveProject}><Save size={17} /> 保存</button>
+          <button className="icon-button history-toggle" type="button" onClick={() => setHistoryOpen((open) => !open)} title="历史记录">
+            <History size={19} />
+            {history.length > 0 && <span className="history-badge">{history.length}</span>}
+          </button>
           <button className="icon-button" type="button" onClick={saveAsDefaultDemo} title="把当前图纸与参数设为默认示例"><BookmarkPlus size={19} /></button>
           <button className="icon-button" type="button" onClick={() => { void exportProject() }} title="导出项目数据"><Download size={19} /></button>
         </div>
+        {historyOpen && (
+          <>
+            <button className="history-backdrop" type="button" aria-label="关闭历史记录" onClick={() => setHistoryOpen(false)} />
+            <section className="history-panel" aria-label="历史记录">
+              <header>
+                <strong>历史记录</strong>
+                <span className="history-count">{history.length} / {HISTORY_LIMIT}</span>
+                <button className="secondary-button" type="button" onClick={saveToHistory}>存入当前</button>
+              </header>
+              {history.length === 0 ? (
+                <p className="history-empty">还没有记录。点「存入当前」，或顶栏「保存」，就会把现在的图纸与参数存成一条。</p>
+              ) : (
+                <ul className="history-list">
+                  {history.map((record) => (
+                    <li key={record.id}>
+                      <div className="history-meta">
+                        <strong>{record.label}</strong>
+                        <span>{formatHistoryTime(record.savedAt)}</span>
+                      </div>
+                      <button className="secondary-button" type="button" onClick={() => applyHistoryRecord(record)}>使用</button>
+                      <button className="icon-button" type="button" title="删除这条记录" onClick={() => deleteHistoryRecord(record.id)}><Trash2 size={16} /></button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
+        )}
       </header>
 
       <main className="workspace">
