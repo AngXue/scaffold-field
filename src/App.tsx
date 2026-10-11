@@ -305,9 +305,9 @@ function App() {
                   taller row — is the other one. */}
               <OptionField
                 label="内侧位置"
-                value={settings.swapInnerOuter ? 'offset' : 'path'}
+                value={settings.swapInnerOuter ? 'path' : 'offset'}
                 options={[{ value: 'path', label: '路径侧' }, { value: 'offset', label: '偏移侧' }]}
-                onChange={(value) => updateParameter('swapInnerOuter', value === 'offset')}
+                onChange={(value) => updateParameter('swapInnerOuter', value === 'path')}
               />
             </div>
 
