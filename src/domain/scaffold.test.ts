@@ -395,8 +395,14 @@ describe('calculateScaffold', () => {
       (member) => member.type === 'guardrail' && member.layer === topLift && member.length > 3,
     )
 
-    expect(new Set(topSideRails.map((rail) => Number((rail.start[1] - topLift * 0.4).toFixed(3)))))
-      .toEqual(new Set([0.6]))
+    const heights = new Set(topSideRails.map(
+      (rail) => Number((rail.start[1] - topLift * 0.4).toFixed(3)),
+    ))
+
+    // The 中栏杆 (0.6) fits and stays; the 1.2 m 上栏杆 cannot be tied and is reported.
+    // The 架顶栏杆 at the top of the railed row fits in this 步距 too, so it is there.
+    expect(heights.has(0.6)).toBe(true)
+    expect(heights.has(GUARDRAIL_TOP_EDGE - 0.024)).toBe(false)
     expect(layout.warnings.find((warning) => warning.id === 'top-rail-height')?.message).toContain('上栏杆')
   })
 
@@ -457,8 +463,10 @@ describe('calculateScaffold', () => {
     expect(DEFAULT_PARAMETERS.guardrailRailCount).toBe(1)
     expect(one.materials.guardrail.railCount).toBe(1)
     expect(two.materials.guardrail.railCount).toBe(2)
-    expect(sideRuns(one)).toHaveLength(deckedLifts)
-    expect(sideRuns(two)).toHaveLength(deckedLifts * 2)
+    // …plus the 架顶栏杆 the top 作业层 carries on top of its set, which is what makes
+    // the top lift one rail richer than the lifts below it.
+    expect(sideRuns(one)).toHaveLength(deckedLifts + 1)
+    expect(sideRuns(two)).toHaveLength(deckedLifts * 2 + 1)
     // Additional members, never a substitute: they are their own type, so the
     // ordinary longitudinal rows are untouched.
     const rails = one.members.filter((member) => member.type === 'guardrail')
@@ -479,6 +487,26 @@ describe('calculateScaffold', () => {
     expect([...new Set(heights)].sort((a, b) => a - b)).toEqual([0.6, GUARDRAIL_TOP_EDGE - 0.024])
   })
 
+  it('gives the top lift one more rail course than the lifts below', () => {
+    // The railed row is built a whole 步距 above the top 作业层, and that extra step
+    // carries the 架顶栏杆: the top lift therefore has one more course than the rest.
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const railLayers = [...new Set(layout.members
+      .filter((member) => member.type === 'guardrail' && member.length > 2)
+      .map((member) => member.layer as number))]
+    const coursesPerLift = railLayers
+      .sort((a, b) => a - b)
+      .map((layer) => new Set(layout.members
+        .filter((member) => member.type === 'guardrail' && member.layer === layer)
+        .map((member) => member.start[1])).size)
+
+    expect(coursesPerLift).toEqual([1, 1, 1, 1, 2])
+    // It sits one 步距 above the top 作业层, TOP_POST_EXTENSION below the railed top.
+    expect(Number((layout.materials.postHeights.theoretical + DEFAULT_PARAMETERS.liftHeight).toFixed(2)))
+      .toBe(11.58)
+    expect(layout.materials.postHeights.outer).toBe(12)
+  })
+
   it('caps a deckless top lift with the 架顶栏杆', () => {
     // Decks land on layer 3 only, so layers 4 and 5 have no 作业层 of their own.
     const parameters = { ...DEFAULT_PARAMETERS, layerCount: 5, deckLiftInterval: 3 }
@@ -488,8 +516,9 @@ describe('calculateScaffold', () => {
     )
 
     expect(layout.decks.some((deck) => deck.layer === 5)).toBe(false)
-    // The rail is still required: it is the one that carries the top of the scaffold.
-    expect(topRails).toHaveLength(1)
+    // The rails are still required: the first of the set carries the top 作业层 and the
+    // 架顶栏杆 caps the railed row above it.
+    expect(topRails).toHaveLength(2)
     const postTop = Math.max(...layout.members
       .filter((member) => member.type === 'post')
       .map((member) => member.end[1]))
@@ -558,13 +587,14 @@ describe('calculateScaffold', () => {
     // 理论搭设高度 9.7 m — but the two END posts of that same row stand at the open ends
     // (nothing is against a wall there) and are built to the railed 11.88 m.
     expect(innerHeights).toEqual([9.7, 11.88, 11.88])
-    // Which is what lets the 顶层 折返栏杆 be tied across at 10.34 m instead of going
-    // missing: 2 ends × 1 rail.
+    // Which is what lets the 顶层 折返栏杆 be tied across instead of going missing:
+    // 2 ends × (the 作业层 rail + the 架顶栏杆 above it).
     const topReturns = layout.members.filter(
       (member) => member.type === 'guardrail' && member.layer === 5 && member.length < 2,
     )
-    expect(topReturns).toHaveLength(2)
-    expect(topReturns.every((rail) => rail.start[1] === 10.34)).toBe(true)
+    expect(topReturns).toHaveLength(4)
+    expect([...new Set(topReturns.map((rail) => rail.start[1]))].sort((a, b) => a - b))
+      .toEqual([10.34, 11.58])
   })
 
   it('drops a rail that would land on the next lift horizontal', () => {
@@ -727,18 +757,18 @@ describe('calculateScaffold', () => {
     // EVERY row of a segment is the same length, because each runs on to the other leg's
     // offset row line: 7.1 m + 1.1 m of corner = 8.2 m, so all three rows are 6+2.4, and
     // the 4.3 m leg needs 5.4 m, so all three of its rows take a single 6 m tube. The
-    // outgoing leg's 填芯 stops on the incoming leg's own 填芯 (4.95 m) rather than
-    // crossing it — same bought tube either way.
+    // outgoing leg's rows reach the same line as each other, so its three rows are flush
+    // (the two legs' 填芯 cross at a point there, tied with a 转向扣 on site).
     expect(runOf(-0.1, 0)!.length).toBe(8.2)
     expect(runOf(-0.1, 0.45)!.length).toBe(8.2)
     expect(runOf(-0.1, 0.9)!.length).toBe(8.2)
     expect(runOf(7.1, 1)!.length).toBe(5.4)
+    expect(runOf(7.55, 1)!.length).toBe(5.4)
     expect(runOf(8, 1)!.length).toBe(5.4)
-    expect(runOf(7.55, 0.55)!.length).toBe(4.95)
     for (const [x, z] of [[-0.1, 0], [-0.1, 0.45], [-0.1, 0.9]] as const) {
       expect(plan(runOf(x, z)!.id).stockLengths).toEqual([6, 2.4])
     }
-    for (const [x, z] of [[7.1, 1], [7.55, 0.55], [8, 1]] as const) {
+    for (const [x, z] of [[7.1, 1], [7.55, 1], [8, 1]] as const) {
       expect(plan(runOf(x, z)!.id).stockLengths).toEqual([6])
     }
 

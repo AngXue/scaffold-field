@@ -966,8 +966,8 @@ export function calculateScaffold(
    * row's own end is no extension at all, which is why an inside corner (the offset rows
    * already crossing within both legs) adds nothing here.
    *
-   * The outgoing leg's 填芯 excepted: it stops on the incoming leg's own 填芯, so the two
-   * cannot cross each other in the corner square.
+   * The two legs' 填芯 therefore cross at a point in the corner square — a 转向扣 joint
+   * on site, which is not counted here.
    */
   const offsetRowExtensions: Array<{
     atStart: Map<number, Vector3Tuple>
@@ -1028,10 +1028,11 @@ export function calculateScaffold(
           round(forward.point[1]),
         ])
       }
-      // The outgoing leg: its 内排 and 外排 reach the incoming leg's 外排 line, but its
-      // 填芯 stops on the incoming leg's 填芯 instead of crossing it.
-      const target = ratio > 0 && ratio < 1 ? incomingRow : incomingOuter
-      const backward = linesMeet(outgoingRow, target)
+      // The outgoing leg's rows reach the same line, so its three rows are flush with
+      // each other. The two legs' 填芯 then cross at a point in the corner (tied with a
+      // 转向扣 on site, which this model does not count) rather than one stopping short
+      // and leaving that row visibly short of its neighbours.
+      const backward = linesMeet(outgoingRow, incomingOuter)
       if (backward && backward.alongA < -0.001 && backward.alongA > -reach) {
         offsetRowExtensions[junction + 1].atStart.set(ratio, [
           round(backward.point[0]),
@@ -1350,6 +1351,18 @@ export function calculateScaffold(
         ? guardrails
         : layer === layerCount ? [guardrails[0]] : []
 
+      /** 架顶栏杆 is a 作业层-level rail like any other, only one course higher. */
+      const topRail = layer === layerCount
+        ? round(theoreticalHeight + parameters.liftHeight)
+        : null
+      const topRailUsable = topRail !== null
+        && round(topRail + parameters.pipeDiameter / 2) <= rowTopEdge(outerRow) + 0.001
+        && round(topRail + parameters.pipeDiameter / 2) <= endTopEdge + 0.001
+      const guardedThisLift: ReadonlyArray<{ id: string; label: string; centreAboveDeck: number }> =
+        topRailUsable && topRail !== null
+          ? [...guardedRails, { id: 'coping', label: '架顶栏杆', centreAboveDeck: round(topRail - elevation) }]
+          : guardedRails
+
       /**
        * The rails of this lift that `rowTop` can actually carry. A rail is tied to
        * the 立杆, so one reaching past that post's top is not emitted at all — it
@@ -1358,9 +1371,10 @@ export function calculateScaffold(
       const railsWithin = (
         rowTop: number,
         above: Set<string>,
-      ): Array<{ rail: (typeof guardrails)[number]; elevation: number }> => {
-        const usable: Array<{ rail: (typeof guardrails)[number]; elevation: number }> = []
-        for (const rail of guardedRails) {
+        rails: typeof guardedThisLift = guardedRails,
+      ): Array<{ rail: (typeof guardedThisLift)[number]; elevation: number }> => {
+        const usable: Array<{ rail: (typeof guardedThisLift)[number]; elevation: number }> = []
+        for (const rail of rails) {
           const railElevation = round(elevation + rail.centreAboveDeck)
           if (round(railElevation + parameters.pipeDiameter / 2) > rowTop + 0.001) {
             above.add(rail.label)
@@ -1382,7 +1396,7 @@ export function calculateScaffold(
       // the drawing the building is on.
       if (guardedRails.length > 0) {
         const railRow = outerRow === 1 ? offsetRowPoints : postRows[0]
-        for (const { elevation: railElevation } of railsWithin(rowTopEdge(outerRow), railsAboveRow[outerRow])) {
+        for (const { elevation: railElevation } of railsWithin(rowTopEdge(outerRow), railsAboveRow[outerRow], guardedThisLift)) {
           const points = railRow.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
           addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points)
         }
@@ -1390,7 +1404,7 @@ export function calculateScaffold(
         // 端部防护 returns across an open end. Both of that station's posts are built to
         // the railed height (nothing is against a wall at an end), so the return is
         // checked against that height rather than against the shorter inner row.
-        for (const { elevation: railElevation } of railsWithin(endTopEdge, railsAboveEnd)) {
+        for (const { elevation: railElevation } of railsWithin(endTopEdge, railsAboveEnd, guardedThisLift)) {
           for (const station of endStations) {
             const outerPoint = postRows[0][station]
             const innerPoint = postRows[1][station]
