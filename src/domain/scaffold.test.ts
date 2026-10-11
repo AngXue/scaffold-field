@@ -724,13 +724,23 @@ describe('calculateScaffold', () => {
         && Math.abs(member.start[2] - startZ) < 0.001,
     )!
 
-    // The incoming leg's 填芯 follows the deck into the corner, so it is the same length
-    // as the 外排 — while the 内排 keeps its own leg's length (its 0.9 m shortfall is the
-    // junction's 横向杆, and the outgoing leg's 填芯 stops at its own first station so
-    // the two 填芯 cannot cross each other at the corner).
-    expect(runOf(-0.1, 0.45)!.length).toBe(runOf(-0.1, 0.9)!.length)
-    expect(runOf(-0.1, 0)!.length).toBeLessThan(runOf(-0.1, 0.9)!.length)
-    expect(runOf(7.55, 0.1)!.length).toBeLessThan(runOf(8, 1)!.length)
+    // EVERY row of a segment is the same length, because each runs on to the other leg's
+    // offset row line: 7.1 m + 1.1 m of corner = 8.2 m, so all three rows are 6+2.4, and
+    // the 4.3 m leg needs 5.4 m, so all three of its rows take a single 6 m tube. The
+    // outgoing leg's 填芯 stops on the incoming leg's own 填芯 (4.95 m) rather than
+    // crossing it — same bought tube either way.
+    expect(runOf(-0.1, 0)!.length).toBe(8.2)
+    expect(runOf(-0.1, 0.45)!.length).toBe(8.2)
+    expect(runOf(-0.1, 0.9)!.length).toBe(8.2)
+    expect(runOf(7.1, 1)!.length).toBe(5.4)
+    expect(runOf(8, 1)!.length).toBe(5.4)
+    expect(runOf(7.55, 0.55)!.length).toBe(4.95)
+    for (const [x, z] of [[-0.1, 0], [-0.1, 0.45], [-0.1, 0.9]] as const) {
+      expect(plan(runOf(x, z)!.id).stockLengths).toEqual([6, 2.4])
+    }
+    for (const [x, z] of [[7.1, 1], [7.55, 0.55], [8, 1]] as const) {
+      expect(plan(runOf(x, z)!.id).stockLengths).toEqual([6])
+    }
 
     // The corner post is the cheapest mix for the railed 11.88 m and both posts beside
     // it are the staggered one, so no two neighbours share their butt joints.
