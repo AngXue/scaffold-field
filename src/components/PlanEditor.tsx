@@ -10,6 +10,8 @@ type PlanEditorProps = {
   lengths: number[]
   onPointsChange: (points: Point2D[]) => void
   onLengthsChange: (lengths: number[]) => void
+  /** Restore the project's default example (App owns what that is). */
+  onResetDemo: () => void
 }
 
 const ALIGN_THRESHOLD = 12
@@ -29,7 +31,7 @@ type ViewTransform = { x: number; y: number; k: number }
 
 const clampZoom = (value: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
 
-export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }: PlanEditorProps) {
+export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange, onResetDemo }: PlanEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [size, setSize] = useState({ width: 900, height: 560 })
@@ -238,12 +240,7 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
   }
 
   const reset = () => {
-    onPointsChange([
-      { id: 'P1', x: 110, y: 125 },
-      { id: 'P2', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 },
-      { id: 'P3', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 + 4.8 * PIXELS_PER_METER },
-    ])
-    onLengthsChange([7.2, 4.8])
+    onResetDemo()
     setSelectedSegment(0)
   }
 
@@ -269,7 +266,7 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
           <button className="icon-button" type="button" onClick={() => zoomFromCentre(1 / 1.25)} title="缩小"><ZoomOut size={18} /></button>
           <button className="icon-button" type="button" onClick={() => zoomFromCentre(1.25)} title="放大"><ZoomIn size={18} /></button>
           <button className="icon-button" type="button" onClick={fitToContent} title="适应内容"><Focus size={18} /></button>
-          <button className="icon-button" type="button" onClick={reset} title="重置示例路径"><RotateCcw size={18} /></button>
+          <button className="icon-button" type="button" onClick={reset} title="重置为默认示例"><RotateCcw size={18} /></button>
           <button className={snapEnabled ? 'icon-button active' : 'icon-button'} type="button" onClick={() => setSnapEnabled(!snapEnabled)} title="网格与同轴吸附"><Magnet size={18} /></button>
           <button className="icon-button" type="button" onClick={toggleFullscreen} title={isFullscreen ? '退出全屏' : '全屏画布'}>
             {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}

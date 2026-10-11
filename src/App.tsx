@@ -4,6 +4,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Download,
+  BookmarkPlus,
   Layers3,
   Map,
   Menu,
@@ -16,7 +17,7 @@ import { MaterialView } from './components/MaterialView'
 import { NumberField } from './components/NumberField'
 import { OptionField } from './components/OptionField'
 import { PlanEditor } from './components/PlanEditor'
-import { PIXELS_PER_METER } from './domain/plan'
+import { measurePath, PIXELS_PER_METER } from './domain/plan'
 import { saveTextFile } from './platform/files'
 import { exitFullscreenIfActive } from './platform/fullscreen'
 import { useAndroidBackButton } from './platform/useAndroidBackButton'
@@ -43,6 +44,39 @@ const INITIAL_POINTS: Point2D[] = [
   { id: 'P2', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 },
   { id: 'P3', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 + 4.8 * PIXELS_PER_METER },
 ]
+const INITIAL_LENGTHS = [7.2, 4.8]
+
+/**
+ * The drawing the app opens with and returns to: the built-in example until the user
+ * says otherwise, and their own project afterwards. Kept under its own key so
+ * 「设为默认示例」 never touches the saved project.
+ */
+const DEFAULT_DEMO_KEY = 'scaffold-default-demo'
+
+type DefaultDemo = {
+  points: Point2D[]
+  lengths: number[]
+  parameters?: Partial<ScaffoldParameters>
+}
+
+function loadDefaultDemo(): DefaultDemo {
+  const fallback: DefaultDemo = { points: INITIAL_POINTS, lengths: INITIAL_LENGTHS }
+  try {
+    const stored = localStorage.getItem(DEFAULT_DEMO_KEY)
+    if (!stored) return fallback
+    const demo = JSON.parse(stored) as DefaultDemo
+    if (!Array.isArray(demo.points) || demo.points.length < 2) return fallback
+    return {
+      points: demo.points,
+      lengths: Array.isArray(demo.lengths) && demo.lengths.length === demo.points.length - 1
+        ? demo.lengths
+        : measurePath(demo.points),
+      parameters: demo.parameters,
+    }
+  } catch {
+    return fallback
+  }
+}
 
 const TAB_META = {
   plan: { label: '二维测量', icon: Map },
@@ -91,10 +125,13 @@ function loadStoredProject() {
 
 function App() {
   const [initialProject] = useState(loadStoredProject)
+  const [defaultDemo, setDefaultDemo] = useState(loadDefaultDemo)
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('plan')
-  const [points, setPoints] = useState<Point2D[]>(initialProject?.points ?? INITIAL_POINTS)
-  const [lengths, setLengths] = useState(initialProject?.lengths ?? [7.2, 4.8])
-  const [parameters, setParameters] = useState<ScaffoldParameters>(initialProject?.parameters ?? DEFAULT_PARAMETERS)
+  const [points, setPoints] = useState<Point2D[]>(initialProject?.points ?? defaultDemo.points)
+  const [lengths, setLengths] = useState(initialProject?.lengths ?? defaultDemo.lengths)
+  const [parameters, setParameters] = useState<ScaffoldParameters>(
+    initialProject?.parameters ?? { ...DEFAULT_PARAMETERS, ...defaultDemo.parameters },
+  )
   const [adjustments, setAdjustments] = useState<MaterialAdjustments>(initialProject?.adjustments ?? {})
   const [saved, setSaved] = useState(false)
 
@@ -152,6 +189,24 @@ function App() {
     setSaved(false)
   }
 
+  /** Make the drawing and settings on screen the example the app starts from. */
+  const saveAsDefaultDemo = () => {
+    const demo: DefaultDemo = { points, lengths, parameters: settings }
+    try {
+      localStorage.setItem(DEFAULT_DEMO_KEY, JSON.stringify(demo))
+      setDefaultDemo(demo)
+      window.alert('已设为默认示例：以后打开应用或点「重置示例路径」都会回到这张图。')
+    } catch (error) {
+      window.alert(`保存失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
+  const resetToDefaultDemo = () => {
+    setPoints(defaultDemo.points)
+    setLengths(defaultDemo.lengths)
+    setSaved(false)
+  }
+
   const saveProject = () => {
     localStorage.setItem('scaffold-project', JSON.stringify({ points, lengths, parameters: settings, adjustments }))
     setSaved(true)
@@ -199,6 +254,7 @@ function App() {
         <div className="topbar-actions">
           <span className={saved ? 'save-state saved' : 'save-state'}>{saved ? '已保存到本机' : '有未保存更改'}</span>
           <button className="secondary-button" type="button" onClick={saveProject}><Save size={17} /> 保存</button>
+          <button className="icon-button" type="button" onClick={saveAsDefaultDemo} title="把当前图纸与参数设为默认示例"><BookmarkPlus size={19} /></button>
           <button className="icon-button" type="button" onClick={() => { void exportProject() }} title="导出项目数据"><Download size={19} /></button>
         </div>
       </header>
@@ -211,6 +267,7 @@ function App() {
               lengths={lengths}
               onPointsChange={(next) => { setPoints(next); setSaved(false) }}
               onLengthsChange={(next) => { setLengths(next); setSaved(false) }}
+              onResetDemo={resetToDefaultDemo}
             />
           )}
           {activeTab === 'model' && (

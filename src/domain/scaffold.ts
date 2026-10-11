@@ -875,10 +875,108 @@ export function calculateScaffold(
     const limit = (15 * Math.PI) / 180
     return turn >= limit && turn <= Math.PI - limit
   }
+  /**
+   * Where the two legs' offset rows cross — the corner's mitre point. It is inside
+   * both runs exactly when the legs really turn there, which is also the check that
+   * keeps a near-straight junction from throwing a post far off to one side.
+   */
+  const offsetRowCrossing = (junction: number) => {
+    const toLine = (index: number) => {
+      const start = physical[index]
+      const end = physical[index + 1]
+      const length = Math.hypot(end[0] - start[0], end[1] - start[1])
+      if (length <= 0.001) return null
+      const direction: [number, number] = [(end[0] - start[0]) / length, (end[1] - start[1]) / length]
+      const normal: [number, number] = [-direction[1], direction[0]]
+      return {
+        origin: [
+          start[0] + normal[0] * parameters.width,
+          start[1] + normal[1] * parameters.width,
+        ] as [number, number],
+        direction,
+        normal,
+        length,
+      }
+    }
+    const a = toLine(junction)
+    const b = toLine(junction + 1)
+    if (!a || !b) return null
+    const denominator = a.direction[0] * b.direction[1] - a.direction[1] * b.direction[0]
+    if (Math.abs(denominator) < 1e-6) return null
+    const dx = b.origin[0] - a.origin[0]
+    const dy = b.origin[1] - a.origin[1]
+    const alongA = (dx * b.direction[1] - dy * b.direction[0]) / denominator
+    const alongB = (dx * a.direction[1] - dy * a.direction[0]) / denominator
+    if (alongA < 0 || alongA > a.length || alongB < 0 || alongB > b.length) return null
+    return {
+      point: [
+        round(a.origin[0] + a.direction[0] * alongA),
+        0,
+        round(a.origin[1] + a.direction[1] * alongA),
+      ] as Vector3Tuple,
+      normal: a.normal,
+    }
+  }
+  /** The one offset-row post each corner keeps, standing on the mitre point. */
+  const mitrePosts: Array<{ point: Vector3Tuple; normal: [number, number]; pathSegment: number; parity: number }> = []
   for (let junction = 0; junction + 2 < physical.length; junction += 1) {
     if (!turnIsCorner(junction)) continue
     skippedOffsetPosts.add(`${junction}:${segmentBays[junction]}`)
     skippedOffsetPosts.add(`${junction + 1}:0`)
+    const crossing = offsetRowCrossing(junction)
+    if (!crossing) continue
+    mitrePosts.push({
+      ...crossing,
+      pathSegment: junction,
+      parity: (1 + stationOffsets[junction] + segmentBays[junction]) % 2,
+    })
+  }
+
+  // The corner keeps ONE offset-row post, where the two offset rows cross: both runs
+  // then arrive at the same upright — which is also what carries the 栏杆 around the
+  // corner when the offset row is the railed 外排 — instead of two posts a bay apart
+  // with the frame open between them.
+  for (const mitre of mitrePosts) {
+    const height = postHeightAt(1, false)
+    const key = pointKey(mitre.point)
+    if (!postByPoint.has(key)) {
+      const member = addMember(
+        'post',
+        mitre.point,
+        [mitre.point[0], height, mitre.point[2]],
+        undefined,
+        mitre.pathSegment,
+        [mitre.point, [mitre.point[0], height, mitre.point[2]]],
+        0,
+        0,
+      )
+      if (member) {
+        postByPoint.set(key, member)
+        postSequences.set(member.id, postSequenceFor(height, mitre.parity))
+      }
+    }
+    const half = transverseTubeLength / 2
+    const channelStart: Vector3Tuple = [
+      round(mitre.point[0] - mitre.normal[0] * half),
+      0,
+      round(mitre.point[2] - mitre.normal[1] * half),
+    ]
+    const channelEnd: Vector3Tuple = [
+      round(mitre.point[0] + mitre.normal[0] * half),
+      0,
+      round(mitre.point[2] + mitre.normal[1] * half),
+    ]
+    const channelKey = [pointKey(channelStart), pointKey(channelEnd)].sort().join('|')
+    if (!channelKeys.has(channelKey)) {
+      channelKeys.add(channelKey)
+      baseChannels.push({
+        id: `B${baseChannels.length + 1}`,
+        start: channelStart,
+        end: channelEnd,
+        length: round(vectorDistance(channelStart, channelEnd)),
+        pathSegment: mitre.pathSegment,
+      })
+    }
   }
 
   physical.slice(0, -1).forEach((start2d, segmentIndex) => {
@@ -1213,6 +1311,37 @@ export function calculateScaffold(
     })
   }
 
+  /**
+   * A tube that crosses an upright is tied to it (§7.3.5(1)). At a corner both offset
+   * rows run through the mitre post at every level, but at a point that is not one of
+   * their stations, so those ties have to be counted here instead of coming out of a
+   * member's connection points.
+   */
+  const planDistanceToRun = (member: ScaffoldMember, x: number, z: number) => {
+    const dx = member.end[0] - member.start[0]
+    const dz = member.end[2] - member.start[2]
+    const length = Math.hypot(dx, dz)
+    if (length <= 0.001) return Number.POSITIVE_INFINITY
+    const along = ((x - member.start[0]) * dx + (z - member.start[2]) * dz) / length
+    if (along < -0.001 || along > length + 0.001) return Number.POSITIVE_INFINITY
+    return Math.abs((x - member.start[0]) * dz - (z - member.start[2]) * dx) / length
+  }
+  const mitreCrossConnectors: ScaffoldConnector[] = mitrePosts.flatMap((mitre) =>
+    members
+      .filter((member) => member.type === 'longitudinal' || member.type === 'guardrail')
+      .filter((member) => member.start[1] <= postHeightAt(1, false) + 0.001)
+      .filter((member) => planDistanceToRun(member, mitre.point[0], mitre.point[2]) < 0.005)
+      .map((member, index) => ({
+        id: `C-${member.id}-mitre-${index + 1}`,
+        type: 'cross' as const,
+        position: [
+          mitre.point[0],
+          round(member.start[1] + parameters.pipeDiameter * 0.65),
+          mitre.point[2],
+        ] as Vector3Tuple,
+        memberId: member.id,
+      })))
+
   const rawCrossConnectors: ScaffoldConnector[] = members.flatMap((member) => {
     if (member.type === 'post') return []
     const connectionPoints = member.type === 'transverse'
@@ -1229,7 +1358,8 @@ export function calculateScaffold(
       memberId: member.id,
     }))
   })
-  const connectorsByPosition = rawCrossConnectors.reduce<Map<string, ScaffoldConnector[]>>((groups, connector) => {
+  const connectorsByPosition = [...rawCrossConnectors, ...mitreCrossConnectors]
+    .reduce<Map<string, ScaffoldConnector[]>>((groups, connector) => {
     const key = pointKey(connector.position)
     groups.set(key, [...(groups.get(key) ?? []), connector])
     return groups

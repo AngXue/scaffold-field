@@ -34,9 +34,10 @@ describe('calculateScaffold', () => {
     )
 
     // 2 rows × 3 stations × 2 segments = 12, less the shared outer corner post, less
-    // the two posts the junction does not need (see below).
+    // the two posts the junction does not need, plus the single post that replaces
+    // them on the mitre point (see below).
     expect(outerCornerPosts).toHaveLength(1)
-    expect(countMembers(layout).post).toBe(9)
+    expect(countMembers(layout).post).toBe(10)
   })
 
   it('drops the offset row\'s post on either side of a corner', () => {
@@ -52,6 +53,10 @@ describe('calculateScaffold', () => {
     expect(postAt(3.6, 0)).toHaveLength(1)
     expect(postAt(3.6, 0.9)).toHaveLength(0)
     expect(postAt(2.7, 0)).toHaveLength(0)
+    // …and the two rows now meet on ONE post at their crossing (2.7, 0.9) instead,
+    // which is what closes the corner: the offset row runs through it either way, so
+    // when that row is the railed 外排 the 栏杆 are carried around the corner too.
+    expect(postAt(2.7, 0.9)).toHaveLength(1)
     // The 纵向水平杆 are untouched: both rows still run to their own end points on
     // every lift, plus the 扫地杆 layer.
     expect(layout.members.filter((member) => member.type === 'longitudinal').length)
@@ -621,6 +626,29 @@ describe('calculateScaffold', () => {
         point.every((value, index) => value === corner[index])))
 
     expect(cornerTransverse).toHaveLength(0)
+  })
+
+  it('ties both rows to the corner\'s mitre post', () => {
+    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const mitrePost = layout.members.find(
+      (member) => member.type === 'post' && member.start[0] === 2.7 && member.start[2] === 0.9,
+    )!
+    // Both offset rows run through the mitre point at every lift, so the post is tied
+    // to four runs there — the two rows, at each of the lifts they reach.
+    // Coincident ties are nudged apart for rendering, so compare within that nudge.
+    const ties = layout.connectors.filter((connector) =>
+      connector.type === 'cross'
+      && Math.abs(connector.position[0] - mitrePost.start[0]) < 0.05
+      && Math.abs(connector.position[2] - mitrePost.start[2]) < 0.05)
+
+    expect(mitrePost.end[1]).toBe(9.7)
+    // Two runs reach the mitre post at every level — the two offset rows — and the
+    // 扫地杆 layer crosses it too, so `layerCount + 1` levels of two ties each.
+    expect(ties).toHaveLength((DEFAULT_PARAMETERS.layerCount + 1) * 2)
+    // …and its own base beam, like every other post.
+    expect(layout.baseChannels.filter((channel) =>
+      Math.hypot((channel.start[0] + channel.end[0]) / 2 - 2.7, (channel.start[2] + channel.end[2]) / 2 - 0.9) < 0.001))
+      .toHaveLength(1)
   })
 
   it('keeps rendered connector positions unique', () => {
