@@ -459,6 +459,10 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
               <div><dt>组合</dt><dd>{selectedAssembly.stockLengths.map((length) => `${length}m`).join(' + ')}</dd></div>
               <div><dt>搭接长度</dt><dd>{selectedSegment.overlapWithPrevious.toFixed(2)} m</dd></div>
               <div><dt>目标净长</dt><dd>{selectedAssembly.requiredLength.toFixed(2)} m</dd></div>
+              {/* The length actually built: the combination's own total, which is
+                  what the tube renders at and what the neighbouring post has to
+                  differ from. */}
+              <div><dt>组合总长</dt><dd>{selectedAssembly.effectiveLength.toFixed(2)} m</dd></div>
               <div><dt>组合外伸</dt><dd>{selectedAssembly.excessLength.toFixed(2)} m</dd></div>
               <div><dt>所在层</dt><dd>{selectedMember.layer === undefined ? '立杆全高' : selectedMember.layer === SWEEP_BAR_LAYER ? '扫地杆' : `第 ${selectedMember.layer} 层`}</dd></div>
             </dl>

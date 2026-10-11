@@ -118,6 +118,17 @@ export const DECK_PANEL_SIZES = { lengths: [1, 1.2], widths: [0.75, 0.8, 0.95] }
 export const DECK_PANEL = { width: 0.95, length: 1.2 } as const
 /** 排距 when a 钢笆片 width is chosen: the panel width less this. */
 export const DECK_PANEL_ROW_GAP = 0.05
+/**
+ * Where two 钢笆片 meet, the field laps them by 100 mm and ties the lap down, so each
+ * piece after the first only gains `panelLength - DECK_PANEL_LAP` of new ground.
+ */
+export const DECK_PANEL_LAP = 0.1
+
+/** How many panels cover `run` once every joint is lapped by `DECK_PANEL_LAP`. */
+export function deckPanelCount(run: number, panel: number, lap = DECK_PANEL_LAP) {
+  const gain = Math.max(0.05, panel - lap)
+  return Math.max(1, Math.ceil((run - lap) / gain - 1e-9))
+}
 
 /** The deck surface is drawn a little above the lift axis. */
 const DECK_SURFACE_OFFSET = 0.055
@@ -492,13 +503,19 @@ function neighbourStockSequence(
   if (jointsAreStaggered(reversed, primary)) return reversed
 
   const stocks = [...stockLengths].filter((length) => length > overlap).sort((a, b) => b - a)
-  for (const size of [primary.length, primary.length + 1]) {
-    for (const sequence of stockSequences(requiredLength, stocks, overlap, size)) {
-      if (sequence.join() === primary.join()) continue
-      if (jointsAreStaggered(sequence, primary)) return sequence
-    }
-  }
-  return reversed
+  const total = (sequence: number[]) =>
+    round(sequence.reduce((sum, stock) => sum + stock, 0) - overlap * (sequence.length - 1))
+  const candidates = [primary.length, primary.length + 1]
+    .flatMap((size) => stockSequences(requiredLength, stocks, overlap, size))
+    .filter((sequence) => sequence.join() !== primary.join() && jointsAreStaggered(sequence, primary))
+
+  // A combination that only reorders the same tubes into the same TOTAL length is
+  // indistinguishable from its neighbour — on site and in the 3D view — so the
+  // neighbour is given a different mix altogether (6+6 beside 2+6+4.5 = 12.5 m).
+  // Same-length alternatives are only a last resort before giving up.
+  return candidates.find((sequence) => Math.abs(total(sequence) - total(primary)) > 0.001)
+    ?? candidates[0]
+    ?? reversed
 }
 
 /** Physical length of the tube actually bought for a member: the chosen stock
@@ -1091,8 +1108,8 @@ export function calculateScaffold(
       const deckElevation = round(elevation + DECK_SURFACE_OFFSET)
       const panelLength = Math.max(0.1, parameters.deckPanelLength ?? DECK_PANEL.length)
       const panelWidth = Math.max(0.1, parameters.deckPanelWidth ?? DECK_PANEL.width)
-      const panelsAlong = Math.max(1, Math.ceil(bayLength / panelLength))
-      const panelsAcross = Math.max(1, Math.ceil(parameters.width / panelWidth))
+      const panelsAlong = deckPanelCount(bayLength, panelLength)
+      const panelsAcross = deckPanelCount(parameters.width, panelWidth)
 
       for (let bay = 0; bay < bayCount; bay += 1) {
         /** A point on the bay: `along` 0..1 down the bay, `across` 0..1 between the rows. */

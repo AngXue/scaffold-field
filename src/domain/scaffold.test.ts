@@ -5,8 +5,10 @@ import {
   CONNECTOR_LABELS,
   COUPLER_PACK_SIZE,
   DECK_PANEL,
+  DECK_PANEL_LAP,
   DECK_PANEL_ROW_GAP,
   DECK_PANEL_SIZES,
+  deckPanelCount,
   DEFAULT_PARAMETERS,
   TOP_POST_EXTENSION,
   GUARDRAIL_TOP_EDGE,
@@ -78,9 +80,17 @@ describe('calculateScaffold', () => {
     for (const a of first) {
       for (const b of second) expect(Math.abs(a - b)).toBeGreaterThanOrEqual(SPLICE_STAGGER - 0.001)
     }
-    // A genuinely different sequence, not just the same tubes in another order.
+    // A genuinely different mix, not just the same tubes in another order — and a
+    // different TOTAL length, because a same-length one is indistinguishable from
+    // its neighbour both on site and in the 3D view.
     expect(planOf(rowPosts[1].id).stockLengths.join('+'))
       .not.toBe(planOf(rowPosts[0].id).stockLengths.join('+'))
+    expect(planOf(rowPosts[1].id).effectiveLength)
+      .toBeGreaterThan(planOf(rowPosts[0].id).effectiveLength)
+    // 11.88 m of railed post: 6+6 (12 m) beside 2.4+6+4 (12.4 m) — the cheapest mix
+    // that differs in BOTH the joint heights (2.4 / 8.4 against 6) and the total.
+    expect(planOf(rowPosts[0].id).stockLengths).toEqual([6, 6])
+    expect(planOf(rowPosts[1].id).stockLengths).toEqual([2.4, 6, 4])
     expect(SPLICE_STAGGER).toBe(0.5)
   })
 
@@ -97,9 +107,16 @@ describe('calculateScaffold', () => {
 
     expect(DECK_PANEL_SIZES.lengths).toEqual([1, 1.2])
     expect(DECK_PANEL_SIZES.widths).toEqual([0.75, 0.8, 0.95])
-    // 2 bays of 2.4 m: two 1.2 m pieces along, or three 1 m pieces.
-    expect(perLift(longPanel)).toBe(4)
+    // 2 bays of 2.4 m, every joint lapped by 100 mm: three 1.2 m pieces along
+    // (2.4 = 1.2 + 1.1 + 0.1) or three 1 m pieces (2.4 = 1 + 0.9 + 0.5).
+    expect(DECK_PANEL_LAP).toBe(0.1)
+    expect(perLift(longPanel)).toBe(6)
     expect(perLift(shortPanel)).toBe(6)
+    // The lap only shows up where the arithmetic needs it: a 1.2 m bay still takes
+    // one piece, and a 2.0 m bay takes two 1.2 m pieces but three 1 m ones.
+    expect(deckPanelCount(1.2, 1.2)).toBe(1)
+    expect(deckPanelCount(2, 1.2)).toBe(2)
+    expect(deckPanelCount(2, 1)).toBe(3)
     // The 排距 the UI writes when a width is chosen: the panel width less 0.05 m.
     expect(DECK_PANEL_ROW_GAP).toBe(0.05)
     expect(Number((DEFAULT_PARAMETERS.deckPanelWidth - DECK_PANEL_ROW_GAP).toFixed(2)))
