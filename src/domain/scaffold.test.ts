@@ -5,9 +5,12 @@ import {
   CONNECTOR_LABELS,
   COUPLER_PACK_SIZE,
   DECK_PANEL,
+  DECK_PANEL_ROW_GAP,
+  DECK_PANEL_SIZES,
   DEFAULT_PARAMETERS,
   TOP_POST_EXTENSION,
   GUARDRAIL_TOP_EDGE,
+  SPLICE_STAGGER,
   SWEEP_BAR_LAYER,
   type ScaffoldLayout,
 } from './scaffold'
@@ -28,8 +31,92 @@ describe('calculateScaffold', () => {
       (member) => member.type === 'post' && member.start[0] === 3.6 && member.start[2] === 0,
     )
 
+    // 2 rows × 3 stations × 2 segments = 12, less the shared outer corner post, less
+    // the two posts the junction does not need (see below).
     expect(outerCornerPosts).toHaveLength(1)
-    expect(countMembers(layout).post).toBe(11)
+    expect(countMembers(layout).post).toBe(9)
+  })
+
+  it('drops the offset row\'s post on either side of a corner', () => {
+    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const postAt = (x: number, z: number) => layout.members.filter(
+      (member) => member.type === 'post' && member.start[0] === x && member.start[2] === z,
+    )
+
+    // The corner is at (3.6, 0). The incoming segment used to end with a post at
+    // (3.6, 0.9) — sitting on the outgoing segment's 外排 line — and the outgoing one
+    // used to start with a post at (2.7, 0), on the incoming one's. Both are inside a
+    // bay of the shared corner post and the legs cross there, so both go.
+    expect(postAt(3.6, 0)).toHaveLength(1)
+    expect(postAt(3.6, 0.9)).toHaveLength(0)
+    expect(postAt(2.7, 0)).toHaveLength(0)
+    // The 纵向水平杆 are untouched: both rows still run to their own end points on
+    // every lift, plus the 扫地杆 layer.
+    expect(layout.members.filter((member) => member.type === 'longitudinal').length)
+      .toBe(2 * 2 * (DEFAULT_PARAMETERS.layerCount + 1))
+  })
+
+  it('staggers the butt joints of neighbouring posts', () => {
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const rowPosts = layout.members
+      .filter((member) => member.type === 'post' && member.start[2] === 0)
+      .sort((a, b) => a.start[0] - b.start[0])
+    const planOf = (memberId: string) =>
+      layout.materials.assemblyPlans.find((assembly) => assembly.memberId === memberId)!
+    const jointsOf = (memberId: string) => {
+      let cursor = 0
+      return planOf(memberId).stockLengths.slice(0, -1).map((stock) => (cursor += stock))
+    }
+
+    // Three posts along the 外排 line. Neighbours must not share a joint height
+    // (JGJ 130-2011 §6.3.6, at least 500 mm apart); the two posts of the same parity
+    // are built the same way.
+    expect(rowPosts).toHaveLength(3)
+    const [first, second, third] = rowPosts.map((post) => jointsOf(post.id))
+    expect(third).toEqual(first)
+    expect(second).not.toEqual(first)
+    for (const a of first) {
+      for (const b of second) expect(Math.abs(a - b)).toBeGreaterThanOrEqual(SPLICE_STAGGER - 0.001)
+    }
+    // A genuinely different sequence, not just the same tubes in another order.
+    expect(planOf(rowPosts[1].id).stockLengths.join('+'))
+      .not.toBe(planOf(rowPosts[0].id).stockLengths.join('+'))
+    expect(SPLICE_STAGGER).toBe(0.5)
+  })
+
+  it('follows the chosen 钢笆片 size, whose width the 排距 follows too', () => {
+    // A 4.8 m run at 2.4 m bays, so the panel length actually changes the count.
+    const longPanel = calculateScaffold(points.slice(0, 2), [4.8], { ...DEFAULT_PARAMETERS, postSpacing: 2.4 })
+    const shortPanel = calculateScaffold(points.slice(0, 2), [4.8], {
+      ...DEFAULT_PARAMETERS,
+      postSpacing: 2.4,
+      deckPanelLength: 1,
+    })
+    const perLift = (layout: ScaffoldLayout) =>
+      layout.materials.deckCount / new Set(layout.decks.map((deck) => deck.layer)).size
+
+    expect(DECK_PANEL_SIZES.lengths).toEqual([1, 1.2])
+    expect(DECK_PANEL_SIZES.widths).toEqual([0.75, 0.8, 0.95])
+    // 2 bays of 2.4 m: two 1.2 m pieces along, or three 1 m pieces.
+    expect(perLift(longPanel)).toBe(4)
+    expect(perLift(shortPanel)).toBe(6)
+    // The 排距 the UI writes when a width is chosen: the panel width less 0.05 m.
+    expect(DECK_PANEL_ROW_GAP).toBe(0.05)
+    expect(Number((DEFAULT_PARAMETERS.deckPanelWidth - DECK_PANEL_ROW_GAP).toFixed(2)))
+      .toBe(DEFAULT_PARAMETERS.width)
+    // A narrower panel means a wider 排距 takes two pieces across instead of one.
+    const wideRow = calculateScaffold(points.slice(0, 2), [3.6], {
+      ...DEFAULT_PARAMETERS,
+      width: 0.85,
+      deckPanelWidth: 0.95,
+    })
+    const wideRowNarrowPanel = calculateScaffold(points.slice(0, 2), [3.6], {
+      ...DEFAULT_PARAMETERS,
+      width: 0.85,
+      deckPanelWidth: 0.8,
+    })
+
+    expect(wideRowNarrowPanel.materials.deckCount).toBe(wideRow.materials.deckCount * 2)
   })
 
   it('derives material totals from the generated members', () => {
@@ -293,13 +380,13 @@ describe('calculateScaffold', () => {
 
   it('never places a rail above the posts that carry it', () => {
     for (const guardrailRailCount of [1, 2]) {
-      for (const guardrailSides of [1, 2]) {
+      for (const swapInnerOuter of [false, true]) {
         for (const layerCount of [1, 3, 5, 8]) {
           const layout = calculateScaffold(points.slice(0, 2), [3.6], {
             ...DEFAULT_PARAMETERS,
             layerCount,
             guardrailRailCount,
-            guardrailSides,
+            swapInnerOuter,
           })
           const postTop = Math.max(...layout.members
             .filter((member) => member.type === 'post')
@@ -345,7 +432,6 @@ describe('calculateScaffold', () => {
 
     // A site that only builds one rail per side is the common case, and that rail
     // sits 居中 in the 步距; §7.3.12(2)(4) 上栏杆 + 中栏杆 are opt-in.
-    expect(DEFAULT_PARAMETERS.guardrailSides).toBe(1)
     expect(DEFAULT_PARAMETERS.guardrailRailCount).toBe(1)
     expect(one.materials.guardrail.railCount).toBe(1)
     expect(two.materials.guardrail.railCount).toBe(2)
@@ -413,23 +499,30 @@ describe('calculateScaffold', () => {
       .toHaveLength(3)
   })
 
-  it('guards one side by default and both when the inner face is open', () => {
-    const one = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
-    const two = calculateScaffold(points.slice(0, 2), [3.6], { ...DEFAULT_PARAMETERS, guardrailSides: 2 })
-    const sideRuns = (layout: ScaffoldLayout) =>
-      layout.members.filter((member) => member.type === 'guardrail' && member.length > DEFAULT_PARAMETERS.width + 1)
+  it('puts the rails on the 外排 and follows the side the user says the building is on', () => {
+    const pathSide = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const offsetSide = calculateScaffold(points.slice(0, 2), [3.6], {
+      ...DEFAULT_PARAMETERS,
+      swapInnerOuter: true,
+    })
+    // The path runs along +x, so the offset row is the one at z = 排距. Side runs are
+    // long; an end return spans the width.
+    const rowOf = (layout: ScaffoldLayout, z: number) =>
+      layout.members.filter((member) =>
+        member.type === 'guardrail' && member.length > DEFAULT_PARAMETERS.width + 1
+        && member.start[2] === z)
 
-    // JGJ 130-2011 §7.3.12(1) mandates 外立杆 only, so 1 is the default and the code
-    // minimum; 2 is the site rule when the inner face is 临空, and it is also what
-    // builds the whole inner row — not just its ends — to the railed height.
-    expect(sideRuns(two)).toHaveLength(sideRuns(one).length * 2)
-    expect(one.materials.postHeights).toEqual({ theoretical: 9.7, inner: 10, outer: 12 })
-    expect(two.materials.postHeights).toEqual({ theoretical: 9.7, inner: 12, outer: 12 })
-    // The end return spans the full width, so it is ONE run per rail height whichever
-    // sides are guarded — doubling it would stack two identical tubes.
-    expect(two.materials.guardrail.endRuns).toBe(one.materials.guardrail.endRuns)
-    expect(one.warnings.find((warning) => warning.id === 'top-rail-height')).toBeUndefined()
-    expect(two.warnings.find((warning) => warning.id === 'top-rail-height')).toBeUndefined()
+    // §7.3.12(1) mandates the 外立杆 and the inner row is a gap to the building, so
+    // there is no way to guard both sides — only to say WHICH side is the outside.
+    expect(rowOf(pathSide, 0).length).toBeGreaterThan(0)
+    expect(rowOf(pathSide, 0.9)).toHaveLength(0)
+    expect(rowOf(offsetSide, 0)).toHaveLength(0)
+    expect(rowOf(offsetSide, 0.9).length).toBeGreaterThan(0)
+    // …and it is the 外排 that is built one 步距 taller to carry them.
+    expect(pathSide.materials.postHeights).toEqual({ theoretical: 9.7, inner: 10, outer: 12 })
+    expect(offsetSide.materials.postHeights).toEqual({ theoretical: 9.7, inner: 10, outer: 12 })
+    expect(pathSide.warnings.find((warning) => warning.id === 'top-rail-height')).toBeUndefined()
+    expect(offsetSide.warnings.find((warning) => warning.id === 'top-rail-height')).toBeUndefined()
   })
 
   it('builds an open end\'s two posts to the railed height so the top return closes', () => {
@@ -450,13 +543,6 @@ describe('calculateScaffold', () => {
     )
     expect(topReturns).toHaveLength(2)
     expect(topReturns.every((rail) => rail.start[1] === 10.34)).toBe(true)
-  })
-
-  it('omits edge protection entirely when no side is guarded', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], { ...DEFAULT_PARAMETERS, guardrailSides: 0 })
-
-    expect(countMembers(layout).guardrail).toBe(0)
-    expect(layout.materials.guardrail.totalLength).toBe(0)
   })
 
   it('drops a rail that would land on the next lift horizontal', () => {

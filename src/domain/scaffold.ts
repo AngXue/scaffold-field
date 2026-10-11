@@ -11,6 +11,7 @@ export type ScaffoldParameters = {
    * `理论搭设高度 = TOP_POST_EXTENSION + liftHeight × layerCount`.
    */
   layerCount: number
+  /** 排距 — the distance between the two post rows. */
   width: number
   deckSupportRailCount: number
   postSpacing: number
@@ -18,13 +19,15 @@ export type ScaffoldParameters = {
   /** Height of the 扫地杆 (sweep-bar) layer above the base. */
   sweepBarHeight: number
   /**
-   * Guarded sides per 作业层. §7.3.12(1) mandates the OUTER row only (栏杆和挡脚板
-   * 均应搭设在外立杆的内侧), so 1 is the code minimum and the default; the inner
-   * row is regulated as a gap to the building. 2 is the common site rule, and
-   * becomes mandatory when the inner face is genuinely open and therefore a 临边
-   * (JGJ 80-2016 §4.1.1, 强制性条文).
+   * Which row of the drawn path faces the building. `false` (the default) puts the
+   * 内侧 on the row offset by the 排距 — the path itself is then the 外立杆 line the
+   * tape was run along; `true` swaps the two, for a path drawn along the wall.
+   *
+   * 防护栏杆 always sit on the 外排, and it is that row which is built one 步距
+   * taller; there is no parameter that adds a second guarded side, because the row
+   * against the building is regulated as a gap to it (§7.3.12(1)).
    */
-  guardrailSides: number
+  swapInnerOuter: boolean
   /**
    * Rails per guarded side. §7.3.12(2)(4) requires 上栏杆 + 中栏杆, but a site that
    * only builds the 上栏杆 must be able to say so rather than have the 中栏杆
@@ -35,6 +38,10 @@ export type ScaffoldParameters = {
   tubeEndExtension: number
   spliceOverlap: number
   deckLiftInterval: number
+  /** 钢笆片 length ALONG the scaffold: 1 or 1.2 m. */
+  deckPanelLength: number
+  /** 钢笆片 width ACROSS the 排距: 0.75 / 0.8 / 0.95 m. */
+  deckPanelWidth: number
   pipeDiameter: number
   stockLengths: number[]
 }
@@ -96,11 +103,21 @@ export function guardrailsFor(count: number, liftHeight: number): ReadonlyArray<
 export const TOP_POST_EXTENSION = 0.3
 
 /**
- * The field-confirmed 钢笆片: a real 0.95 m × 1.2 m panel. It is laid with its
- * 0.95 m side across the 排距 and its 1.2 m side along the scaffold, so a bay takes
- * `ceil(bayLength / 1.2)` whole pieces.
+ * 立杆对接接头错开的距离 (JGJ 130-2011 §6.3.6: 两根相邻立杆的接头不应设置在同步内,
+ * 错开不宜小于 500 mm). Two neighbouring posts are assembled from DIFFERENT stock
+ * sequences so no two joints land at the same height; see `postStockSequence`.
  */
+export const SPLICE_STAGGER = 0.5
+
+/**
+ * The 钢笆片 sizes the field stocks. Defaults, not constants: a site picks one of
+ * each (`deckPanelLength` / `deckPanelWidth`), and the 排距 then defaults to the
+ * chosen width less 0.05 m, so the panel spans the two rows with a little margin.
+ */
+export const DECK_PANEL_SIZES = { lengths: [1, 1.2], widths: [0.75, 0.8, 0.95] } as const
 export const DECK_PANEL = { width: 0.95, length: 1.2 } as const
+/** 排距 when a 钢笆片 width is chosen: the panel width less this. */
+export const DECK_PANEL_ROW_GAP = 0.05
 
 /** The deck surface is drawn a little above the lift axis. */
 const DECK_SURFACE_OFFSET = 0.055
@@ -241,7 +258,6 @@ export type MaterialResult = {
    * pipes, never as a separate quantity.
    */
   guardrail: {
-    sides: number
     /** Rails per guarded side: 1 = 上栏杆, 2 = 上栏杆 + 中栏杆. */
     railCount: number
     runs: number
@@ -281,14 +297,17 @@ export const DEFAULT_PARAMETERS: ScaffoldParameters = {
   layerCount: 5,
   // 排距 (the post-row spacing the 横向杆 spans). It is deliberately narrower than
   // the 1.2 m site tube used for the transverse members: that tube is what
-  // overhangs the two 立杆, so no `tubeEndExtension` is added to it.
+  // overhangs the two 立杆, so no `tubeEndExtension` is added to it. It also follows
+  // the chosen 钢笆片 width: 0.95 - 0.05.
   width: 0.9,
   deckSupportRailCount: 2,
   postSpacing: 1.8,
   // The 步距 is a site constant; `layerCount` is what sets the height.
   liftHeight: 1.88,
   sweepBarHeight: 0.2,
-  guardrailSides: 1,
+  // The path itself is the 外立杆 line by default: the 内侧 is the row offset by the
+  // 排距, which is where the building is.
+  swapInnerOuter: false,
   // A site that only builds the 上栏杆 is the common case, so 1 is the default and
   // the 中栏杆 is opt-in (§7.3.12(4)).
   guardrailRailCount: 1,
@@ -299,6 +318,8 @@ export const DEFAULT_PARAMETERS: ScaffoldParameters = {
   // connectorSummary.swivel).
   spliceOverlap: 0,
   deckLiftInterval: 1,
+  deckPanelLength: DECK_PANEL.length,
+  deckPanelWidth: DECK_PANEL.width,
   pipeDiameter: 0.048,
   stockLengths: [6, 4.5, 4, 3, 2.4, 2, 1.2, 0.8],
 }
@@ -407,11 +428,83 @@ function chooseStockLengths(requiredLength: number, stockLengths: number[], over
 }
 
 /**
- * Physical length of the tube actually bought for a member: the chosen stock
+ * Butt-joint heights of an ordered stock sequence, laid from the member's base up.
+ * The sequence IS the joint layout, which is why the order matters: [6, 4.5] joints
+ * at 6 m, [4.5, 6] at 4.5 m.
+ */
+function jointHeights(sequence: number[]) {
+  const joints: number[] = []
+  let cursor = 0
+  sequence.slice(0, -1).forEach((stock) => {
+    cursor += stock
+    joints.push(round(cursor))
+  })
+  return joints
+}
+
+/** True when no joint of `candidate` lands within SPLICE_STAGGER of one of `base`. */
+function jointsAreStaggered(candidate: number[], base: number[]) {
+  const baseJoints = jointHeights(base)
+  if (!baseJoints.length) return false
+  return jointHeights(candidate).every((joint) =>
+    baseJoints.every((baseJoint) => Math.abs(joint - baseJoint) >= SPLICE_STAGGER - 0.001))
+}
+
+/**
+ * Every ordered sequence of exactly `size` stock lengths that still covers
+ * `requiredLength`, cheapest first. Ordered on purpose — see `jointHeights` — and
+ * bounded, because it only ever serves the neighbouring post of an already-chosen
+ * one.
+ */
+function stockSequences(requiredLength: number, stocks: number[], overlap: number, size: number) {
+  let sequences: number[][] = [[]]
+  for (let piece = 0; piece < size; piece += 1) {
+    sequences = sequences.flatMap((sequence) => stocks.map((stock) => [...sequence, stock]))
+  }
+  return sequences
+    .map((sequence) => ({
+      sequence,
+      effectiveLength: round(sequence.reduce((sum, stock) => sum + stock, 0) - overlap * (size - 1)),
+    }))
+    .filter((candidate) => candidate.effectiveLength + 0.001 >= requiredLength)
+    .sort((a, b) => a.effectiveLength - b.effectiveLength || a.sequence.join().localeCompare(b.sequence.join()))
+    .map((candidate) => candidate.sequence)
+}
+
+/**
+ * The sequence the post NEXT TO `primary` is built with, so their butt joints do not
+ * land at the same height (JGJ 130-2011 §6.3.6).
+ *
+ * The first choice is the primary sequence REVERSED: the same tubes, the same cost,
+ * joints moved (6+4.5 beside 4.5+6). When that changes nothing — a palindromic
+ * sequence such as 6+6 — the next cheapest sequence that is genuinely staggered is
+ * used instead (4.5+6+2 = 12.5 m beside 6+6 = 12 m), which is one tube longer and
+ * leaves that post a little taller. Both are physical: the tubes are bought whole and
+ * the 水平杆 tie the posts together at every lift.
+ */
+function neighbourStockSequence(
+  primary: number[],
+  requiredLength: number,
+  stockLengths: number[],
+  overlap: number,
+) {
+  const reversed = [...primary].reverse()
+  if (jointsAreStaggered(reversed, primary)) return reversed
+
+  const stocks = [...stockLengths].filter((length) => length > overlap).sort((a, b) => b - a)
+  for (const size of [primary.length, primary.length + 1]) {
+    for (const sequence of stockSequences(requiredLength, stocks, overlap, size)) {
+      if (sequence.join() === primary.join()) continue
+      if (jointsAreStaggered(sequence, primary)) return sequence
+    }
+  }
+  return reversed
+}
+
+/** Physical length of the tube actually bought for a member: the chosen stock
  * combination, less the length each butt joint swallows. Used by both the pipe
  * assembly and the 槽钢 base beam, which is laid to the same length as the
- * transverse tube above it.
- */
+ * transverse tube above it. */
 function assembledLength(requiredLength: number, stockLengths: number[], requestedOverlap: number) {
   const overlap = Math.max(0, Math.min(requestedOverlap, Math.min(...stockLengths) * 0.8))
   const selectedStocks = chooseStockLengths(requiredLength, stockLengths, overlap)
@@ -424,11 +517,15 @@ function createPipeAssembly(
   member: ScaffoldMember,
   stockLengths: number[],
   requestedOverlap: number,
+  /** An already-chosen sequence, used to give a 立杆 its staggered assembly. */
+  sequence?: number[],
 ): { segments: PipeSegment[]; connectors: ScaffoldConnector[]; plan: PipeAssemblyPlan } {
   const minimumStock = Math.min(...stockLengths)
   const overlap = Math.max(0, Math.min(requestedOverlap, minimumStock * 0.8))
-  const selectedStocks = chooseStockLengths(member.length, stockLengths, overlap)
-  const effectiveLength = assembledLength(member.length, stockLengths, requestedOverlap)
+  const selectedStocks = sequence ?? chooseStockLengths(member.length, stockLengths, overlap)
+  const effectiveLength = round(
+    selectedStocks.reduce((sum, stock) => sum + stock, 0) - overlap * (selectedStocks.length - 1),
+  )
   const excessLength = round(Math.max(0, effectiveLength - member.length))
   const start = new Vector(member.start)
   const end = new Vector(member.end)
@@ -569,7 +666,6 @@ function calculateMaterials(
       // A run is an end return if it is as long as the scaffold is wide.
       const endRuns = rails.filter((member) => Math.abs(member.length - parameters.width) < 0.5).length
       return {
-        sides: Math.max(0, Math.min(2, Math.round(parameters.guardrailSides))),
         railCount: guardrailRailCountOf(parameters),
         runs: rails.length,
         endRuns,
@@ -642,28 +738,30 @@ export function calculateScaffold(
   // and `TOP_POST_EXTENSION` (0.3 m) is the 立杆's fixed extension above the TOP
   // 作业层, not a start offset.
   //
-  // The two rows are NOT the same height. Only a row that carries 防护栏杆 needs the
-  // extra 步距 (and its own 0.3 m) above the top 作业层 to tie those rails to: the
-  // 内侧 row is normally the one against the building, so it stops at T while the
-  // 外侧 row runs to T + liftHeight + TOP_POST_EXTENSION. Both are then built from
-  // standard tubes, so the post actually bought is never shorter than that.
+  // The two rows are NOT the same height. Only the 外排 carries 防护栏杆, and only it
+  // needs the extra 步距 (and its own 0.3 m) above the top 作业层 to tie those rails
+  // to: the 内排 is the row against the building and stops at T. Both are then built
+  // from standard tubes, so the post actually bought is never shorter than that.
   const postRowCount = 2
-  const guardrailSideCount = Math.max(0, Math.min(postRowCount, Math.round(parameters.guardrailSides)))
   const guardrailRailCount = guardrailRailCountOf(parameters)
   const guardrails: ReturnType<typeof guardrailsFor> = guardrailsFor(guardrailRailCount, parameters.liftHeight)
   const layerCount = Math.max(1, Math.round(parameters.layerCount ?? DEFAULT_PARAMETERS.layerCount))
   const theoreticalHeight = round(TOP_POST_EXTENSION + layerCount * parameters.liftHeight)
   const topLiftElevation = round(layerCount * parameters.liftHeight)
   const railedHeight = round(theoreticalHeight + parameters.liftHeight + TOP_POST_EXTENSION)
-  const rowCarriesRails = (row: number) => (row === 0 ? guardrailSideCount >= 1 : guardrailSideCount >= 2)
+  // Which row of the drawing is which. The path is the 外立杆 line unless the user
+  // says the building is on that side (`swapInnerOuter`), and ONLY the 外排 is railed.
+  const outerRow = parameters.swapInnerOuter ? 1 : 0
+  const innerRow = outerRow === 0 ? 1 : 0
+  const rowCarriesRails = (row: number) => row === outerRow
   /**
    * The 立杆 height at one station. A post is built to the railed height when it
-   * carries 防护栏杆: its row's own side rails, or — at an OPEN path end — the 端部防护
+   * carries 防护栏杆: the 外排's own side rails, or — at an OPEN path end — the 端部防护
    * return, whose two posts both stand on the outside of the scaffold even when one
    * of them belongs to the inner row (nothing is against a wall at an end).
    */
   const postHeightAt = (row: number, atOpenEnd: boolean) =>
-    rowCarriesRails(row) || (atOpenEnd && guardrailSideCount >= 1) ? railedHeight : theoreticalHeight
+    rowCarriesRails(row) || atOpenEnd ? railedHeight : theoreticalHeight
   /** The shortest post of a row: what that row's side rails must be able to tie to. */
   const rowTopEdge = (row: number) =>
     assembledLength(
@@ -694,6 +792,78 @@ export function calculateScaffold(
   /** 端部防护 returns, which need BOTH rows to reach the rail. */
   const railsAboveEnd = new Set<string>()
   const supportRailCount = Math.max(2, Math.round(parameters.deckSupportRailCount))
+
+  // --- 立杆: staggered splices, and the two posts a corner does not need ---------
+
+  /**
+   * 立杆 stock sequence by parity, cached per required length. Neighbouring posts
+   * are built from different sequences so their butt joints never land at the same
+   * height (JGJ 130-2011 §6.3.6) — `neighbourStockSequence` is what picks the
+   * neighbour's. Parity is `(row + station along the whole path) % 2`, so a post
+   * differs from the one beside it AND from the one opposite it.
+   */
+  const postSequenceCache = new Map<string, number[]>()
+  const postSequenceFor = (requiredLength: number, parity: number) => {
+    const key = `${requiredLength}:${parity}`
+    const cached = postSequenceCache.get(key)
+    if (cached) return cached
+    const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...parameters.stockLengths) * 0.8))
+    const primary = chooseStockLengths(requiredLength, parameters.stockLengths, overlap)
+    const sequence = parity === 0
+      ? primary
+      : neighbourStockSequence(primary, requiredLength, parameters.stockLengths, overlap)
+    postSequenceCache.set(key, sequence)
+    return sequence
+  }
+  /** The sequence each post was built with, keyed by member id. */
+  const postSequences = new Map<string, number[]>()
+  /** Stations where the offset row's post is skipped; see the junction rule below. */
+  const skippedOffsetPosts = new Set<string>()
+
+  const segmentBays = physical.slice(0, -1).map((point, index) => {
+    const next = physical[index + 1]
+    const length = Math.hypot(next[0] - point[0], next[1] - point[1])
+    return length <= 0.001 ? 0 : Math.max(1, Math.ceil(length / parameters.postSpacing))
+  })
+  const stationOffsets: number[] = []
+  segmentBays.reduce((running, bays) => {
+    stationOffsets.push(running)
+    return running + bays
+  }, 0)
+
+  /**
+   * A junction that TURNS leaves one post of the offset row standing inside the
+   * corner from each side: the incoming segment's last station and the outgoing
+   * segment's first one, each sitting on the other segment's 外排 line less than a bay
+   * from the shared corner post (a 7.2 m edge shows six posts on that line, a 4.8 m
+   * edge five, where the grid says five and four). The legs cross there and the
+   * corner's own 横向杆 already close the gap, so both extras go and the corner keeps
+   * just its shared 外排 post. Members are untouched — only those two 立杆 disappear.
+   *
+   * A collinear junction needs nothing (the two posts are the same point), and a
+   * near-straight or doubled-back one keeps both (they are either coincident or
+   * genuinely on opposite sides), hence the angle band.
+   */
+  const turnIsCorner = (index: number) => {
+    const a = physical[index]
+    const b = physical[index + 1]
+    const c = physical[index + 2]
+    const ab: [number, number] = [b[0] - a[0], b[1] - a[1]]
+    const bc: [number, number] = [c[0] - b[0], c[1] - b[1]]
+    const lengths = Math.hypot(...ab) * Math.hypot(...bc)
+    if (lengths <= 0.001) return false
+    const cross = (ab[0] * bc[1] - ab[1] * bc[0]) / lengths
+    const dot = (ab[0] * bc[0] + ab[1] * bc[1]) / lengths
+    const turn = Math.abs(Math.atan2(cross, dot))
+    const limit = (15 * Math.PI) / 180
+    return turn >= limit && turn <= Math.PI - limit
+  }
+  for (let junction = 0; junction + 2 < physical.length; junction += 1) {
+    if (!turnIsCorner(junction)) continue
+    skippedOffsetPosts.add(`${junction}:${segmentBays[junction]}`)
+    skippedOffsetPosts.add(`${junction + 1}:0`)
+  }
+
   physical.slice(0, -1).forEach((start2d, segmentIndex) => {
     const end2d = physical[segmentIndex + 1]
     const segmentLength = Math.hypot(end2d[0] - start2d[0], end2d[1] - start2d[1])
@@ -731,8 +901,12 @@ export function calculateScaffold(
           round(start2d[1] + direction[1] * bayLength * station + normal[1] * offset),
         ]
         postRows[row].push(point)
+        // Row 1 is the row offset from the path; a corner does not need its post at
+        // either side of the junction (see `skippedOffsetPosts`).
+        if (row === 1 && skippedOffsetPosts.has(`${segmentIndex}:${station}`)) continue
         const key = pointKey(point)
         const post = postHeightAt(row, atOpenEnd)
+        const parity = (row + stationOffsets[segmentIndex] + station) % 2
         const existingPost = postByPoint.get(key)
         if (existingPost) {
           // A shared corner can be the railed row of one path segment and the plain
@@ -741,6 +915,7 @@ export function calculateScaffold(
             existingPost.end = [existingPost.start[0], post, existingPost.start[2]]
             existingPost.connectionPoints = [existingPost.start, existingPost.end]
             existingPost.length = round(post - existingPost.start[1])
+            postSequences.set(existingPost.id, postSequenceFor(post, parity))
           }
         } else {
           const member = addMember(
@@ -753,7 +928,10 @@ export function calculateScaffold(
             0,
             0,
           )
-          if (member) postByPoint.set(key, member)
+          if (member) {
+            postByPoint.set(key, member)
+            postSequences.set(member.id, postSequenceFor(post, parity))
+          }
         }
       }
 
@@ -879,15 +1057,15 @@ export function calculateScaffold(
         return usable
       }
 
-      if (guardrailSideCount > 0 && guardedRails.length > 0) {
-        for (let side = 0; side < guardrailSideCount; side += 1) {
-          // Side 0 is the outer row, which is the one the standard mandates.
-          const rowIndex = side === 0 ? 0 : postRowCount - 1
-          const row = postRows[rowIndex]
-          for (const { elevation: railElevation } of railsWithin(rowTopEdge(rowIndex), railsAboveRow[rowIndex])) {
-            const points = row.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
-            addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points)
-          }
+      // 防护栏杆 sit on the 外排 and nowhere else: §7.3.12(1) mandates the 外立杆, and
+      // the row against the building is regulated as a gap to it. There is no
+      // parameter that changes this — only `swapInnerOuter`, which says WHICH side of
+      // the drawing the building is on.
+      if (guardedRails.length > 0) {
+        const railRow = postRows[outerRow]
+        for (const { elevation: railElevation } of railsWithin(rowTopEdge(outerRow), railsAboveRow[outerRow])) {
+          const points = railRow.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
+          addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points)
         }
 
         // 端部防护 returns across an open end. Both of that station's posts are built to
@@ -906,14 +1084,15 @@ export function calculateScaffold(
 
       if (!withDeck) return
 
-      // 钢笆片 are real 0.95 × 1.2 m panels: the 0.95 m side spans the 排距, the
-      // 1.2 m side runs along the bay. A bay is covered by whole pieces, so the
-      // count the material list reports is the number of pieces actually laid —
-      // while `deckArea` stays the geometric area covered, which a cut piece at the
-      // end of a bay cannot exceed.
+      // 钢笆片 are whole panels: the chosen width spans the 排距 (which follows it) and
+      // the chosen length runs along the bay, so the count the material list reports
+      // is the number of pieces actually laid — while `deckArea` stays the geometric
+      // area covered, which a cut piece at the end of a bay cannot exceed.
       const deckElevation = round(elevation + DECK_SURFACE_OFFSET)
-      const panelsAlong = Math.max(1, Math.ceil(bayLength / DECK_PANEL.length))
-      const panelsAcross = Math.max(1, Math.ceil(parameters.width / DECK_PANEL.width))
+      const panelLength = Math.max(0.1, parameters.deckPanelLength ?? DECK_PANEL.length)
+      const panelWidth = Math.max(0.1, parameters.deckPanelWidth ?? DECK_PANEL.width)
+      const panelsAlong = Math.max(1, Math.ceil(bayLength / panelLength))
+      const panelsAcross = Math.max(1, Math.ceil(parameters.width / panelWidth))
 
       for (let bay = 0; bay < bayCount; bay += 1) {
         /** A point on the bay: `along` 0..1 down the bay, `across` 0..1 between the rows. */
@@ -993,7 +1172,7 @@ export function calculateScaffold(
     }
     warnings.push({
       id: 'top-rail-height',
-      message: `顶层作业层 ${topLiftElevation} m：${parts.join('；')}，该处栏杆未设置。内侧按靠墙处理只到理论高度 ${theoreticalHeight} m（只有开口端的两根端柱与外排同高），若该端临空，请把「防护栏杆侧数」设为 2 让内排整排同步加高。`,
+      message: `顶层作业层 ${topLiftElevation} m：${parts.join('；')}，该处栏杆未设置。内侧按靠墙处理只到理论高度 ${theoreticalHeight} m（只有开口端的两根端柱与外排同高），请复核步距与栏杆根数。`,
     })
   }
 
@@ -1048,7 +1227,7 @@ export function calculateScaffold(
       }
     }))
   const assemblies = members.map((member) =>
-    createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap))
+    createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap, postSequences.get(member.id)))
   const pipeSegments = assemblies.flatMap((assembly) => assembly.segments)
   const connectors = [
     ...crossConnectors,
@@ -1073,8 +1252,8 @@ export function calculateScaffold(
       assemblyPlans,
       {
         theoretical: theoreticalHeight,
-        inner: round(rowTopEdge(1)),
-        outer: round(rowTopEdge(0)),
+        inner: round(rowTopEdge(innerRow)),
+        outer: round(rowTopEdge(outerRow)),
       },
     ),
   }

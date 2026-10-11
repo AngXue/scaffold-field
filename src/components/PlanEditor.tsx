@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { Focus, Magnet, Maximize2, Minimize2, MousePointer2, Plus, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
 import { NumberField } from './NumberField'
 import type { Point2D } from '../domain/scaffold'
-import { GRID_SIZE, insertPathSegment, measurePath, PIXELS_PER_METER, resizePathSegment } from '../domain/plan'
+import { GRID_SIZE, insertPathSegment, measurePath, PIXELS_PER_METER, resizePathSegment, type PathSide } from '../domain/plan'
 import { useCssFullscreen } from '../platform/fullscreen'
 
 type PlanEditorProps = {
@@ -223,17 +223,18 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
   }
 
   /**
-   * Adding a segment inserts a SHORT one after the selected segment (see
+   * Adding a segment inserts a SHORT one at either end of the selected segment (see
    * `insertPathSegment`), collinear with the outline and only 0.5 m long: a short
-   * handle is what makes the new direction and length easy to drag into place.
+   * handle is what makes the new direction and length easy to drag into place. The
+   * new segment becomes the selection, so the next press extends the same run.
    */
-  const addSegment = () => {
+  const addSegment = (side: PathSide) => {
     const index = Math.max(0, Math.min(selectedSegment, points.length - 2))
-    const nextPoints = insertPathSegment(points, index, NEW_SEGMENT_LENGTH)
+    const nextPoints = insertPathSegment(points, index, NEW_SEGMENT_LENGTH, side)
     if (nextPoints === points) return
     onPointsChange(nextPoints)
     onLengthsChange(measurePath(nextPoints))
-    setSelectedSegment(index + 1)
+    setSelectedSegment(side === 'after' ? index + 1 : index)
   }
 
   const reset = () => {
@@ -273,7 +274,10 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
           <button className="icon-button" type="button" onClick={toggleFullscreen} title={isFullscreen ? '退出全屏' : '全屏画布'}>
             {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
           </button>
-          <button className="compact-button" type="button" onClick={addSegment}><Plus size={17} /> 添加路径段</button>
+          {/* Either side of the selected segment: a run usually grows from one of
+              its ends, and which one is a drawing decision, not a path order. */}
+          <button className="compact-button" type="button" title="在选中段之前插入一段" onClick={() => addSegment('before')}><Plus size={17} /> 前插段</button>
+          <button className="compact-button" type="button" title="在选中段之后插入一段" onClick={() => addSegment('after')}><Plus size={17} /> 后插段</button>
         </div>
       </div>
 

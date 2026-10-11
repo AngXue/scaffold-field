@@ -14,6 +14,7 @@ import {
 import './App.css'
 import { MaterialView } from './components/MaterialView'
 import { NumberField } from './components/NumberField'
+import { OptionField } from './components/OptionField'
 import { PlanEditor } from './components/PlanEditor'
 import { PIXELS_PER_METER } from './domain/plan'
 import { saveTextFile } from './platform/files'
@@ -22,6 +23,8 @@ import { useAndroidBackButton } from './platform/useAndroidBackButton'
 import {
   calculateScaffold,
   countMembers,
+  DECK_PANEL_ROW_GAP,
+  DECK_PANEL_SIZES,
   DEFAULT_PARAMETERS,
   TOP_POST_EXTENSION,
   type MaterialAdjustments,
@@ -54,12 +57,16 @@ function loadStoredProject() {
     const project = JSON.parse(stored) as {
       points: Point2D[]
       lengths: number[]
-      parameters: Partial<ScaffoldParameters> & { rowCount?: number; height?: number }
+      parameters: Partial<ScaffoldParameters> & { rowCount?: number; height?: number; guardrailSides?: number }
       adjustments?: MaterialAdjustments
     }
-    // `height` is dropped on the way in: the migration below turns it into a 作业层
-    // count, and a stale copy would only confuse the domain merge.
-    const { height: legacyHeight, ...storedParameters } = project.parameters
+    // `height` and `guardrailSides` are dropped on the way in: the migration below
+    // turns the height into a 作业层 count, and the sides parameter is gone (rails are
+    // always on the 外排). A stale copy would only confuse the domain merge.
+    const storedParameters = { ...project.parameters }
+    const legacyHeight = storedParameters.height
+    delete storedParameters.height
+    delete storedParameters.guardrailSides
     // A project saved before `layerCount` carried a continuous 搭设高度: keep the
     // 作业层 it stood for rather than silently resetting it to the default.
     const layerCount = storedParameters.layerCount ?? (legacyHeight === undefined
@@ -112,8 +119,21 @@ function App() {
   const layout = calculateScaffold(points, lengths, settings)
   const counts = countMembers(layout)
 
-  const updateParameter = (key: keyof ScaffoldParameters, value: number) => {
+  const updateParameter = <K extends keyof ScaffoldParameters>(key: K, value: ScaffoldParameters[K]) => {
     setParameters({ ...settings, [key]: value })
+    setSaved(false)
+  }
+
+  /**
+   * 排距 follows the chosen 钢笆片 width — the panel spans the two rows with 0.05 m to
+   * spare — so `width` is written at the same time. It stays editable afterwards.
+   */
+  const chooseDeckPanelWidth = (deckPanelWidth: number) => {
+    setParameters({
+      ...settings,
+      deckPanelWidth,
+      width: Number((deckPanelWidth - DECK_PANEL_ROW_GAP).toFixed(2)),
+    })
     setSaved(false)
   }
 
@@ -224,6 +244,14 @@ function App() {
                   上栏杆 has to be able to say so rather than have the 中栏杆 counted
                   for it. */}
               <NumberField label="栏杆根数" value={settings.guardrailRailCount} unit="根" step={1} min={1} max={2} onChange={(value) => updateParameter('guardrailRailCount', Math.round(value))} />
+              {/* Which side of the drawn path faces the building. The 外排 — the railed,
+                  taller row — is the other one. */}
+              <OptionField
+                label="内侧位置"
+                value={settings.swapInnerOuter ? 'offset' : 'path'}
+                options={[{ value: 'path', label: '路径侧' }, { value: 'offset', label: '偏移侧' }]}
+                onChange={(value) => updateParameter('swapInnerOuter', value === 'offset')}
+              />
             </div>
 
             <details className="parameter-more">
@@ -232,16 +260,25 @@ function App() {
                 <NumberField label="脚手架宽度" value={settings.width} onChange={(value) => updateParameter('width', value)} />
                 <NumberField label="立杆纵距" value={settings.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
                 <NumberField label="步距" value={settings.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
+                {/* The 排距 follows the panel width (chosen below), and stays editable. */}
                 <NumberField label="管端外伸" value={settings.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
-                {/* JGJ 130-2011 §7.3.12 mandates 外立杆 only, so 1 is the code minimum and
-                    the default; 2 is required when the inner face is genuinely 临空, and
-                    it is what builds the whole inner row to the railed height. */}
-                <NumberField label="防护栏杆侧数" value={settings.guardrailSides} unit="侧" step={1} min={0} max={2} onChange={(value) => updateParameter('guardrailSides', Math.round(value))} />
                 {/* 对接扣件 butts two tubes, so the joint consumes no length; raise
                     this past 1 m and the connection becomes a 搭接, which needs
                     旋转扣件 and is flagged as not modelled. */}
                 <NumberField label="搭接长度" value={settings.spliceOverlap} step={0.1} min={0} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
                 <NumberField label="钢笆铺设间隔" value={settings.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
+                <OptionField
+                  label="钢笆片长度"
+                  value={settings.deckPanelLength}
+                  options={DECK_PANEL_SIZES.lengths.map((length) => ({ value: length, label: `${length} m` }))}
+                  onChange={(value) => updateParameter('deckPanelLength', value)}
+                />
+                <OptionField
+                  label="钢笆片宽度"
+                  value={settings.deckPanelWidth}
+                  options={DECK_PANEL_SIZES.widths.map((width) => ({ value: width, label: `${width} m` }))}
+                  onChange={chooseDeckPanelWidth}
+                />
               </div>
               <p className="stock-spec-note">库存钢管规格：{settings.stockLengths.join(' / ')} m</p>
             </details>

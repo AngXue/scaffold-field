@@ -133,6 +133,13 @@
 .number-step:last-child { box-shadow: inset 1px 0 0 var(--nm-dark-in); }
 .number-step:active:not(:disabled) { color: var(--ink); background: var(--nm-surface); }
 .number-step:disabled { opacity: 0.3; cursor: not-allowed; }
+/* A parameter that is a choice rather than a number. The track is sunk (it is a
+   container) and the chosen option is the raised chip inside it; the selection is
+   legible without colour because `--ink` and `--muted` are 15.6:1 and 5.3:1. */
+.option-row { height: 44px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; padding: 3px; border-radius: var(--nm-r-1); background: var(--nm-sunk); box-shadow: var(--nm-i1), var(--nm-edge); }
+.option-button { min-width: 0; padding: 0 4px; overflow: hidden; color: var(--muted); background: transparent; border: 0; border-radius: calc(var(--nm-r-1) - 2px); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; touch-action: manipulation; }
+.option-button.active { color: var(--ink); background: var(--nm-surface); box-shadow: var(--nm-e1); }
+.option-button:active:not(.active) { color: var(--ink); }
 .rule-section { display: grid; gap: 13px; }
 .rule-section h2 { margin-bottom: 0; }
 .range-row { display: grid; gap: 8px; color: var(--muted); font-size: 11px; }

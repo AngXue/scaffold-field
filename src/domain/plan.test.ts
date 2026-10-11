@@ -32,6 +32,26 @@ describe('plan geometry', () => {
     expect(new Set(insertPathSegment(inserted, 1, 0.5).map((point) => point.id)).size).toBe(5)
   })
 
+  it('inserts on the other side too, hanging off the selected segment\'s start', () => {
+    // Inserting BEFORE the middle segment hangs the new node off the leg that
+    // precedes it, so the outline through (200, 0) does not move either.
+    const before = insertPathSegment(points, 1, 0.5, 'before')
+    const lengths = measurePath(before)
+
+    expect(before.map((point) => point.id)).toEqual(['P1', 'P4', 'P2', 'P3'])
+    expect(lengths).toEqual([6.7, 0.5, 4.8])
+    expect(lengths[0] + lengths[1]).toBeCloseTo(7.2, 2)
+  })
+
+  it('grows the path at its start, back along the selected segment', () => {
+    const extended = insertPathSegment(points, 0, 0.5, 'before')
+
+    // Nothing precedes the first segment, so the path grows straight back.
+    expect(measurePath(extended)).toEqual([0.5, 7.2, 4.8])
+    expect(extended[0].y).toBe(extended[1].y)
+    expect(extended[0].x).toBeLessThan(extended[1].x)
+  })
+
   it('grows the path at its end along the selected segment', () => {
     const extended = insertPathSegment(points, 1, 0.5)
 
