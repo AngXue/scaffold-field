@@ -1,3 +1,5 @@
+import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
+
 export type Point2D = {
   id: string
   x: number
@@ -166,6 +168,10 @@ export type ScaffoldMember = {
   length: number
   layer?: number
   pathSegment?: number
+  /** Shared physical run can serve both longitudinal and transverse roles. */
+  roles?: MemberType[]
+  /** Incoming segment indices of actual mitre replacements at this post. */
+  cornerJunctions?: number[]
 }
 
 export type PipeSegment = {
@@ -182,6 +188,8 @@ export type PipeSegment = {
 export type DeckPanel = {
   id: string
   corners: [Vector3Tuple, Vector3Tuple, Vector3Tuple, Vector3Tuple]
+  /** Visible, non-overlapping cut faces belonging to this one purchased panel. */
+  coverage?: Vector3Tuple[][]
   area: number
   layer: number
   pathSegment: number
@@ -192,6 +200,10 @@ export type ScaffoldConnector = {
   type: ConnectorType
   position: Vector3Tuple
   memberId: string
+  /** Tube axes used to orient the simplified fitting, independent of the camera. */
+  axis: Vector3Tuple
+  secondaryAxis?: Vector3Tuple
+  connectedMemberId?: string
 }
 
 /**
@@ -293,7 +305,18 @@ export type MaterialResult = {
   assemblyPlans: PipeAssemblyPlan[]
 }
 
+export type PathDimension = {
+  index: number
+  length: number
+  start: Vector3Tuple
+  end: Vector3Tuple
+  labelPosition: Vector3Tuple
+}
+
 export type ScaffoldLayout = {
+  /** Measured path only: an open path has no implied closing edge. */
+  pathDimensions: PathDimension[]
+  perimeter: number
   members: ScaffoldMember[]
   pipeSegments: PipeSegment[]
   decks: DeckPanel[]
@@ -366,6 +389,31 @@ export const MATERIAL_KEYS = {
  * of it, instead of the corrected number silently going stale.
  */
 export type MaterialAdjustments = Record<string, number>
+
+/** Display, export and totals all use the same clamped base-unit quantity. */
+export function materialQuantity(calculated: number | null, adjustments: MaterialAdjustments, key: string) {
+  return Math.max(0, (calculated ?? 0) + (adjustments[key] ?? 0))
+}
+
+/** Delta to add to the stored correction, clamping the last partial bag at zero. */
+export function materialAdjustmentStep(calculated: number | null, adjustments: MaterialAdjustments, key: string, step: number) {
+  const raw = (calculated ?? 0) + (adjustments[key] ?? 0)
+  return Math.max(0, Math.max(0, raw) + step) - raw
+}
+
+/** Include unused default stocks so the site can add them manually. */
+export function stockMaterialRows(stockSummary: Record<string, number>, adjustments: MaterialAdjustments) {
+  const lengths = new Set([
+    ...DEFAULT_PARAMETERS.stockLengths.map(length => `${length}m`),
+    ...Object.keys(stockSummary),
+    ...Object.keys(adjustments).filter(key => /^stock:\d+(?:\.\d+)?m$/.test(key)).map(key => key.slice('stock:'.length)),
+  ])
+  return [...lengths].map(length => ({
+    length,
+    calculated: stockSummary[length] ?? 0,
+    quantity: materialQuantity(stockSummary[length] ?? 0, adjustments, MATERIAL_KEYS.stock(length)),
+  })).sort((a, b) => Number(b.quantity > 0) - Number(a.quantity > 0) || Number.parseFloat(b.length) - Number.parseFloat(a.length))
+}
 
 const round = (value: number, precision = 3) => Number(value.toFixed(precision))
 const vectorDistance = (a: Vector3Tuple, b: Vector3Tuple) =>
@@ -443,11 +491,11 @@ function chooseStockLengths(requiredLength: number, stockLengths: number[], over
  * The sequence IS the joint layout, which is why the order matters: [6, 4.5] joints
  * at 6 m, [4.5, 6] at 4.5 m.
  */
-function jointHeights(sequence: number[]) {
+function jointHeights(sequence: number[], overlap = 0) {
   const joints: number[] = []
   let cursor = 0
   sequence.slice(0, -1).forEach((stock) => {
-    cursor += stock
+    cursor += stock - overlap
     joints.push(round(cursor))
   })
   return joints
@@ -578,6 +626,7 @@ function createPipeAssembly(
         type: 'butt',
         position: cursor.toTuple(),
         memberId: member.id,
+        axis: direction.toTuple(),
       })
     }
     cursor = cursor.add(direction.scale(stockLength - overlap))
@@ -696,6 +745,140 @@ function calculateMaterials(
   }
 }
 
+/** Co-linear runs are one design member, including a straight drawing split. */
+function mergeSharedRuns(members: ScaffoldMember[]) {
+  const groups = new Map<string, Array<{ member: ScaffoldMember; low: number; high: number }>>()
+  for (const member of members) {
+    if (member.type === 'post') continue
+    let dx = (member.end[0] - member.start[0]) / member.length
+    let dz = (member.end[2] - member.start[2]) / member.length
+    if (dx < -1e-6 || (Math.abs(dx) < 1e-6 && dz < 0)) { dx = -dx; dz = -dz }
+    const key = `${member.type === 'guardrail' ? 'guardrail' : 'horizontal'}:${member.layer}:${member.start[1]}:${dx.toFixed(5)}:${dz.toFixed(5)}:${(-dz * member.start[0] + dx * member.start[2]).toFixed(3)}`
+    const values = [member.start, member.end].map(p => p[0] * dx + p[2] * dz)
+    const group = groups.get(key) ?? []
+    group.push({ member, low: Math.min(...values), high: Math.max(...values) })
+    groups.set(key, group)
+  }
+  const removed = new Set<string>()
+  for (const group of groups.values()) {
+    group.sort((a, b) => a.low - b.low || b.high - a.high)
+    let active = group[0]
+    for (const next of group.slice(1)) {
+      if (next.low > active.high + 0.001) { active = next; continue }
+      const candidates = [active.member.start, active.member.end, next.member.start, next.member.end]
+      candidates.sort((a, b) => a[0] - b[0] || a[2] - b[2])
+      active.member.roles = [...new Set([...(active.member.roles ?? [active.member.type]), ...(next.member.roles ?? [next.member.type])])]
+      if (active.member.roles.includes('longitudinal')) active.member.type = 'longitudinal'
+      active.member.start = candidates[0]
+      active.member.end = candidates.at(-1)!
+      active.member.length = round(vectorDistance(active.member.start, active.member.end))
+      active.member.connectionPoints = [...new Map([...active.member.connectionPoints, ...next.member.connectionPoints].map(p => [pointKey(p), p])).values()]
+      active.high = Math.max(active.high, next.high)
+      removed.add(next.member.id)
+    }
+  }
+  const kept = members.filter(member => !removed.has(member.id))
+  members.splice(0, members.length, ...kept)
+}
+
+function onPlanRun(point: Vector3Tuple, member: ScaffoldMember) {
+  const dx = member.end[0] - member.start[0], dz = member.end[2] - member.start[2]
+  const length = Math.hypot(dx, dz)
+  if (length < 0.001) return false
+  const along = ((point[0] - member.start[0]) * dx + (point[2] - member.start[2]) * dz) / length
+  return along >= -0.005 && along <= length + 0.005
+    && Math.abs((point[0] - member.start[0]) * dz - (point[2] - member.start[2]) * dx) / length < 0.005
+}
+
+/** Preserve the preferred alternating sequences, then repair the FINAL graph. */
+function repairPostSplices(members: ScaffoldMember[], sequences: Map<string, number[]>, parameters: ScaffoldParameters, warnings: LayoutWarning[]) {
+  const posts = members.filter(m => m.type === 'post')
+  const neighbours = new Map(posts.map(post => [post.id, new Set<string>()]))
+  for (const run of members.filter(m => (m.type === 'longitudinal' || m.type === 'transverse') && m.layer === 1)) {
+    const row = posts.filter(post => onPlanRun(post.start, run)).sort((a, b) =>
+      vectorDistance(a.start, run.start) - vectorDistance(b.start, run.start))
+    for (let i = 1; i < row.length; i++) {
+      neighbours.get(row[i - 1].id)!.add(row[i].id)
+      neighbours.get(row[i].id)!.add(row[i - 1].id)
+    }
+  }
+  const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...parameters.stockLengths) * 0.8))
+  const stocks = parameters.stockLengths.filter(stock => stock > overlap).sort((a, b) => b - a)
+  const assigned = new Set<string>()
+  const cache = new Map<string, number[] | null>()
+  for (const post of posts) {
+    const forbidden = [...neighbours.get(post.id)!].filter(id => assigned.has(id)).flatMap(id => jointHeights(sequences.get(id)!, overlap))
+    const fits = (sequence: number[]) => jointHeights(sequence, overlap).every(joint => forbidden.every(other => Math.abs(joint - other) >= SPLICE_STAGGER - 0.001))
+    const preferred = sequences.get(post.id)!
+    if (!fits(preferred)) {
+      const cacheKey = `${post.length}:${[...new Set(forbidden)].sort((a, b) => a - b).join(',')}`
+      let replacement = cache.get(cacheKey)
+      if (replacement === undefined) {
+        // DP keeps one legal prefix per (piece count, height). Future legality
+        // only depends on that height, so no exponential stock permutations.
+        let states = new Map<number, number[]>([[0, []]])
+        replacement = null
+        const limit = Math.ceil(post.length / Math.max(0.1, (stocks[0] ?? post.length) - overlap)) + 3
+        for (let count = 1; count <= limit && !replacement; count++) {
+          const next = new Map<number, number[]>()
+          for (const [height, prefix] of states) {
+            if (prefix.length && forbidden.some(joint => Math.abs(height - overlap - joint) < SPLICE_STAGGER - 0.001)) continue
+            for (const stock of stocks) {
+              const total = round(height + stock - (prefix.length ? overlap : 0))
+              if (!next.has(total)) next.set(total, [...prefix, stock])
+            }
+          }
+          const primaryTotal = preferred.reduce((a, b) => a + b, 0) - overlap * (preferred.length - 1)
+          const candidates = [...next].filter(([height]) => height >= post.length - 0.001)
+          candidates.sort(([a], [b]) => Number(Math.abs(a - primaryTotal) < 0.001) - Number(Math.abs(b - primaryTotal) < 0.001) || a - b)
+          replacement = candidates[0]?.[1] ?? null
+          states = next
+        }
+        cache.set(cacheKey, replacement)
+      }
+      if (replacement) sequences.set(post.id, replacement)
+      else warnings.push({ id: `splice-stagger-${post.id}`, message: `立杆 (${post.start[0]}, ${post.start[2]}) 在当前库存管规格下无法与相邻接头错开 0.5 m，请调整规格或站位。` })
+    }
+    assigned.add(post.id)
+  }
+}
+
+/** One panel can have several cut faces; it is still bought/counts only once. */
+function resolveDeckCoverage(decks: DeckPanel[], path: Array<[number, number]>, closed: boolean) {
+  if (!decks.length) return
+  const firstLayer = Math.min(...decks.map(deck => deck.layer))
+  const templates = decks.filter(deck => deck.layer === firstLayer)
+  const plan = (deck: DeckPanel): PlanPolygon => deck.corners.map(p => [p[0], p[2]])
+  const key = (deck: DeckPanel) => `${deck.pathSegment}:${plan(deck).map(p => p.join(',')).join('|')}`
+  const raw = templates.map(plan)
+  const faces = new Map<string, PlanPolygon[]>()
+  const covered: PlanPolygon[] = []
+  // At an ordinary inside corner the incoming leg owns the common square.
+  // Applying this locally first makes the result independent of the closed seam.
+  templates.forEach((deck, index) => {
+    const previous = (deck.pathSegment + path.length - 2) % (path.length - 1)
+    const cutters = (closed || deck.pathSegment > 0)
+      ? templates.flatMap((other, i) => other.pathSegment === previous ? [raw[i]] : []) : []
+    const remaining = subtractCoverage(subtractCoverage([raw[index]], cutters), covered)
+    faces.set(key(deck), remaining)
+    covered.push(...remaining)
+  })
+  // Recover regions involved in cyclic/multiple overlaps exactly once. This also
+  // handles a narrow U without holes or guessing a fractional panel quantity.
+  templates.forEach((deck, index) => {
+    const remaining = subtractCoverage([raw[index]], covered)
+    faces.get(key(deck))!.push(...remaining)
+    covered.push(...remaining)
+  })
+  const kept = decks.flatMap(deck => {
+    const polygons = faces.get(key(deck))!
+    const area = polygons.reduce((sum, polygon) => sum + Math.abs(signedArea(polygon)), 0)
+    if (area < 1e-7) return []
+    return [{ ...deck, area: round(area, 9), coverage: polygons.map(polygon => polygon.map(([x, z]) => [x, deck.corners[0][1], z] as Vector3Tuple)) }]
+  })
+  decks.splice(0, decks.length, ...kept)
+}
+
 export function calculateScaffold(
   points: Point2D[],
   segmentLengths: number[],
@@ -720,6 +903,7 @@ export function calculateScaffold(
   const postByPoint = new Map<string, ScaffoldMember>()
   const channelKeys = new Set<string>()
   let memberSequence = 1
+  const memberByGeometry = new Map<string, ScaffoldMember>()
 
   const addMember = (
     type: MemberType,
@@ -734,6 +918,9 @@ export function calculateScaffold(
     const [physicalStart, physicalEnd] = extendLine(start, end, startExtension, endExtension)
     const length = round(vectorDistance(physicalStart, physicalEnd))
     if (length <= 0.001) return undefined
+    const geometryKey = `${type}:${layer}:${[pointKey(physicalStart), pointKey(physicalEnd)].sort().join('|')}`
+    const shared = memberByGeometry.get(geometryKey)
+    if (shared) return shared
     const member: ScaffoldMember = {
       id: `M${memberSequence++}`,
       type,
@@ -745,6 +932,7 @@ export function calculateScaffold(
       pathSegment,
     }
     members.push(member)
+    memberByGeometry.set(geometryKey, member)
     return member
   }
 
@@ -795,6 +983,29 @@ export function calculateScaffold(
   const pathIsClosed = physical.length > 2 &&
     Math.hypot(physical[0][0] - physical[physical.length - 1][0], physical[0][1] - physical[physical.length - 1][1]) < 0.01
 
+  // Validate the measured path separately from local corner construction.
+  for (let i = 0; i + 1 < physical.length; i++) for (let j = i + 1; j + 1 < physical.length; j++) {
+    const a = physical[i], b = physical[i + 1], c = physical[j], d = physical[j + 1]
+    const u = [b[0] - a[0], b[1] - a[1]], v = [d[0] - c[0], d[1] - c[1]]
+    const cross = (x: number[], y: number[]) => x[0] * y[1] - x[1] * y[0]
+    const delta = [c[0] - a[0], c[1] - a[1]], denominator = cross(u, v)
+    const adjacent = j === i + 1 || (pathIsClosed && i === 0 && j === physical.length - 2)
+    if (Math.abs(denominator) < 1e-8) {
+      const length = Math.hypot(...u)
+      if (length < 0.001 || Math.abs(cross(delta, u)) / length > 0.001) continue
+      const t0 = (delta[0] * u[0] + delta[1] * u[1]) / length
+      const t1 = ((d[0] - a[0]) * u[0] + (d[1] - a[1]) * u[1]) / length
+      if (Math.min(length, Math.max(t0, t1)) - Math.max(0, Math.min(t0, t1)) > 0.001) {
+        warnings.push({ id: `path-overlap-${i}-${j}`, message: `第 ${i + 1}、${j + 1} 段重叠或原路折返，请调整路径。` })
+      }
+    } else if (!adjacent) {
+      const t = cross(delta, v) / denominator, s = cross(delta, u) / denominator
+      if (t >= -1e-8 && t <= 1 + 1e-8 && s >= -1e-8 && s <= 1 + 1e-8) {
+        warnings.push({ id: `path-crossing-${i}-${j}`, message: `第 ${i + 1}、${j + 1} 段自交，交叉处构造未建模，请调整路径。` })
+      }
+    }
+  }
+
   // The 横向杆 is a 1.2 m site tube with NO `tubeEndExtension`: the 排距 is narrower,
   // so the tube overhangs both 立杆 by half the surplus (createPipeAssembly centres
   // the excess). The 槽钢 base beam is laid to the same length as that tube.
@@ -837,15 +1048,47 @@ export function calculateScaffold(
   /** Stations where the offset row's post is skipped; see the junction rule below. */
   const skippedOffsetPosts = new Set<string>()
 
+  const segmentCount = Math.max(0, physical.length - 1)
+  const nextSegment = (index: number) => (index + 1) % segmentCount
+  const previousSegment = (index: number) => (index + segmentCount - 1) % segmentCount
+  const segmentOrder = Array.from({ length: segmentCount }, (_, index) => index)
+  // A closed outline has no privileged first vertex. Stable traversal also keeps
+  // coincident-post height/stock ownership independent of where drawing began.
+  if (pathIsClosed) {
+    const signature = (start: number) => segmentOrder.map((_, offset) => {
+      const i = (start + offset) % segmentCount, j = nextSegment(i)
+      const a = physical[i], b = physical[i + 1], c = physical[j + 1]
+      const ux = b[0] - a[0], uz = b[1] - a[1], vx = c[0] - b[0], vz = c[1] - b[1]
+      return `${round(Math.hypot(ux, uz))}:${round(Math.atan2(ux * vz - uz * vx, ux * vx + uz * vz), 6)}`
+    }).join('|')
+    const signatures = segmentOrder.map(signature)
+    const first = segmentOrder.reduce((best, index) => {
+      if (signatures[index] !== signatures[best]) return signatures[index] < signatures[best] ? index : best
+      return physical[index][0] < physical[best][0] - 0.001 ||
+        (Math.abs(physical[index][0] - physical[best][0]) < 0.001 && physical[index][1] < physical[best][1]) ? index : best
+    }, 0)
+    segmentOrder.splice(0, segmentCount, ...segmentOrder.slice(first), ...segmentOrder.slice(0, first))
+  }
+  const bands: PlanPolygon[] = physical.slice(0, -1).map((start, i) => {
+    const end = physical[i + 1], length = Math.hypot(end[0] - start[0], end[1] - start[1]) || 1
+    const nx = -(end[1] - start[1]) / length * parameters.width, nz = (end[0] - start[0]) / length * parameters.width
+    return [start, end, [end[0] + nx, end[1] + nz], [start[0] + nx, start[1] + nz]]
+  })
+  const overlappingBands = bands.some((band, i) => bands.some((other, j) => {
+    if (j <= i + 1 || (pathIsClosed && i === 0 && j === segmentCount - 1)) return false
+    const uncovered = subtractCoverage([band], [other]).reduce((sum, piece) => sum + Math.abs(signedArea(piece)), 0)
+    return Math.abs(signedArea(band)) - uncovered > 0.001
+  }))
+  if (overlappingBands) warnings.push({ id: 'scaffold-overlap', message: '非相邻段的架体带重叠：共用直杆已合并、钢笆按覆盖区裁切，请复核重叠区域的搭设布置。' })
   const segmentBays = physical.slice(0, -1).map((point, index) => {
     const next = physical[index + 1]
     const length = Math.hypot(next[0] - point[0], next[1] - point[1])
-    return length <= 0.001 ? 0 : Math.max(1, Math.ceil(length / parameters.postSpacing))
+    return length <= 0.001 ? 0 : Math.max(1, Math.ceil(length / parameters.postSpacing - 1e-9))
   })
   const stationOffsets: number[] = []
-  segmentBays.reduce((running, bays) => {
-    stationOffsets.push(running)
-    return running + bays
+  segmentOrder.reduce((running, index) => {
+    stationOffsets[index] = running
+    return running + segmentBays[index]
   }, 0)
 
   /**
@@ -864,7 +1107,7 @@ export function calculateScaffold(
   const turnIsCorner = (index: number) => {
     const a = physical[index]
     const b = physical[index + 1]
-    const c = physical[index + 2]
+    const c = physical[nextSegment(index) + 1]
     const ab: [number, number] = [b[0] - a[0], b[1] - a[1]]
     const bc: [number, number] = [c[0] - b[0], c[1] - b[1]]
     const lengths = Math.hypot(...ab) * Math.hypot(...bc)
@@ -922,9 +1165,31 @@ export function calculateScaffold(
     }
   }
 
+  // A short leg can already be extended by its OTHER (convex) corner. Resolve
+  // that envelope from the two adjacent lines, independently of traversal order.
+  const offsetRowLimits = (index: number) => {
+    const row = rowLine(index, 1)!
+    let start = 0, end = row.length
+    const previous = previousSegment(index), next = nextSegment(index)
+    if ((pathIsClosed || index > 0) && turnIsCorner(previous)) {
+      const other = rowLine(previous, 1)
+      const crossing = other && linesMeet(row, other)
+      if (crossing && crossing.alongA < 0 && crossing.alongA >= -parameters.width - 0.001
+        && crossing.alongB >= other.length - 0.001
+        && crossing.alongB <= other.length + parameters.width + 0.001) start = crossing.alongA
+    }
+    if ((pathIsClosed || index < segmentCount - 1) && turnIsCorner(index)) {
+      const other = rowLine(next, 1)
+      const crossing = other && linesMeet(row, other)
+      if (crossing && crossing.alongA > row.length && crossing.alongA <= row.length + parameters.width + 0.001
+        && crossing.alongB <= 0.001 && crossing.alongB >= -parameters.width - 0.001) end = crossing.alongA
+    }
+    return { start, end }
+  }
+
   const offsetRowCrossing = (junction: number) => {
     const a = rowLine(junction, 1)
-    const b = rowLine(junction + 1, 1)
+    const b = rowLine(nextSegment(junction), 1)
     if (!a || !b) return null
     const denominator = a.direction[0] * b.direction[1] - a.direction[1] * b.direction[0]
     if (Math.abs(denominator) < 1e-6) return null
@@ -932,8 +1197,9 @@ export function calculateScaffold(
     const dy = b.origin[1] - a.origin[1]
     const alongA = (dx * b.direction[1] - dy * b.direction[0]) / denominator
     const alongB = (dx * a.direction[1] - dy * a.direction[0]) / denominator
-    const inside = alongA >= -0.001 && alongA <= a.length + 0.001
-      && alongB >= -0.001 && alongB <= b.length + 0.001
+    const aLimits = offsetRowLimits(junction), bLimits = offsetRowLimits(nextSegment(junction))
+    const inside = alongA >= aLimits.start - 0.001 && alongA <= a.length + 0.001
+      && alongB >= -0.001 && alongB <= bLimits.end + 0.001
     // The offset rows are laid to the LEFT of each leg, so a turn that way puts them
     // inside the corner and they cross within both runs. A turn the other way leaves
     // them outside it, each stopping one 排距 short of the other — the convex corner,
@@ -941,9 +1207,14 @@ export function calculateScaffold(
     // meet. Further apart than that is not this junction's corner at all.
     const slack = parameters.width + 0.001
     const meetsAtTheEnd = Math.abs(alongA - a.length) <= slack && Math.abs(alongB) <= slack
-    if (!inside && !meetsAtTheEnd) return null
+    // A short inside leg can put the crossing BEFORE its start or AFTER the
+    // other leg's end. That is not a convex corner and cannot be extended here.
+    const outside = alongA >= a.length - 0.001 && alongB <= 0.001
+    if (!inside && !(outside && meetsAtTheEnd)) return null
     return {
       inside,
+      alongA,
+      alongB,
       aNormal: a.normal,
       bNormal: b.normal,
       // Which side actually falls short: a run that already passes the crossing (or
@@ -998,15 +1269,26 @@ export function calculateScaffold(
     parity: number
     beamCentre: Vector3Tuple
   }> = []
-  for (let junction = 0; junction + 2 < physical.length; junction += 1) {
+  const joinedCorners = new Set<number>()
+  const offsetPostLimits = physical.slice(0, -1).map(() => ({ start: -Infinity, end: Infinity }))
+  const cornerStations: number[][] = physical.slice(0, -1).map(() => [])
+  for (const junction of segmentOrder) {
+    if (!pathIsClosed && junction === segmentCount - 1) continue
+    const outgoing = nextSegment(junction)
     if (!turnIsCorner(junction)) continue
     // Nothing is dropped unless the replacement can stand there. A short leg, a wide
     // turn or a stub inserted by hand can put the crossing outside both runs, and
     // dropping the two posts then would leave the corner — or a whole short leg —
     // with no uprights at all, which is exactly what it must never do.
     const crossing = offsetRowCrossing(junction)
-    if (!crossing) continue
-    skippedChannels.add(`${junction + 1}:0`)
+    if (!crossing) {
+      warnings.push({ id: `short-corner-${junction}`, message: `第 ${junction + 1}、${outgoing + 1} 段转角的偏移排交点超出短边，保留原站位和横向杆，未自动合并角柱，请调整短边或排距。` })
+      continue
+    }
+    joinedCorners.add(junction)
+    cornerStations[junction].push(crossing.alongA)
+    cornerStations[outgoing].push(crossing.alongB)
+    skippedChannels.add(`${outgoing}:0`)
     const incomingParity = (1 + stationOffsets[junction] + segmentBays[junction]) % 2
     let mitreParity = incomingParity
     let beamCentre = crossing.point
@@ -1014,9 +1296,9 @@ export function calculateScaffold(
     const reach = parameters.width * 2
     for (const ratio of rowRatios) {
       const incomingRow = rowLine(junction, ratio)
-      const outgoingRow = rowLine(junction + 1, ratio)
+      const outgoingRow = rowLine(outgoing, ratio)
       const incomingOuter = rowLine(junction, 1)
-      const outgoingOuter = rowLine(junction + 1, 1)
+      const outgoingOuter = rowLine(outgoing, 1)
       if (!incomingRow || !outgoingRow || !incomingOuter || !outgoingOuter) continue
       // The incoming leg's rows all reach the outgoing leg's 外排 line.
       const forward = linesMeet(incomingRow, outgoingOuter)
@@ -1034,7 +1316,7 @@ export function calculateScaffold(
       // and leaving that row visibly short of its neighbours.
       const backward = linesMeet(outgoingRow, incomingOuter)
       if (backward && backward.alongA < -0.001 && backward.alongA > -reach) {
-        offsetRowExtensions[junction + 1].atStart.set(ratio, [
+        offsetRowExtensions[outgoing].atStart.set(ratio, [
           round(backward.point[0]),
           0,
           round(backward.point[1]),
@@ -1043,8 +1325,10 @@ export function calculateScaffold(
     }
 
     if (crossing.inside) {
+      offsetPostLimits[junction].end = Math.min(offsetPostLimits[junction].end, crossing.alongA)
+      offsetPostLimits[outgoing].start = Math.max(offsetPostLimits[outgoing].start, crossing.alongB)
       skippedOffsetPosts.add(`${junction}:${segmentBays[junction]}`)
-      skippedOffsetPosts.add(`${junction + 1}:0`)
+      skippedOffsetPosts.add(`${outgoing}:0`)
     } else {
       // Convex corner: the posts at the runs' old ends stay — they are what carries the
       // extension — and the corner post is added on the crossing.
@@ -1065,7 +1349,7 @@ export function calculateScaffold(
     // Both legs' rows now run through each other's junction station (the 横向杆 there was
     // never emitted — the neighbouring segment's row spans it, see `isInternalPathNode`),
     // so a convex corner is also what frames the square 钢笆 piece laid below.
-    if (offsetRowExtensions[junction + 1].atStart.size > 0) {
+    if (offsetRowExtensions[outgoing].atStart.size > 0) {
       const corner = physical[junction + 1]
       const offsetBy = (normal: [number, number]): Vector3Tuple => [
         round(corner[0] + normal[0] * parameters.width),
@@ -1114,6 +1398,8 @@ export function calculateScaffold(
         postSequences.set(member.id, postSequenceFor(height, mitre.parity))
       }
     }
+    const cornerPost = postByPoint.get(key)
+    if (cornerPost) cornerPost.cornerJunctions = [...(cornerPost.cornerJunctions ?? []), mitre.pathSegment]
     const half = transverseTubeLength / 2
     const channelStart: Vector3Tuple = [
       round(mitre.beamCentre[0] - mitre.normal[0] * half),
@@ -1138,7 +1424,8 @@ export function calculateScaffold(
     }
   }
 
-  physical.slice(0, -1).forEach((start2d, segmentIndex) => {
+  segmentOrder.forEach((segmentIndex) => {
+    const start2d = physical[segmentIndex]
     const end2d = physical[segmentIndex + 1]
     const segmentLength = Math.hypot(end2d[0] - start2d[0], end2d[1] - start2d[1])
     if (segmentLength <= 0.001) {
@@ -1148,8 +1435,20 @@ export function calculateScaffold(
       })
       return
     }
-    const bayCount = Math.max(1, Math.ceil(segmentLength / parameters.postSpacing))
+    const bayCount = Math.max(1, Math.ceil(segmentLength / parameters.postSpacing - 1e-9))
     const bayLength = segmentLength / bayCount
+    const stations = Array.from({ length: bayCount + 1 }, (_, index) => index * bayLength)
+    // Share a nearby corner station across BOTH rows, its crossbar, base and deck
+    // bay. Never move an outline endpoint or increase a bay beyond the spacing.
+    for (const anchor of cornerStations[segmentIndex].sort((a, b) => a - b)) {
+      if (anchor <= 0.001 || anchor >= segmentLength - 0.001) continue
+      const nearest = stations.reduce((best, value, index) =>
+        Math.abs(value - anchor) < Math.abs(stations[best] - anchor) ? index : best, 0)
+      if (nearest === 0 || nearest === bayCount || Math.abs(stations[nearest] - anchor) > 0.25) continue
+      if (anchor - stations[nearest - 1] > parameters.postSpacing + 0.001
+        || stations[nearest + 1] - anchor > parameters.postSpacing + 0.001) continue
+      stations[nearest] = anchor
+    }
     const direction: [number, number] = [
       (end2d[0] - start2d[0]) / segmentLength,
       (end2d[1] - start2d[1]) / segmentLength,
@@ -1170,14 +1469,25 @@ export function calculateScaffold(
       for (let row = 0; row < postRowCount; row += 1) {
         const offset = row * parameters.width
         const point: Vector3Tuple = [
-          round(start2d[0] + direction[0] * bayLength * station + normal[0] * offset),
+          round(start2d[0] + direction[0] * stations[station] + normal[0] * offset),
           0,
-          round(start2d[1] + direction[1] * bayLength * station + normal[1] * offset),
+          round(start2d[1] + direction[1] * stations[station] + normal[1] * offset),
         ]
         postRows[row].push(point)
         // Row 1 is the row offset from the path; a corner does not need its post at
         // either side of the junction (see `skippedOffsetPosts`).
-        if (row === 1 && skippedOffsetPosts.has(`${segmentIndex}:${station}`)) continue
+        // On a short return, an old endpoint can fall just INSIDE the mitre
+        // instead of just outside it. If the other convex corner already carries
+        // this entire short row, the endpoint is equally redundant.
+        const limits = offsetPostLimits[segmentIndex]
+        const anchors = cornerStations[segmentIndex]
+        const nearTrimmedCorner = (station === 0 && limits.end > 0 && limits.end <= 0.25
+          && anchors.some(anchor => anchor < -0.001 && limits.end - anchor <= parameters.postSpacing + 0.001))
+          || (station === bayCount && segmentLength - limits.start > 0 && segmentLength - limits.start <= 0.25
+          && anchors.some(anchor => anchor > segmentLength + 0.001 && anchor - limits.start <= parameters.postSpacing + 0.001))
+        if (row === 1 && (nearTrimmedCorner || skippedOffsetPosts.has(`${segmentIndex}:${station}`)
+          || stations[station] > offsetPostLimits[segmentIndex].end + 0.001
+          || stations[station] < offsetPostLimits[segmentIndex].start - 0.001)) continue
         const key = pointKey(point)
         const post = postHeightAt(row, atOpenEnd)
         const parity = (row + stationOffsets[segmentIndex] + station) % 2
@@ -1316,8 +1626,8 @@ export function calculateScaffold(
       }
 
       postRows[0].forEach((outerPoint, station) => {
-        const isInternalPathNode = (station === 0 && segmentIndex > 0) ||
-          (station === bayCount && segmentIndex < physical.length - 2)
+        const isInternalPathNode = (station === 0 && joinedCorners.has(previousSegment(segmentIndex))) ||
+          (station === bayCount && joinedCorners.has(segmentIndex))
         if (isInternalPathNode) return
 
         const innerPoint = postRows[1][station]
@@ -1424,10 +1734,11 @@ export function calculateScaffold(
       const deckElevation = round(elevation + DECK_SURFACE_OFFSET)
       const panelLength = Math.max(0.1, parameters.deckPanelLength ?? DECK_PANEL.length)
       const panelWidth = Math.max(0.1, parameters.deckPanelWidth ?? DECK_PANEL.width)
-      const panelsAlong = deckPanelCount(bayLength, panelLength)
       const panelsAcross = deckPanelCount(parameters.width, panelWidth)
 
       for (let bay = 0; bay < bayCount; bay += 1) {
+        const bayLength = stations[bay + 1] - stations[bay]
+        const panelsAlong = deckPanelCount(bayLength, panelLength)
         /** A point on the bay: `along` 0..1 down the bay, `across` 0..1 between the rows. */
         const at = (along: number, across: number): Vector3Tuple => {
           const outerStart = postRows[0][bay]
@@ -1439,9 +1750,9 @@ export function calculateScaffold(
           const innerX = innerStart[0] + (innerEnd[0] - innerStart[0]) * along
           const innerZ = innerStart[2] + (innerEnd[2] - innerStart[2]) * along
           return [
-            round(outerX + (innerX - outerX) * across),
+            round(outerX + (innerX - outerX) * across, 6),
             deckElevation,
-            round(outerZ + (innerZ - outerZ) * across),
+            round(outerZ + (innerZ - outerZ) * across, 6),
           ]
         }
 
@@ -1565,12 +1876,38 @@ export function calculateScaffold(
     })
   }
 
-  /**
-   * A tube that crosses an upright is tied to it (§7.3.5(1)). At a corner both offset
-   * rows run through the mitre post at every level, but at a point that is not one of
-   * their stations, so those ties have to be counted here instead of coming out of a
-   * member's connection points.
-   */
+  // Merge collinear shared runs before stock assembly and coupler counting.
+  // This keeps all three views on the same physical quantities.
+  mergeSharedRuns(members)
+  // A relocated station may now carry a mitre that already had its own beam.
+  // Remove a beam only when ALL of its posts are carried by one other beam;
+  // never join beams into a longer piece or leave a post without a base.
+  const postsForBases = members.filter(member => member.type === 'post')
+  const beamSupports = (beam: BaseChannel) => postsForBases.filter(post => {
+    const dx = beam.end[0] - beam.start[0], dz = beam.end[2] - beam.start[2]
+    const length = Math.hypot(dx, dz)
+    const x = post.start[0] - beam.start[0], z = post.start[2] - beam.start[2]
+    const along = (x * dx + z * dz) / length
+    return along >= -0.001 && along <= length + 0.001 && Math.abs(x * dz - z * dx) / length < 0.001
+  }).map(post => post.id)
+  const supportedByBeam = new Map(baseChannels.map(beam => [beam, beamSupports(beam)]))
+  for (let index = baseChannels.length - 1; index >= 0; index--) {
+    const beam = baseChannels[index], supported = supportedByBeam.get(beam)!
+    if (supported.length === 0 || baseChannels.some(other => other !== beam
+      && supportedByBeam.get(other)!.length > supported.length
+      && supported.every(id => supportedByBeam.get(other)!.includes(id)))) baseChannels.splice(index, 1)
+  }
+  repairPostSplices(members, postSequences, parameters, warnings)
+  resolveDeckCoverage(decks, physical, pathIsClosed)
+
+  const assemblies = members.map((member) =>
+    createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap, postSequences.get(member.id)))
+  const builtPostTops = new Map(assemblies
+    .filter((assembly) => assembly.segments[0]?.type === 'post')
+    .map((assembly) => [assembly.plan.memberId, Math.max(...assembly.segments.map((segment) => segment.end[1]))]))
+
+  // Count actual connections, not nominal station points: a corner can remove
+  // a post or omit a transverse, while its longitudinal connectionPoints survive.
   const planDistanceToRun = (member: ScaffoldMember, x: number, z: number) => {
     const dx = member.end[0] - member.start[0]
     const dz = member.end[2] - member.start[2]
@@ -1580,44 +1917,54 @@ export function calculateScaffold(
     if (along < -0.001 || along > length + 0.001) return Number.POSITIVE_INFINITY
     return Math.abs((x - member.start[0]) * dz - (z - member.start[2]) * dx) / length
   }
-  const mitreCrossConnectors: ScaffoldConnector[] = mitrePosts.flatMap((mitre) =>
-    members
-      .filter((member) => member.type === 'longitudinal' || member.type === 'guardrail')
-      .filter((member) => member.start[1] <= postHeightAt(1, false) + 0.001)
-      .filter((member) => planDistanceToRun(member, mitre.point[0], mitre.point[2]) < 0.005)
-      .map((member, index) => ({
-        id: `C-${member.id}-mitre-${index + 1}`,
-        type: 'cross' as const,
-        position: [
-          mitre.point[0],
-          round(member.start[1] + parameters.pipeDiameter * 0.65),
-          mitre.point[2],
-        ] as Vector3Tuple,
-        memberId: member.id,
-      })))
-
-  const rawCrossConnectors: ScaffoldConnector[] = members.flatMap((member) => {
-    if (member.type === 'post') return []
-    const connectionPoints = member.type === 'transverse'
-      ? [member.connectionPoints[0], member.connectionPoints[member.connectionPoints.length - 1]]
-      : member.connectionPoints
-    const verticalOffset = member.type === 'transverse'
-      ? -parameters.pipeDiameter * 0.65
-      : parameters.pipeDiameter * 0.65
-
-    return connectionPoints.map((position, index) => ({
-      id: `C-${member.id}-${index + 1}`,
-      type: 'cross' as const,
-      position: [position[0], round(position[1] + verticalOffset), position[2]] as Vector3Tuple,
+  const memberAxis = (member: ScaffoldMember): Vector3Tuple =>
+    new Vector(member.end).subtract(new Vector(member.start)).normalize().toTuple()
+  const rawCrossConnectors: ScaffoldConnector[] = []
+  const connectionKeys = new Set<string>()
+  const addCross = (member: ScaffoldMember, other: ScaffoldMember, point: Vector3Tuple) => {
+    const key = [member.id, other.id].sort().join(':')
+    if (connectionKeys.has(key)) return
+    connectionKeys.add(key)
+    const verticalOffset = (member.type === 'transverse' ? -1 : 1) * parameters.pipeDiameter * 0.65
+    rawCrossConnectors.push({
+      id: `C-${member.id}-${other.id}`,
+      type: 'cross',
+      position: [point[0], round(point[1] + verticalOffset), point[2]],
       memberId: member.id,
-    }))
-  })
-  const connectorsByPosition = [...rawCrossConnectors, ...mitreCrossConnectors]
+      connectedMemberId: other.id,
+      axis: memberAxis(member),
+      secondaryAxis: memberAxis(other),
+    })
+  }
+  const posts = members.filter((member) => member.type === 'post')
+  const longitudinals = members.filter((member) => member.type === 'longitudinal')
+  for (const member of members) {
+    if (member.type === 'post') continue
+    const elevation = member.start[1]
+    for (const post of posts) {
+      if (elevation > (builtPostTops.get(post.id) ?? post.end[1]) + 0.001) continue
+      if (planDistanceToRun(member, post.start[0], post.start[2]) < 0.005) {
+        addCross(member, post, [post.start[0], elevation, post.start[2]])
+      }
+    }
+    if (!(member.roles ?? [member.type]).includes('transverse')) continue
+    // Only the intermediate deck-support rows: the two ordinary rows already
+    // have their two main-node ties (longitudinal→post and transverse→post).
+    for (const point of member.connectionPoints) {
+      if (posts.some(post => Math.hypot(post.start[0] - point[0], post.start[2] - point[2]) < 0.005)) continue
+      const support = longitudinals.find((candidate) =>
+        candidate.id !== member.id && candidate.layer === member.layer
+        && Math.abs(memberAxis(candidate).reduce((sum, value, i) => sum + value * memberAxis(member)[i], 0)) < 0.01
+        && planDistanceToRun(candidate, point[0], point[2]) < 0.005)
+      if (support) addCross(support, member, point)
+    }
+  }
+  const connectorsByPosition = rawCrossConnectors
     .reduce<Map<string, ScaffoldConnector[]>>((groups, connector) => {
-    const key = pointKey(connector.position)
-    groups.set(key, [...(groups.get(key) ?? []), connector])
-    return groups
-  }, new Map())
+      const key = pointKey(connector.position)
+      groups.set(key, [...(groups.get(key) ?? []), connector])
+      return groups
+    }, new Map())
   const crossConnectors = [...connectorsByPosition.values()].flatMap((connectorsAtPoint) =>
     connectorsAtPoint.map((connector, index) => {
       if (connectorsAtPoint.length === 1) return connector
@@ -1627,8 +1974,6 @@ export function calculateScaffold(
         position: [round(connector.position[0] + offset), connector.position[1], connector.position[2]] as Vector3Tuple,
       }
     }))
-  const assemblies = members.map((member) =>
-    createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap, postSequences.get(member.id)))
   const pipeSegments = assemblies.flatMap((assembly) => assembly.segments)
   const connectors = [
     ...crossConnectors,
@@ -1636,7 +1981,30 @@ export function calculateScaffold(
   ]
   const assemblyPlans = assemblies.map((assembly) => assembly.plan)
 
+  const pathDimensions: PathDimension[] = physical.slice(0, -1).flatMap((point, index) => {
+    const next = physical[index + 1]
+    const dx = next[0] - point[0]
+    const dz = next[1] - point[1]
+    const distance = Math.hypot(dx, dz)
+    if (distance < 0.001) return []
+    // Row 0 is the path. When row 1 is outside, move past the full row width.
+    const offset = parameters.swapInnerOuter ? parameters.width + 1.2 : -1.2
+    return [{
+      index,
+      length: round(Math.max(0.1, segmentLengths[index] ?? distance)),
+      start: [point[0], 0, point[1]] as Vector3Tuple,
+      end: [next[0], 0, next[1]] as Vector3Tuple,
+      labelPosition: [
+        round((point[0] + next[0]) / 2 - dz / distance * offset),
+        0.015,
+        round((point[1] + next[1]) / 2 + dx / distance * offset),
+      ] as Vector3Tuple,
+    }]
+  })
+
   return {
+    pathDimensions,
+    perimeter: round(pathDimensions.reduce((sum, segment) => sum + segment.length, 0)),
     members,
     pipeSegments,
     decks,

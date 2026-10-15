@@ -1,0 +1,1742 @@
+[
+  {
+    "id": "line",
+    "label": "直线 7.2 m",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      7.2
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "line-split",
+    "label": "同一直线分成两段",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 180,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      3.6,
+      3.6
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "line-handle",
+    "label": "直线上插入 0.5 m 短段",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 180,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 204.99999999999997,
+        "y": 0
+      },
+      {
+        "id": "P4",
+        "x": 360,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      3.6,
+      0.5,
+      3.1
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "l-inside",
+    "label": "L 形内转角",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": 240
+      }
+    ],
+    "lengths": [
+      7.2,
+      4.8
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "l-outside",
+    "label": "L 形外转角",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": -240
+      }
+    ],
+    "lengths": [
+      7.2,
+      4.8
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "u-inside",
+    "label": "U 形内侧偏移",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": 240
+      },
+      {
+        "id": "P4",
+        "x": 0,
+        "y": 240
+      }
+    ],
+    "lengths": [
+      7.2,
+      4.8,
+      7.2
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "u-outside",
+    "label": "U 形外侧偏移",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": -240
+      },
+      {
+        "id": "P4",
+        "x": 0,
+        "y": -240
+      }
+    ],
+    "lengths": [
+      7.2,
+      4.8,
+      7.2
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "stairs",
+    "label": "连续阶梯",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 180,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 180,
+        "y": 120
+      },
+      {
+        "id": "P4",
+        "x": 360,
+        "y": 120
+      },
+      {
+        "id": "P5",
+        "x": 360,
+        "y": 240
+      },
+      {
+        "id": "P6",
+        "x": 540,
+        "y": 240
+      }
+    ],
+    "lengths": [
+      3.6,
+      2.4,
+      3.6,
+      2.4,
+      3.6
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "zigzag",
+    "label": "左右交替折线",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 240,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 240,
+        "y": 120
+      },
+      {
+        "id": "P4",
+        "x": 120,
+        "y": 120
+      },
+      {
+        "id": "P5",
+        "x": 120,
+        "y": 240
+      },
+      {
+        "id": "P6",
+        "x": 360,
+        "y": 240
+      }
+    ],
+    "lengths": [
+      4.8,
+      2.4,
+      2.4,
+      2.4,
+      4.8
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "notch",
+    "label": "建筑凹槽",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 180,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 180,
+        "y": 120
+      },
+      {
+        "id": "P4",
+        "x": 300,
+        "y": 120
+      },
+      {
+        "id": "P5",
+        "x": 300,
+        "y": 0
+      },
+      {
+        "id": "P6",
+        "x": 480,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      3.6,
+      2.4,
+      2.4,
+      2.4,
+      3.6
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "double-notch",
+    "label": "连续双凹槽",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 180,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 180,
+        "y": 120
+      },
+      {
+        "id": "P4",
+        "x": 300,
+        "y": 120
+      },
+      {
+        "id": "P5",
+        "x": 300,
+        "y": 0
+      },
+      {
+        "id": "P6",
+        "x": 480,
+        "y": 0
+      },
+      {
+        "id": "P7",
+        "x": 480,
+        "y": 120
+      },
+      {
+        "id": "P8",
+        "x": 600,
+        "y": 120
+      },
+      {
+        "id": "P9",
+        "x": 600,
+        "y": 0
+      },
+      {
+        "id": "P10",
+        "x": 780,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      3.6,
+      2.4,
+      2.4,
+      2.4,
+      3.6,
+      2.4,
+      2.4,
+      2.4,
+      3.6
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "spiral",
+    "label": "矩形内旋路径",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 540,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 540,
+        "y": 480
+      },
+      {
+        "id": "P4",
+        "x": 0,
+        "y": 480
+      },
+      {
+        "id": "P5",
+        "x": 0,
+        "y": 180
+      },
+      {
+        "id": "P6",
+        "x": 360,
+        "y": 180
+      },
+      {
+        "id": "P7",
+        "x": 360,
+        "y": 300
+      },
+      {
+        "id": "P8",
+        "x": 180,
+        "y": 300
+      }
+    ],
+    "lengths": [
+      10.8,
+      9.6,
+      10.8,
+      6,
+      7.2,
+      2.4,
+      3.6
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "rectangle-in",
+    "label": "闭合矩形·偏移在内",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": 240
+      },
+      {
+        "id": "P4",
+        "x": 0,
+        "y": 240
+      },
+      {
+        "id": "P5",
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      7.2,
+      4.8,
+      7.2,
+      4.8
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "rectangle-out",
+    "label": "闭合矩形·偏移在外",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 0,
+        "y": 240
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": 240
+      },
+      {
+        "id": "P4",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P5",
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      4.8,
+      7.2,
+      4.8,
+      7.2
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "closed-l",
+    "label": "闭合 L 形建筑",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": 180
+      },
+      {
+        "id": "P4",
+        "x": 180,
+        "y": 180
+      },
+      {
+        "id": "P5",
+        "x": 180,
+        "y": 360
+      },
+      {
+        "id": "P6",
+        "x": 0,
+        "y": 360
+      },
+      {
+        "id": "P7",
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      7.2,
+      3.6,
+      3.6,
+      3.6,
+      3.6,
+      7.2
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "closed-notch",
+    "label": "闭合凹字建筑",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 540,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 540,
+        "y": 360
+      },
+      {
+        "id": "P4",
+        "x": 360,
+        "y": 360
+      },
+      {
+        "id": "P5",
+        "x": 360,
+        "y": 180
+      },
+      {
+        "id": "P6",
+        "x": 180,
+        "y": 180
+      },
+      {
+        "id": "P7",
+        "x": 180,
+        "y": 360
+      },
+      {
+        "id": "P8",
+        "x": 0,
+        "y": 360
+      },
+      {
+        "id": "P9",
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      10.8,
+      7.2,
+      3.6,
+      3.6,
+      3.6,
+      3.6,
+      3.6,
+      7.2
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "user-short-returns",
+    "label": "现场闭合图·0.7 / 0.8 m 短折返",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 355,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 355,
+        "y": -215
+      },
+      {
+        "id": "P4",
+        "x": 240,
+        "y": -215
+      },
+      {
+        "id": "P5",
+        "x": 240,
+        "y": -175
+      },
+      {
+        "id": "P6",
+        "x": -35,
+        "y": -175
+      },
+      {
+        "id": "P7",
+        "x": -35,
+        "y": -100
+      },
+      {
+        "id": "P8",
+        "x": 0,
+        "y": -100
+      },
+      {
+        "id": "P9",
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      7.1,
+      4.3,
+      2.3,
+      0.8,
+      5.5,
+      1.5,
+      0.7,
+      2
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "odd-bays",
+    "label": "闭环含奇数跨",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 270,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 270,
+        "y": 90
+      },
+      {
+        "id": "P4",
+        "x": 150,
+        "y": 90
+      },
+      {
+        "id": "P5",
+        "x": 150,
+        "y": 180
+      },
+      {
+        "id": "P6",
+        "x": 0,
+        "y": 180
+      },
+      {
+        "id": "P7",
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      5.4,
+      1.8,
+      2.4,
+      1.8,
+      3,
+      3.6
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "short-start",
+    "label": "首段仅 0.5 m",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 25,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 25,
+        "y": 240
+      }
+    ],
+    "lengths": [
+      0.5,
+      4.8
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "short-end",
+    "label": "末段仅 0.5 m",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": 25
+      }
+    ],
+    "lengths": [
+      7.2,
+      0.5
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "short-middle",
+    "label": "中间错台 0.5 m",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 180,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 180,
+        "y": 25
+      },
+      {
+        "id": "P4",
+        "x": 360,
+        "y": 25
+      }
+    ],
+    "lengths": [
+      3.6,
+      0.5,
+      3.6
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "narrow-u",
+    "label": "U 形间隙仅 1.2 m",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 240,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 240,
+        "y": 60
+      },
+      {
+        "id": "P4",
+        "x": 0,
+        "y": 60
+      }
+    ],
+    "lengths": [
+      4.8,
+      1.2,
+      4.8
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "width-u",
+    "label": "U 形间隙等于排距",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 240,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 240,
+        "y": 45
+      },
+      {
+        "id": "P4",
+        "x": 0,
+        "y": 45
+      }
+    ],
+    "lengths": [
+      4.8,
+      0.9,
+      4.8
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "minimum-step",
+    "label": "连续 0.1 m 小台阶",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 180,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 180,
+        "y": 5
+      },
+      {
+        "id": "P4",
+        "x": 185,
+        "y": 5
+      },
+      {
+        "id": "P5",
+        "x": 185,
+        "y": 180
+      }
+    ],
+    "lengths": [
+      3.6,
+      0.1,
+      0.1,
+      3.5
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "near-closed",
+    "label": "距离闭合还差 0.1 m",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 360,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 360,
+        "y": 240
+      },
+      {
+        "id": "P4",
+        "x": 0,
+        "y": 240
+      },
+      {
+        "id": "P5",
+        "x": 0,
+        "y": 5
+      }
+    ],
+    "lengths": [
+      7.2,
+      4.8,
+      7.2,
+      4.7
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "backtrack",
+    "label": "原路折返（输入边界）",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 240,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "lengths": [
+      4.8,
+      4.8
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  },
+  {
+    "id": "crossing",
+    "label": "路径自交（输入边界）",
+    "points": [
+      {
+        "id": "P1",
+        "x": 0,
+        "y": 0
+      },
+      {
+        "id": "P2",
+        "x": 240,
+        "y": 0
+      },
+      {
+        "id": "P3",
+        "x": 240,
+        "y": 240
+      },
+      {
+        "id": "P4",
+        "x": 120,
+        "y": 240
+      },
+      {
+        "id": "P5",
+        "x": 120,
+        "y": -120
+      }
+    ],
+    "lengths": [
+      4.8,
+      4.8,
+      2.4,
+      7.2
+    ],
+    "parameters": {
+      "layerCount": 5,
+      "width": 0.9,
+      "deckSupportRailCount": 2,
+      "postSpacing": 1.8,
+      "liftHeight": 1.88,
+      "sweepBarHeight": 0.2,
+      "swapInnerOuter": false,
+      "guardrailRailCount": 1,
+      "tubeEndExtension": 0.1,
+      "spliceOverlap": 0,
+      "deckLiftInterval": 1,
+      "deckPanelLength": 1.2,
+      "deckPanelWidth": 0.95,
+      "pipeDiameter": 0.048,
+      "stockLengths": [
+        6,
+        4.5,
+        4,
+        3,
+        2.4,
+        2,
+        1.2,
+        0.8
+      ]
+    },
+    "adjustments": {}
+  }
+]

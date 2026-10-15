@@ -1,6 +1,6 @@
 import { Cable, ChevronDown, ChevronUp, Download, FileSpreadsheet, Frame, Printer, RectangleHorizontal, X, type LucideIcon } from 'lucide-react'
 import type { ConnectorType, MaterialAdjustments, PendingMaterial, ScaffoldLayout } from '../domain/scaffold'
-import { CONNECTOR_LABELS, COUPLER_PACK_SIZE, MATERIAL_KEYS } from '../domain/scaffold'
+import { CONNECTOR_LABELS, COUPLER_PACK_SIZE, MATERIAL_KEYS, materialAdjustmentStep, materialQuantity, stockMaterialRows } from '../domain/scaffold'
 
 /** One glyph per 待定材料, keyed by the domain id so the two cannot drift. */
 const PENDING_ICONS: Record<PendingMaterial['id'], LucideIcon> = {
@@ -52,7 +52,10 @@ function QuantityControl({
   onResetAdjustment,
 }: QuantityControlProps) {
   const base = calculated ?? 0
-  const quantity = Math.max(0, base + (adjustments[materialKey] ?? 0))
+  const quantity = materialQuantity(calculated, adjustments, materialKey)
+  const step = pack?.size ?? 1
+  const nudge = (direction: number) => onAdjust(materialKey,
+    materialAdjustmentStep(calculated, adjustments, materialKey, direction * step))
   // Recompute from the clamped value so a stale correction cannot report a
   // difference the user is not actually seeing.
   const delta = quantity - base
@@ -67,7 +70,7 @@ function QuantityControl({
           under the finger is a bug. */}
       {adjusted ? (
         <span className="qty-expand">
-          <em className="qty-delta">{delta > 0 ? `+${delta}` : delta}</em>
+          <em className="qty-delta">{delta > 0 ? '+' : ''}{pack && delta % pack.size === 0 ? `${delta / pack.size} ${pack.unit}` : `${delta}${pack ? ` ${unit}` : ''}`}</em>
           <button className="qty-reset" type="button" title="恢复为计算值" onClick={() => onResetAdjustment(materialKey)}>
             原 {calculated === null ? '--' : calculated}
           </button>
@@ -77,14 +80,14 @@ function QuantityControl({
         <button
           className="qty-step"
           type="button"
-          title="减少"
+          title={pack ? `减少1${pack.unit}（${pack.size}${unit}）` : '减少'}
           disabled={quantity <= 0}
-          onClick={() => onAdjust(materialKey, -1)}
+          onClick={() => nudge(-1)}
         >
           <ChevronDown size={14} />
         </button>
         <strong className={unknown ? 'qty-value unknown' : 'qty-value'}>{unknown ? '--' : quantity}</strong>
-        <button className="qty-step" type="button" title="增加" onClick={() => onAdjust(materialKey, 1)}>
+        <button className="qty-step" type="button" title={pack ? `增加1${pack.unit}（${pack.size}${unit}）` : '增加'} onClick={() => nudge(1)}>
           <ChevronUp size={14} />
         </button>
       </span>
@@ -101,18 +104,17 @@ function QuantityControl({
 export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment }: MaterialViewProps) {
   const { materials } = layout
   const connectorEntries = Object.entries(materials.connectorSummary) as Array<[ConnectorType, number | null]>
-  const pipeCount = Object.values(materials.stockSummary).reduce((sum, count) => sum + count, 0)
+  const stockRows = stockMaterialRows(materials.stockSummary, adjustments)
+  const pipeCount = stockRows.reduce((sum, row) => sum + row.quantity, 0)
 
   /** The quantity actually shown for a calculated material, after corrections. */
   const shown = (calculated: number, key: string) =>
-    Math.max(0, calculated + (adjustments[key] ?? 0))
+    materialQuantity(calculated, adjustments, key)
 
   const exportCsv = async () => {
     const rows: Array<Array<string | number>> = [['类别', '规格', '数量', '单位', '备注']]
-    for (const [length, quantity] of Object.entries(materials.stockSummary)) {
-      const key = MATERIAL_KEYS.stock(length)
-      const value = shown(quantity, key)
-      rows.push(['钢管', length, value, '根', value === quantity ? '' : `计算值 ${quantity}`])
+    for (const { length, calculated, quantity } of stockRows) {
+      rows.push(['钢管', length, quantity, '根', quantity === calculated ? '' : `计算值 ${calculated}`])
     }
     for (const [type, quantity] of connectorEntries) {
       const key = MATERIAL_KEYS.connector(type)
@@ -181,12 +183,12 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
             <strong>{pipeCount} 根</strong>
           </div>
           <div className="stock-list">
-            {Object.entries(materials.stockSummary).sort(([a], [b]) => Number.parseFloat(b) - Number.parseFloat(a)).map(([length, quantity]) => (
+            {stockRows.map(({ length, calculated }) => (
               <div className="stock-row" key={length}>
                 <span className="pipe-swatch" style={{ width: `${Math.max(48, Number.parseFloat(length) * 18)}px` }} />
                 <strong>{length}</strong>
                 <QuantityControl
-                  calculated={quantity}
+                  calculated={calculated}
                   materialKey={MATERIAL_KEYS.stock(length)}
                   adjustments={adjustments}
                   onAdjust={onAdjust}

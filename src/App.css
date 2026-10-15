@@ -191,8 +191,8 @@
    so colour alone could not carry the state either — this grey reads clearly
    against --canvas and is distinct from the grid. */
 .segment-halo { stroke: #9aa4a8; stroke-width: 9; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.length-label-bg { fill: white; stroke: var(--line); stroke-width: 1; }
-.length-label { fill: var(--ink); font: 700 12px monospace; }
+.length-label-bg { fill: var(--paper); stroke: var(--line); stroke-width: 1; }
+.length-label { fill: var(--ink); font: 500 12px monospace; }
 .plan-node { cursor: grab; touch-action: none; }
 .plan-node:active { cursor: grabbing; }
 .node-hit { fill: transparent; }
@@ -277,11 +277,11 @@ body.has-fullscreen { overflow: hidden; }
 .section-title > strong { color: var(--accent); font: 700 14px monospace; }
 .stock-list { display: grid; gap: 5px; }
 .stock-row { min-height: 34px; padding: 0 11px; display: grid; grid-template-columns: 90px 46px minmax(0, 1fr); align-items: center; gap: 8px; background: var(--canvas); border-radius: var(--nm-r-1); }
-.pipe-swatch { display: block; max-width: 108px; height: 7px; border-left: 2px solid var(--mark); border-right: 2px solid var(--mark); background: #565f63; }
+.pipe-swatch { display: block; max-width: 100%; height: 7px; border-left: 2px solid var(--mark); border-right: 2px solid var(--mark); background: #565f63; }
 .stock-row strong { font: 700 12px monospace; white-space: nowrap; }
 .stock-row > span:last-child { color: var(--muted); font: 12px monospace; }
 .connector-list { display: grid; gap: 5px; }
-.connector-list > div { min-height: 38px; padding: 0 10px; display: grid; grid-template-columns: 34px 1fr auto 22px; align-items: center; background: var(--canvas); border-radius: var(--nm-r-1); font-size: 12px; }
+.connector-list > div { min-height: 38px; padding: 0 10px; display: grid; grid-template-columns: 34px minmax(3em, 1fr) auto; align-items: center; background: var(--canvas); border-radius: var(--nm-r-1); font-size: 12px; }
 .connector-list strong { font: 700 16px monospace; }
 .connector-list small { color: var(--muted); text-align: right; }
 .connector-icon { position: relative; display: block; width: 24px; height: 24px; }
@@ -471,4 +471,14 @@ body.has-fullscreen { overflow: hidden; }
   font-weight: 600;
   line-height: 17px;
   text-align: center;
+}
+
+/* Measurements stay flat and legible, including in fullscreen and narrow views. */
+.canvas-status { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.perimeter-readout { color: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 1050px) {
+  .canvas-status .tool-status { display: none; }
+  .canvas-toolbar { height: auto; min-height: 56px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+  .canvas-toolbar .toolbar-actions { flex: 0 1 auto; min-width: 0; max-width: 100%; flex-wrap: wrap; }
+  .canvas-toolbar .toolbar-actions > button { flex-shrink: 0; }
 }

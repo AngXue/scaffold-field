@@ -359,6 +359,7 @@ function App() {
             <PlanEditor
               points={points}
               lengths={lengths}
+              perimeter={layout.perimeter}
               onPointsChange={(next) => { setPoints(next); setSaved(false) }}
               onLengthsChange={(next) => { setLengths(next); setSaved(false) }}
               onResetDemo={resetToDefaultDemo}

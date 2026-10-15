@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import { CONFIGURATIONS, generatedShapes, planInput, SHAPES, type Shape } from '../../scripts/geometry-audit/fixtures'
+import { inspect, rectangleUnionArea } from '../../scripts/geometry-audit/checks'
+import { signedArea, subtractCoverage } from './polygons'
 import {
   calculateScaffold,
   countMembers,
   CONNECTOR_LABELS,
   COUPLER_PACK_SIZE,
+  MATERIAL_KEYS,
+  materialQuantity,
+  materialAdjustmentStep,
+  stockMaterialRows,
   DECK_PANEL,
   DECK_PANEL_LAP,
   DECK_PANEL_ROW_GAP,
@@ -27,6 +34,286 @@ const points = [
 ]
 
 describe('calculateScaffold', () => {
+  it('lists every default pipe size, putting unused sizes after positive quantities', () => {
+    const summary = { '6m': 12, '1.2m': 4 }
+    const rows = stockMaterialRows(summary, {})
+    expect(rows.map(row => row.length)).toEqual(['6m', '1.2m', '4.5m', '4m', '3m', '2.4m', '2m', '0.8m'])
+    expect(rows.find(row => row.length === '4m')).toEqual({ length: '4m', calculated: 0, quantity: 0 })
+    expect(stockMaterialRows({}, {})).toHaveLength(DEFAULT_PARAMETERS.stockLengths.length)
+    expect(summary).toEqual({ '6m': 12, '1.2m': 4 })
+  })
+
+  it('sorts manually added pipe sizes by length and includes them in the displayed total', () => {
+    const summary = { '6m': 12, '1.2m': 4 }
+    const adjustments = { [MATERIAL_KEYS.stock('4m')]: 2 }
+    const rows = stockMaterialRows(summary, adjustments)
+    expect(rows.slice(0, 3).map(row => row.length)).toEqual(['6m', '4m', '1.2m'])
+    expect(rows.reduce((total, row) => total + row.quantity, 0)).toBe(18)
+    expect(rows.find(row => row.length === '4m')).toEqual({ length: '4m', calculated: 0, quantity: 2 })
+    expect(stockMaterialRows(summary, {}).findIndex(row => row.length === '4m')).toBeGreaterThan(1)
+    // A saved correction still works after parameters make that size calculated.
+    expect(stockMaterialRows({ ...summary, '4m': 3 }, adjustments).find(row => row.length === '4m')?.quantity).toBe(5)
+    expect(stockMaterialRows(summary, { [MATERIAL_KEYS.stock('6m')]: -12 })[0].length).toBe('1.2m')
+  })
+
+  it('adjusts couplers one bag at a time while preserving individual-unit corrections', () => {
+    const key = MATERIAL_KEYS.connector('cross')
+    const adjustments = { [key]: 1 } // A correction saved by an older build.
+    expect(materialAdjustmentStep(811, adjustments, key, COUPLER_PACK_SIZE)).toBe(30)
+    expect(materialQuantity(811, { [key]: 31 }, key)).toBe(842)
+    expect(Math.ceil(materialQuantity(811, { [key]: 31 }, key) / COUPLER_PACK_SIZE)).toBe(29)
+    expect(materialAdjustmentStep(811, adjustments, key, -COUPLER_PACK_SIZE)).toBe(-30)
+    expect(materialQuantity(null, { [key]: COUPLER_PACK_SIZE }, key)).toBe(30)
+    expect(materialQuantity(null, {}, key)).toBe(0)
+  })
+
+  it('clamps a final partial bag at zero without leaving hidden negative quantities', () => {
+    const key = MATERIAL_KEYS.connector('butt')
+    expect(materialAdjustmentStep(11, {}, key, -COUPLER_PACK_SIZE)).toBe(-11)
+    expect(materialQuantity(11, { [key]: -11 }, key)).toBe(0)
+    expect(materialAdjustmentStep(11, { [key]: -11 }, key, COUPLER_PACK_SIZE)).toBe(30)
+    const stale = { [key]: -20 }
+    const change = materialAdjustmentStep(11, stale, key, COUPLER_PACK_SIZE)
+    expect(materialQuantity(11, { [key]: stale[key] + change }, key)).toBe(30)
+  })
+
+  const orthogonal = (id: string, overrides = {}) => {
+    const shape = SHAPES.find(shape => shape.id === id)!
+    const input = planInput(shape)
+    return calculateScaffold(input.points, input.lengths, { ...DEFAULT_PARAMETERS, ...overrides })
+  }
+
+  it('shares short-return corner posts using the neighbouring extended run', () => {
+    const shape = SHAPES.find(s => s.id === 'user-short-returns')!
+    const input = planInput(shape)
+    const parameters = { ...DEFAULT_PARAMETERS, swapInnerOuter: true, deckSupportRailCount: 3 }
+    const layout = calculateScaffold(input.points, input.lengths, parameters)
+    const posts = layout.members.filter(m => m.type === 'post')
+    expect(posts).toHaveLength(45)
+    expect(layout.perimeter).toBe(24.2)
+    expect(inspect(shape, layout, parameters)).toEqual([])
+    expect(layout.warnings.some(w => w.id.startsWith('short-corner'))).toBe(false)
+    for (let i = 0; i < posts.length; i++) {
+      for (const other of posts.slice(i + 1)) {
+        expect(Math.hypot(posts[i].start[0] - other.start[0], posts[i].start[2] - other.start[2])).toBeGreaterThan(0.3)
+      }
+    }
+    for (const point of [[3.9, -4.4], [-0.9, -1.1]]) {
+      const corner = posts.find(p => Math.abs(p.start[0] - point[0]) < 0.001 && Math.abs(p.start[2] - point[1]) < 0.001)!
+      expect(corner).toBeDefined()
+      const ties = layout.connectors.filter(c => c.connectedMemberId === corner.id)
+      const directions = layout.members.filter(m => m.layer === 1 && m.type === 'longitudinal' && ties.some(c => c.memberId === m.id))
+      expect(directions).toHaveLength(2)
+    }
+    // The moved 1.0 m station shares the 0.9 m corner across both post rows.
+    expect(posts.some(p => p.start[0] === 0 && p.start[2] === -1.1)).toBe(true)
+    expect(posts.some(p => p.start[0] === 0 && p.start[2] === -1)).toBe(false)
+    const crossbars = layout.members.filter(m => (m.type === 'transverse' || m.roles?.includes('transverse')) && m.layer === 1)
+    expect(crossbars.some(m => m.start[2] === -1.1 && m.end[2] === -1.1)).toBe(true)
+    expect(layout.materials.deckArea).toBeCloseTo(25.02 * parameters.layerCount, 2)
+  })
+
+  it('does not leave the old endpoint beside a corner when the short return is just wider than the row', () => {
+    const layout = orthogonal('user-short-returns', { width: 0.7, deckPanelWidth: 0.75 })
+    const posts = layout.members.filter(m => m.type === 'post')
+    expect(posts.some(p => p.start[0] === 4.1 && p.start[2] === -4.2)).toBe(true)
+    expect(posts.some(p => p.start[0] === 4.1 && p.start[2] === -4.3)).toBe(false)
+    for (const [index, post] of posts.entries()) for (const other of posts.slice(index + 1)) {
+      expect(Math.hypot(post.start[0] - other.start[0], post.start[2] - other.start[2])).toBeGreaterThan(0.3)
+    }
+  })
+
+  it('keeps a straight split station and shares its continuous tubes', () => {
+    const whole = orthogonal('line'), split = orthogonal('line-split')
+    expect(countMembers(split).transverse).toBe(30)
+    expect(split.materials.stockSummary).toEqual(whole.materials.stockSummary)
+    expect(split.materials.connectorSummary).toEqual(whole.materials.connectorSummary)
+    expect(split.members.filter(m => m.type === 'transverse' && m.layer === 1)
+      .some(m => m.connectionPoints.some(p => p[0] === 3.6))).toBe(true)
+  })
+
+  it('closes both inward and outward rectangular corners', () => {
+    const inward = orthogonal('rectangle-in'), outward = orthogonal('rectangle-out')
+    expect(inward.members.some(m => m.type === 'post' && m.start[0] === 0.9 && m.start[2] === 0.9)).toBe(true)
+    expect(outward.members.some(m => m.type === 'post' && m.start[0] === -0.9 && m.start[2] === -0.9)).toBe(true)
+    expect(countMembers(inward).post).toBe(28)
+    expect(countMembers(outward).post).toBe(36)
+    expect(outward.materials.deckArea).toBe(124.2)
+    expect(outward.materials.deckCount).toBe(160)
+  })
+
+  it('keeps closed geometry and stock quantities independent of the drawing start', () => {
+    const canonical = (shape: Shape, layout: ScaffoldLayout) => {
+      const point = (p: number[]) => [p[0] + shape.points[0][0], p[1], p[2] + shape.points[0][1]].map(n => (Math.round((n + 1e-8) * 1000) / 1000).toFixed(3)).join(',')
+      return {
+        pipes: layout.pipeSegments.map(p => [point(p.start), point(p.end)].sort().join('|')).sort(),
+        decks: layout.decks.flatMap(d => (d.coverage ?? [d.corners]).map(face => face.map(point).sort().join('|'))).sort(),
+        channels: layout.baseChannels.map(b => [point(b.start), point(b.end)].sort().join('|')).sort(),
+        stock: layout.materials.stockSummary,
+        connectors: layout.materials.connectorSummary,
+      }
+    }
+    for (const id of ['rectangle-in', 'rectangle-out', 'closed-l', 'closed-notch', 'odd-bays', 'user-short-returns']) {
+      const shape = SHAPES.find(s => s.id === id)!
+      const expected = canonical(shape, orthogonal(id))
+      const vertices = shape.points.slice(0, -1)
+      for (let index = 1; index < vertices.length; index++) {
+        const rotated = [...vertices.slice(index), ...vertices.slice(0, index)]
+        const changed = { ...shape, points: [...rotated, rotated[0]] }
+        const input = planInput(changed)
+        expect(canonical(changed, calculateScaffold(input.points, input.lengths, DEFAULT_PARAMETERS)), `${id}:${index}`).toEqual(expected)
+      }
+    }
+  })
+
+  it('keeps short corner stations instead of creating a one-leg mitre', () => {
+    for (const id of ['short-start', 'short-end']) {
+      const layout = orthogonal(id)
+      expect(layout.warnings.some(w => w.id === 'short-corner-0')).toBe(true)
+      expect(layout.members.some(m => m.cornerJunctions?.includes(0))).toBe(false)
+      expect(inspect(SHAPES.find(s => s.id === id)!, layout, DEFAULT_PARAMETERS)).toEqual([])
+    }
+  })
+
+  it('cuts duplicate corner coverage without counting cut faces as extra panels', () => {
+    const layout = orthogonal('l-inside')
+    expect(layout.materials.deckArea).toBe(49.95)
+    expect(layout.materials.deckCount).toBe(65)
+    const first = layout.decks.filter(d => d.layer === 1)
+    const faces = first.flatMap(d => d.coverage!)
+    const union = rectangleUnionArea(faces.map(face => [Math.min(...face.map(p => p[0])), Math.min(...face.map(p => p[2])), Math.max(...face.map(p => p[0])), Math.max(...face.map(p => p[2]))]))
+    expect(union).toBeCloseTo(9.99)
+    expect(first.reduce((sum, d) => sum + d.area, 0)).toBeCloseTo(union)
+    expect(first).toHaveLength(13)
+  })
+
+  it('shares coincident runs before assembling stock and counting ties', () => {
+    const layout = orthogonal('width-u')
+    const keys = layout.pipeSegments.map(p => [p.start.join(','), p.end.join(',')].sort().join('|'))
+    expect(new Set(keys).size).toBe(keys.length)
+    expect(layout.materials.deckArea).toBe(21.6)
+    expect(layout.warnings.some(w => w.id === 'scaffold-overlap')).toBe(true)
+    expect(Object.values(layout.materials.stockSummary).reduce((sum, count) => sum + count, 0)).toBe(keys.length)
+    const short: Shape = { id: 'shared-corner-run', name: '共用横纵杆', kind: 'boundary', points: [[0, 0], [0.9, 0], [0.9, 0.5]] }
+    const input = planInput(short)
+    const mixed = calculateScaffold(input.points, input.lengths, DEFAULT_PARAMETERS)
+    expect(mixed.members.some(m => m.roles?.includes('longitudinal') && m.roles.includes('transverse'))).toBe(true)
+    expect(inspect(short, mixed, DEFAULT_PARAMETERS)).toEqual([])
+  })
+
+  it('warns about self crossings and backtracking without fabricating a new junction rule', () => {
+    expect(orthogonal('crossing').warnings.some(w => w.id.startsWith('path-crossing-'))).toBe(true)
+    expect(orthogonal('backtrack').warnings.some(w => w.id.startsWith('path-overlap-'))).toBe(true)
+    expect(orthogonal('rectangle-in').warnings.some(w => w.id.startsWith('path-'))).toBe(false)
+  })
+
+  it('reports when the available stock cannot satisfy splice staggering', () => {
+    const layout = orthogonal('line', { stockLengths: [6] })
+    expect(layout.warnings.some(w => w.id.startsWith('splice-stagger-'))).toBe(true)
+    expect(layout.pipeSegments.every(p => p.stockLength === 6)).toBe(true)
+  })
+
+  it('subtracts a convex polygon exactly, including holes and diagonal cuts', () => {
+    const square: Array<[number, number]> = [[0, 0], [4, 0], [4, 4], [0, 4]]
+    const pieces = subtractCoverage([square], [[[1, 1], [3, 1], [3, 3], [1, 3]]])
+    expect(pieces.reduce((sum, p) => sum + Math.abs(signedArea(p)), 0)).toBeCloseTo(12)
+    const half = subtractCoverage([square], [[[0, 0], [4, 0], [0, 4]]])
+    expect(half.reduce((sum, p) => sum + Math.abs(signedArea(p)), 0)).toBeCloseTo(8)
+  })
+
+  it('passes all 636 orthogonal geometry cases, including opposing post splices', () => {
+    for (const shape of [...SHAPES, ...generatedShapes()]) for (const config of CONFIGURATIONS) {
+      const input = planInput(shape), parameters = { ...DEFAULT_PARAMETERS, ...config.parameters }
+      const layout = calculateScaffold(input.points, input.lengths, parameters)
+      expect(inspect(shape, layout, parameters), `${shape.id}/${config.id}`).toEqual([])
+      expect(layout.warnings.some(w => w.id.startsWith('splice-stagger-')), `${shape.id}/${config.id}`).toBe(false)
+    }
+  })
+
+  it('shares the measured path perimeter and segment numbers between both views', () => {
+    const layout = calculateScaffold(points, [7.1, 4.3], DEFAULT_PARAMETERS)
+    expect(layout.perimeter).toBe(11.4)
+    expect(layout.pathDimensions.map(({ index, length }) => [index, length])).toEqual([[0, 7.1], [1, 4.3]])
+    expect(layout.pathDimensions[0].start).toEqual([0, 0, 0])
+    expect(layout.pathDimensions[0].end).toEqual([7.1, 0, 0])
+    expect(layout.pathDimensions[1].end).toEqual([7.1, 0, 4.3])
+    // Neither corner extensions nor surplus stock change the tape measurement.
+    expect(layout.materials.actualLength).toBeGreaterThan(layout.perimeter)
+    expect(calculateScaffold(points, [7.1, 4.3], { ...DEFAULT_PARAMETERS, tubeEndExtension: 0.4 }).perimeter).toBe(11.4)
+  })
+
+  it('does not close an open perimeter and counts an explicitly closed path once', () => {
+    expect(calculateScaffold(points, [3, 4], DEFAULT_PARAMETERS).perimeter).toBe(7)
+    const closed = [points[0], { id: 'P2', x: 150, y: 0 }, { id: 'P3', x: 150, y: 200 }, { ...points[0], id: 'P4' }]
+    expect(calculateScaffold(closed, [3, 4, 5], DEFAULT_PARAMETERS).perimeter).toBe(12)
+    expect(calculateScaffold([], [], DEFAULT_PARAMETERS).perimeter).toBe(0)
+    expect(calculateScaffold(points.slice(0, 1), [], DEFAULT_PARAMETERS).pathDimensions).toEqual([])
+  })
+
+  it('places ground labels outside the railed row, including when the inner side swaps', () => {
+    const normal = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const swapped = calculateScaffold(points, [3.6, 3.6], { ...DEFAULT_PARAMETERS, swapInnerOuter: true })
+    expect(normal.pathDimensions[0].labelPosition).toEqual([1.8, 0.015, -1.2])
+    expect(normal.pathDimensions[1].labelPosition).toEqual([4.8, 0.015, 1.8])
+    expect(swapped.pathDimensions[0].labelPosition).toEqual([1.8, 0.015, 2.1])
+    expect(swapped.pathDimensions[1].labelPosition).toEqual([1.5, 0.015, 1.8])
+  })
+
+  it('counts the two main-node ties, intermediate supports and end rails independently', () => {
+    const parameters = { ...DEFAULT_PARAMETERS, layerCount: 1, sweepBarHeight: 0 }
+    const plain = calculateScaffold(points.slice(0, 2), [3.6], parameters)
+    // 3 stations × 2 rows × 2 main-node ties = 12; two rail courses each
+    // have 3 side-post ties + 4 end-return ties = 14.
+    expect(plain.materials.connectorSummary.cross).toBe(26)
+    const supports = calculateScaffold(points.slice(0, 2), [3.6], { ...parameters, deckSupportRailCount: 4 })
+    expect(supports.materials.connectorSummary.cross).toBe(26 + 3 * 2)
+    const deckless = calculateScaffold(points.slice(0, 2), [3.6], { ...parameters, deckSupportRailCount: 4, deckLiftInterval: 2 })
+    expect(deckless.materials.connectorSummary.cross).toBe(26)
+  })
+
+  it('removes phantom corner ties and only ties fill-in rails where a transverse exists', () => {
+    const ordinary = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const supports = calculateScaffold(points, [3.6, 3.6], { ...DEFAULT_PARAMETERS, deckSupportRailCount: 4 })
+    // 192 formerly included 12 ties to removed corner posts. Four real
+    // transverse stations × two intermediate supports × five decked lifts = 40.
+    expect(ordinary.materials.connectorSummary.cross).toBe(180)
+    expect(supports.materials.connectorSummary.cross).toBe(180 + 40)
+    const outside = calculateScaffold([points[0], points[1], { ...points[2], y: -200 }], [7.2, 4.8], DEFAULT_PARAMETERS)
+    expect(outside.materials.connectorSummary.cross).toBe(294)
+  })
+
+  it('keeps a real unique member pair and perpendicular axes for each cross coupler', () => {
+    const layout = calculateScaffold(points, [3.6, 3.6], { ...DEFAULT_PARAMETERS, deckSupportRailCount: 4 })
+    const crosses = layout.connectors.filter((connector) => connector.type === 'cross')
+    const keys = crosses.map((connector) => [connector.memberId, connector.connectedMemberId].sort().join(':'))
+    expect(new Set(keys).size).toBe(keys.length)
+    for (const connector of crosses) {
+      expect(layout.members.some((member) => member.id === connector.connectedMemberId)).toBe(true)
+      expect(connector.secondaryAxis).toBeDefined()
+      expect(connector.axis.reduce((sum, value, index) => sum + value * connector.secondaryAxis![index], 0)).toBeCloseTo(0, 3)
+    }
+  })
+
+  it('counts one sleeve per physical pipe joint and gives it the tube axis', () => {
+    const layout = calculateScaffold(points, [7.1, 4.3], DEFAULT_PARAMETERS)
+    for (const plan of layout.materials.assemblyPlans) {
+      const joints = layout.connectors.filter((connector) => connector.type === 'butt' && connector.memberId === plan.memberId)
+      expect(joints).toHaveLength(plan.segmentIds.length - 1)
+      for (const joint of joints) expect(Math.hypot(...joint.axis)).toBeCloseTo(1, 3)
+    }
+    expect(layout.materials.connectorSummary.butt).toBe(layout.pipeSegments.length - layout.members.length)
+    expect(layout.materials.connectorSummary.swivel).toBeNull()
+  })
+
+  it('ties rails carried by surplus stock above a short post’s theoretical top', () => {
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], {
+      ...DEFAULT_PARAMETERS, layerCount: 1, liftHeight: 0.4, guardrailRailCount: 2,
+    })
+    const highRail = layout.members.find((member) => member.type === 'guardrail' && member.start[1] > 1.4)!
+    expect(highRail).toBeDefined()
+    expect(layout.connectors.filter((connector) => connector.memberId === highRail.id && connector.type === 'cross')).toHaveLength(highRail.connectionPoints.length)
+  })
+
   it('deduplicates the outer post shared by an L-shaped corner', () => {
     const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
     const outerCornerPosts = layout.members.filter(

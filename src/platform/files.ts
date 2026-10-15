@@ -7,8 +7,9 @@ import { Share } from '@capacitor/share'
  * - `downloaded`: browser handed the file to the download manager.
  * - `shared`: Android wrote the file and opened the system share sheet, so the
  *   user decides where it lands (Files, mail, cloud drive...).
+ * - `cancelled`: the file was written, and the user dismissed the share sheet.
  */
-export type SaveOutcome = 'downloaded' | 'shared'
+export type SaveOutcome = 'downloaded' | 'shared' | 'cancelled'
 
 export interface SaveTextFileOptions {
   fileName: string
@@ -48,11 +49,18 @@ export async function saveTextFile(options: SaveTextFileOptions): Promise<SaveOu
     encoding: Encoding.UTF8,
   })
 
-  await Share.share({
-    title: options.title,
-    dialogTitle: options.title,
-    url: result.uri,
-  })
+  try {
+    await Share.share({
+      title: options.title,
+      dialogTitle: options.title,
+      url: result.uri,
+    })
+  } catch (error) {
+    // Android's chooser reports a rejected promise when the user dismisses it.
+    // Keep real write/share failures visible to the caller.
+    if (error instanceof Error && /^Share cancel(?:ed|led)$/i.test(error.message)) return 'cancelled'
+    throw error
+  }
 
   return 'shared'
 }

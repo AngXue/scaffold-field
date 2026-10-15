@@ -6,6 +6,8 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { Box, Focus, Maximize2, Minimize2, Rotate3D, ScanEye } from 'lucide-react'
 import type { DeckPanel, MemberType, PipeSegment, ScaffoldLayout } from '../domain/scaffold'
 import { CONNECTOR_LABELS, SWEEP_BAR_LAYER } from '../domain/scaffold'
+import { GroundDimensions } from './GroundDimensions'
+import { Couplers } from './Couplers'
 import { useCssFullscreen } from '../platform/fullscreen'
 
 type ViewerProps = {
@@ -208,21 +210,37 @@ function SteelDeck({ deck, selected, onSelect }: {
   selected: boolean
   onSelect: () => void
 }) {
-  const [a, b, c, d] = deck.corners.map((corner) => new THREE.Vector3(...corner))
-  const surfaceVertices = new Float32Array([
-    ...a.toArray(), ...b.toArray(), ...c.toArray(),
-    ...a.toArray(), ...c.toArray(), ...d.toArray(),
-  ])
+  const corners = deck.corners.map(corner => new THREE.Vector3(...corner))
+  const faces = (deck.coverage ?? [deck.corners]).map(face => face.map(p => new THREE.Vector3(...p)))
+  const surfaceVertices = new Float32Array(faces.flatMap(face =>
+    face.slice(1, -1).flatMap((point, index) => [...face[0].toArray(), ...point.toArray(), ...face[index + 2].toArray()])))
   const linePoints: number[] = []
-  const lift = (point: THREE.Vector3) => point.clone().add(new THREE.Vector3(0, 0.004, 0))
-
-  for (let index = 0; index <= 8; index += 1) {
-    const ratio = index / 8
-    linePoints.push(...lift(a.clone().lerp(d, ratio)).toArray(), ...lift(b.clone().lerp(c, ratio)).toArray())
+  const line = (a: THREE.Vector3, b: THREE.Vector3) => {
+    linePoints.push(a.x, a.y + 0.004, a.z, b.x, b.y + 0.004, b.z)
   }
-  for (let index = 0; index <= 4; index += 1) {
-    const ratio = index / 4
-    linePoints.push(...lift(a.clone().lerp(b, ratio)).toArray(), ...lift(d.clone().lerp(c, ratio)).toArray())
+  for (const face of faces) {
+    face.forEach((point, index) => line(point, face[(index + 1) % face.length]))
+    // Clip the visual wire pattern to each cut face, using the original panel's
+    // axes. It cannot run across a removed corner or cover a neighbouring panel.
+    for (const [end, count] of [[corners[1], 4], [corners[3], 8]] as const) {
+      const axis = end.clone().sub(corners[0])
+      const length = axis.length()
+      axis.normalize()
+      const project = (p: THREE.Vector3) => p.clone().sub(corners[0]).dot(axis)
+      for (let step = 1; step < count; step++) {
+        const at = length * step / count
+        const hits: THREE.Vector3[] = []
+        face.forEach((a, index) => {
+          const b = face[(index + 1) % face.length], u = project(a), v = project(b)
+          if (Math.abs(u - v) < 1e-8 || at < Math.min(u, v) || at > Math.max(u, v)) return
+          hits.push(a.clone().lerp(b, (at - u) / (v - u)))
+        })
+        if (hits.length >= 2) {
+          hits.sort((a, b) => a.x - b.x || a.z - b.z)
+          line(hits[0], hits.at(-1)!)
+        }
+      }
+    }
   }
 
   return (
@@ -319,7 +337,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
   return (
     <div className={isFullscreen ? 'viewer-shell is-fullscreen' : 'viewer-shell'} ref={viewerRef}>
       <div className="canvas-toolbar viewer-toolbar">
-        <div className="tool-status"><Rotate3D size={17} /> 拖动旋转 · 双指缩放</div>
+        <div className="canvas-status"><strong className="perimeter-readout">周长 {layout.perimeter.toFixed(2)} m</strong><div className="tool-status"><Rotate3D size={17} /> 拖动旋转 · 双指缩放</div></div>
         <div className="toolbar-actions">
           <button className="icon-button" type="button" title="复位等轴视图" onClick={resetCamera}><Focus size={18} /></button>
           <button className="icon-button" type="button" title="切换观察方向" onClick={() => setCameraPreset((cameraPreset + 1) % cameraPositions.length)}><Box size={18} /></button>
@@ -369,21 +387,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
             {visibility.deck && layout.decks.map((deck) => (
               <SteelDeck key={deck.id} deck={deck} selected={deck.id === selectedId} onSelect={() => setSelectedId(deck.id)} />
             ))}
-            {visibility.connector && layout.connectors.map((connector) => (
-              <mesh key={connector.id} position={connector.position} userData={PICK_PART} onClick={(event) => { event.stopPropagation(); setSelectedId(connector.id) }}>
-                {/* A clamp is a bright, tight-highlight fitting rather than a
-                    tangent blob: high metalness and low roughness against the
-                    tube's broad soft highlight is what says "two parts". */}
-                <sphereGeometry args={[TUBE_RADIUS * 1.65, 16, 12]} />
-                <meshStandardMaterial
-                  color={connector.id === selectedId ? SELECTED_COLOR : LAYER_COLORS.connector}
-                  metalness={0.95}
-                  roughness={0.3}
-                  emissive={connector.id === selectedId ? SELECTED_COLOR : '#000000'}
-                  emissiveIntensity={connector.id === selectedId ? 0.5 : 0}
-                />
-              </mesh>
-            ))}
+            {visibility.connector && <Couplers connectors={layout.connectors} selectedId={selectedId} onSelect={setSelectedId} />}
             {visibility.channel && layout.baseChannels.map((channel) => {
               const start = new THREE.Vector3(...channel.start)
               const end = new THREE.Vector3(...channel.end)
@@ -410,6 +414,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
               )
             })}
           </group>
+          <GroundDimensions dimensions={layout.pathDimensions} />
           <ContactShadows
             key={shadowKey}
             position={[center[0], minimum[1] + 0.002, center[2]]}
@@ -494,7 +499,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
           <>
             <span className="field-caption">已选择 · {selectedConnector.id}</span>
             <strong>{CONNECTOR_LABELS[selectedConnector.type]}</strong>
-            <dl><div><dt>关联构件</dt><dd>{selectedConnector.memberId}</dd></div></dl>
+            <dl><div><dt>关联构件</dt><dd>{[selectedConnector.memberId, selectedConnector.connectedMemberId].filter(Boolean).join(" / ")}</dd></div></dl>
           </>
         )}
       </aside>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Focus, Magnet, Maximize2, Minimize2, MousePointer2, Plus, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
+import { placePlanLabels, PLAN_LABEL_HEIGHT, PLAN_LABEL_WIDTH } from './planLabels'
 import { NumberField } from './NumberField'
 import type { Point2D } from '../domain/scaffold'
 import { GRID_SIZE, insertPathSegment, measurePath, PIXELS_PER_METER, resizePathSegment, type PathSide } from '../domain/plan'
@@ -8,6 +9,7 @@ import { useCssFullscreen } from '../platform/fullscreen'
 type PlanEditorProps = {
   points: Point2D[]
   lengths: number[]
+  perimeter: number
   onPointsChange: (points: Point2D[]) => void
   onLengthsChange: (lengths: number[]) => void
   /** Restore the project's default example (App owns what that is). */
@@ -31,10 +33,10 @@ type ViewTransform = { x: number; y: number; k: number }
 
 const clampZoom = (value: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
 
-export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange, onResetDemo }: PlanEditorProps) {
+export function PlanEditor({ points, lengths, perimeter, onPointsChange, onLengthsChange, onResetDemo }: PlanEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
-  const [size, setSize] = useState({ width: 900, height: 560 })
+  const [size, setSize] = useState({ width: 0, height: 0 })
   const [view, setView] = useState<ViewTransform>({ x: 0, y: 0, k: 1 })
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [selectedSegment, setSelectedSegment] = useState(0)
@@ -257,10 +259,12 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange, o
   // clamp: the strip and the length editor must always address a real segment.
   const activeSegment = Math.min(selectedSegment, Math.max(0, points.length - 2))
 
+  const labels = placePlanLabels(points, view.k, { x: -view.x + 6, y: -view.y + 6, width: Math.max(1, size.width - 12), height: Math.max(1, size.height - 12) })
+
   return (
     <div className={isFullscreen ? 'plan-editor is-fullscreen' : 'plan-editor'} ref={editorRef}>
       <div className="canvas-toolbar">
-        <div className="tool-status"><MousePointer2 size={16} /> 拖动节点 · {snapEnabled ? '吸附已开启' : '自由移动'}</div>
+        <div className="canvas-status"><strong className="perimeter-readout">周长 {perimeter.toFixed(2)} m</strong><div className="tool-status"><MousePointer2 size={16} /> 拖动节点 · {snapEnabled ? '吸附已开启' : '自由移动'}</div></div>
         <div className="toolbar-actions">
           <span className="zoom-readout">{Math.round(view.k * 100)}%</span>
           <button className="icon-button" type="button" onClick={() => zoomFromCentre(1 / 1.25)} title="缩小"><ZoomOut size={18} /></button>
@@ -282,7 +286,7 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange, o
         <svg
           ref={svgRef}
           className="plan-canvas"
-          viewBox={`0 0 ${size.width} ${size.height}`}
+          viewBox={`0 0 ${Math.max(1, size.width)} ${Math.max(1, size.height)}`}
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={stopInteraction}
@@ -313,7 +317,7 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange, o
             )}
             {points.slice(0, -1).map((point, index) => {
               const next = points[index + 1]
-              const midpoint = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }
+              const label = labels[index]
               const selected = activeSegment === index
               return (
                 <g key={`${point.id}-${next.id}`} data-segment={index} className="plan-segment">
@@ -324,9 +328,9 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange, o
                     <line x1={point.x} y1={point.y} x2={next.x} y2={next.y} className="segment-halo" />
                   ) : null}
                   <line x1={point.x} y1={point.y} x2={next.x} y2={next.y} className="segment-line" />
-                  <g transform={`translate(${midpoint.x}, ${midpoint.y}) scale(${1 / view.k})`}>
-                    <rect x="-38" y="-17" width="76" height="34" rx="4" className="length-label-bg" />
-                    <text textAnchor="middle" dominantBaseline="middle" className="length-label">{(lengths[index] ?? 0).toFixed(2)} m</text>
+                  <g transform={`translate(${label.x}, ${label.y}) scale(${1 / view.k})`}>
+                    <rect x={-PLAN_LABEL_WIDTH / 2} y={-PLAN_LABEL_HEIGHT / 2} width={PLAN_LABEL_WIDTH} height={PLAN_LABEL_HEIGHT} rx="3" className="length-label-bg" />
+                    <text textAnchor="middle" dominantBaseline="middle" className="length-label">#{index + 1} · {(lengths[index] ?? 0).toFixed(2)} m</text>
                   </g>
                 </g>
               )

@@ -13,7 +13,8 @@
     "android:sync": "npm run build && cap sync android",
     "apk": "bash scripts/build-apk.sh",
     "apk:release": "bash scripts/build-apk.sh release",
-    "adb": "bash scripts/adb.sh"
+    "adb": "bash scripts/adb.sh",
+    "audit:geometry": "node --experimental-strip-types scripts/geometry-audit/run.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
