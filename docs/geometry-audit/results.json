@@ -1,6 +1,6 @@
 {
-  "date": "2026-10-15",
-  "sourceHash": "cfef42eb810dd98a88c422d1e8266b05de21d3056a6d9c482a0f7b47dae7d453",
+  "date": "2026-10-22",
+  "sourceHash": "163fdee908a31f3c625cdaa2159fe925233c45db94a4849b3958e6d8498284dc",
   "seed": "0x20261015",
   "summary": {
     "handDrawnShapes": 27,
@@ -6616,13 +6616,13 @@
         "longitudinal": 90,
         "transverse": 60,
         "guardrail": 48,
-        "pipes": 331,
+        "pipes": 330,
         "decks": 175,
         "deckArea": 94.5,
         "channels": 26,
         "connectors": {
           "cross": 708,
-          "butt": 87,
+          "butt": 86,
           "swivel": null
         }
       },
@@ -6676,13 +6676,13 @@
         "longitudinal": 96,
         "transverse": 60,
         "guardrail": 48,
-        "pipes": 352,
+        "pipes": 351,
         "decks": 190,
         "deckArea": 125.1,
         "channels": 26,
         "connectors": {
           "cross": 732,
-          "butt": 101,
+          "butt": 100,
           "swivel": null
         }
       },
@@ -6769,13 +6769,13 @@
         "longitudinal": 72,
         "transverse": 30,
         "guardrail": 36,
-        "pipes": 193,
+        "pipes": 192,
         "decks": 105,
         "deckArea": 53.2,
         "channels": 16,
         "connectors": {
           "cross": 390,
-          "butt": 31,
+          "butt": 30,
           "swivel": null
         }
       },
@@ -9579,13 +9579,13 @@
         "longitudinal": 114,
         "transverse": 18,
         "guardrail": 84,
-        "pipes": 294,
+        "pipes": 293,
         "decks": 95,
         "deckArea": 72.9,
         "channels": 20,
         "connectors": {
           "cross": 570,
-          "butt": 45,
+          "butt": 44,
           "swivel": null
         }
       },
@@ -9647,13 +9647,13 @@
         "longitudinal": 219,
         "transverse": 13,
         "guardrail": 84,
-        "pipes": 409,
+        "pipes": 408,
         "decks": 95,
         "deckArea": 72.9,
         "channels": 20,
         "connectors": {
           "cross": 610,
-          "butt": 60,
+          "butt": 59,
           "swivel": null
         }
       },
@@ -13859,7 +13859,7 @@
         "deckArea": 70.2,
         "channels": 20,
         "connectors": {
-          "cross": 580,
+          "cross": 579,
           "butt": 44,
           "swivel": null
         }
@@ -13900,13 +13900,13 @@
         "longitudinal": 96,
         "transverse": 42,
         "guardrail": 60,
-        "pipes": 280,
+        "pipes": 281,
         "decks": 105,
         "deckArea": 70.2,
         "channels": 20,
         "connectors": {
           "cross": 600,
-          "butt": 47,
+          "butt": 48,
           "swivel": null
         }
       },
@@ -13951,7 +13951,7 @@
         "deckArea": 70.2,
         "channels": 20,
         "connectors": {
-          "cross": 690,
+          "cross": 689,
           "butt": 44,
           "swivel": null
         }
@@ -13997,7 +13997,7 @@
         "deckArea": 52.6,
         "channels": 20,
         "connectors": {
-          "cross": 580,
+          "cross": 579,
           "butt": 44,
           "swivel": null
         }
@@ -14326,13 +14326,13 @@
         "longitudinal": 84,
         "transverse": 54,
         "guardrail": 60,
-        "pipes": 291,
+        "pipes": 290,
         "decks": 125,
         "deckArea": 95.85,
         "channels": 22,
         "connectors": {
-          "cross": 672,
-          "butt": 53,
+          "cross": 671,
+          "butt": 52,
           "swivel": null
         }
       },
@@ -14394,13 +14394,13 @@
         "longitudinal": 154,
         "transverse": 54,
         "guardrail": 60,
-        "pipes": 361,
+        "pipes": 360,
         "decks": 125,
         "deckArea": 95.85,
         "channels": 22,
         "connectors": {
-          "cross": 762,
-          "butt": 53,
+          "cross": 761,
+          "butt": 52,
           "swivel": null
         }
       },
@@ -14527,7 +14527,7 @@
         "deckArea": 31.95,
         "channels": 9,
         "connectors": {
-          "cross": 280,
+          "cross": 279,
           "butt": 22,
           "swivel": null
         }
@@ -14560,13 +14560,13 @@
         "longitudinal": 48,
         "transverse": 12,
         "guardrail": 36,
-        "pipes": 135,
+        "pipes": 136,
         "decks": 45,
         "deckArea": 31.95,
         "channels": 9,
         "connectors": {
           "cross": 286,
-          "butt": 23,
+          "butt": 24,
           "swivel": null
         }
       },
@@ -14603,7 +14603,7 @@
         "deckArea": 31.95,
         "channels": 9,
         "connectors": {
-          "cross": 350,
+          "cross": 349,
           "butt": 22,
           "swivel": null
         }
@@ -14641,7 +14641,7 @@
         "deckArea": 23.15,
         "channels": 9,
         "connectors": {
-          "cross": 280,
+          "cross": 279,
           "butt": 22,
           "swivel": null
         }
@@ -15472,13 +15472,13 @@
         "longitudinal": 102,
         "transverse": 12,
         "guardrail": 72,
-        "pipes": 255,
+        "pipes": 256,
         "decks": 60,
         "deckArea": 40.05,
         "channels": 18,
         "connectors": {
-          "cross": 552,
-          "butt": 40,
+          "cross": 551,
+          "butt": 41,
           "swivel": null
         }
       },
@@ -15677,7 +15677,7 @@
         "deckArea": 40.05,
         "channels": 20,
         "connectors": {
-          "cross": 521,
+          "cross": 520,
           "butt": 40,
           "swivel": null
         }
@@ -16185,7 +16185,7 @@
         "deckArea": 93.6,
         "channels": 31,
         "connectors": {
-          "cross": 896,
+          "cross": 895,
           "butt": 83,
           "swivel": null
         }
@@ -16226,13 +16226,13 @@
         "longitudinal": 66,
         "transverse": 12,
         "guardrail": 48,
-        "pipes": 171,
+        "pipes": 170,
         "decks": 60,
         "deckArea": 38.7,
         "channels": 11,
         "connectors": {
           "cross": 334,
-          "butt": 26,
+          "butt": 25,
           "swivel": null
         }
       },
@@ -16302,13 +16302,13 @@
         "longitudinal": 126,
         "transverse": 12,
         "guardrail": 48,
-        "pipes": 231,
+        "pipes": 230,
         "decks": 60,
         "deckArea": 38.7,
         "channels": 11,
         "connectors": {
           "cross": 374,
-          "butt": 26,
+          "butt": 25,
           "swivel": null
         }
       },
@@ -16340,13 +16340,13 @@
         "longitudinal": 72,
         "transverse": 12,
         "guardrail": 48,
-        "pipes": 177,
+        "pipes": 176,
         "decks": 60,
         "deckArea": 28.7,
         "channels": 11,
         "connectors": {
           "cross": 334,
-          "butt": 26,
+          "butt": 25,
           "swivel": null
         }
       },
@@ -16944,7 +16944,7 @@
         "deckArea": 33.75,
         "channels": 18,
         "connectors": {
-          "cross": 490,
+          "cross": 489,
           "butt": 36,
           "swivel": null
         }
@@ -17338,7 +17338,7 @@
         "deckArea": 116.55,
         "channels": 30,
         "connectors": {
-          "cross": 832,
+          "cross": 831,
           "butt": 63,
           "swivel": null
         }
@@ -17379,13 +17379,13 @@
         "longitudinal": 144,
         "transverse": 54,
         "guardrail": 84,
-        "pipes": 401,
+        "pipes": 402,
         "decks": 165,
         "deckArea": 116.55,
         "channels": 30,
         "connectors": {
           "cross": 876,
-          "butt": 68,
+          "butt": 69,
           "swivel": null
         }
       },
@@ -17430,7 +17430,7 @@
         "deckArea": 116.55,
         "channels": 30,
         "connectors": {
-          "cross": 962,
+          "cross": 961,
           "butt": 63,
           "swivel": null
         }
@@ -17476,7 +17476,7 @@
         "deckArea": 89.95,
         "channels": 30,
         "connectors": {
-          "cross": 832,
+          "cross": 831,
           "butt": 63,
           "swivel": null
         }
@@ -17755,13 +17755,13 @@
         "longitudinal": 120,
         "transverse": 12,
         "guardrail": 72,
-        "pipes": 280,
+        "pipes": 279,
         "decks": 95,
         "deckArea": 44.65,
         "channels": 20,
         "connectors": {
           "cross": 558,
-          "butt": 43,
+          "butt": 42,
           "swivel": null
         }
       },
@@ -18209,13 +18209,13 @@
         "longitudinal": 132,
         "transverse": 48,
         "guardrail": 84,
-        "pipes": 375,
+        "pipes": 374,
         "decks": 160,
         "deckArea": 116.55,
         "channels": 29,
         "connectors": {
           "cross": 806,
-          "butt": 62,
+          "butt": 61,
           "swivel": null
         }
       },
@@ -18309,13 +18309,13 @@
         "longitudinal": 242,
         "transverse": 48,
         "guardrail": 84,
-        "pipes": 495,
+        "pipes": 494,
         "decks": 160,
         "deckArea": 116.55,
         "channels": 29,
         "connectors": {
           "cross": 936,
-          "butt": 72,
+          "butt": 71,
           "swivel": null
         }
       },
@@ -18359,13 +18359,13 @@
         "longitudinal": 138,
         "transverse": 54,
         "guardrail": 84,
-        "pipes": 390,
+        "pipes": 389,
         "decks": 175,
         "deckArea": 90.35,
         "channels": 31,
         "connectors": {
           "cross": 824,
-          "butt": 64,
+          "butt": 63,
           "swivel": null
         }
       },
@@ -21073,13 +21073,13 @@
         "longitudinal": 96,
         "transverse": 48,
         "guardrail": 60,
-        "pipes": 295,
+        "pipes": 294,
         "decks": 135,
         "deckArea": 97.75,
         "channels": 22,
         "connectors": {
           "cross": 640,
-          "butt": 51,
+          "butt": 50,
           "swivel": null
         }
       },
@@ -21165,13 +21165,13 @@
         "longitudinal": 176,
         "transverse": 48,
         "guardrail": 60,
-        "pipes": 375,
+        "pipes": 374,
         "decks": 135,
         "deckArea": 97.75,
         "channels": 22,
         "connectors": {
           "cross": 760,
-          "butt": 51,
+          "butt": 50,
           "swivel": null
         }
       },
@@ -21211,13 +21211,13 @@
         "longitudinal": 96,
         "transverse": 48,
         "guardrail": 60,
-        "pipes": 295,
+        "pipes": 294,
         "decks": 140,
         "deckArea": 74.35,
         "channels": 22,
         "connectors": {
           "cross": 640,
-          "butt": 51,
+          "butt": 50,
           "swivel": null
         }
       },
@@ -21303,13 +21303,13 @@
         "longitudinal": 96,
         "transverse": 78,
         "guardrail": 60,
-        "pipes": 347,
+        "pipes": 346,
         "decks": 110,
         "deckArea": 97.75,
         "channels": 27,
         "connectors": {
           "cross": 790,
-          "butt": 63,
+          "butt": 62,
           "swivel": null
         }
       },
@@ -21942,7 +21942,7 @@
         "deckArea": 122.1,
         "channels": 31,
         "connectors": {
-          "cross": 896,
+          "cross": 895,
           "butt": 80,
           "swivel": null
         }
@@ -21995,13 +21995,13 @@
         "longitudinal": 138,
         "transverse": 54,
         "guardrail": 84,
-        "pipes": 424,
+        "pipes": 425,
         "decks": 175,
         "deckArea": 122.1,
         "channels": 31,
         "connectors": {
           "cross": 948,
-          "butt": 93,
+          "butt": 94,
           "swivel": null
         }
       },
@@ -22058,7 +22058,7 @@
         "deckArea": 122.1,
         "channels": 31,
         "connectors": {
-          "cross": 1056,
+          "cross": 1055,
           "butt": 90,
           "swivel": null
         }
@@ -22111,13 +22111,13 @@
         "longitudinal": 144,
         "transverse": 54,
         "guardrail": 84,
-        "pipes": 421,
+        "pipes": 420,
         "decks": 180,
         "deckArea": 92.2,
         "channels": 31,
         "connectors": {
-          "cross": 912,
-          "butt": 83,
+          "cross": 911,
+          "butt": 82,
           "swivel": null
         }
       },
@@ -22232,7 +22232,7 @@
         "deckArea": 122.1,
         "channels": 36,
         "connectors": {
-          "cross": 1016,
+          "cross": 1015,
           "butt": 90,
           "swivel": null
         }

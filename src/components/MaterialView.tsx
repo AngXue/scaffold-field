@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Cable, ChevronDown, ChevronUp, Download, FileSpreadsheet, Frame, Printer, RectangleHorizontal, X, type LucideIcon } from 'lucide-react'
 import type { ConnectorType, MaterialAdjustments, PendingMaterial, ScaffoldLayout } from '../domain/scaffold'
 import { CONNECTOR_LABELS, COUPLER_PACK_SIZE, MATERIAL_KEYS, materialAdjustmentStep, materialQuantity, stockMaterialRows } from '../domain/scaffold'
@@ -182,7 +183,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
             <div><span className="field-caption">PIPE INVENTORY</span><h2>标准钢管</h2></div>
             <strong>{pipeCount} 根</strong>
           </div>
-          <div className="stock-list">
+          <div className="stock-list" style={{ '--stock-rows': stockRows.length } as CSSProperties}>
             {stockRows.map(({ length, calculated }) => (
               <div className="stock-row" key={length}>
                 <span className="pipe-swatch" style={{ width: `${Math.max(48, Number.parseFloat(length) * 18)}px` }} />

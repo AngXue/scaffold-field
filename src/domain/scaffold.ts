@@ -1,3 +1,4 @@
+import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
 
 export type Point2D = {
@@ -355,7 +356,7 @@ export const DEFAULT_PARAMETERS: ScaffoldParameters = {
   deckPanelLength: DECK_PANEL.length,
   deckPanelWidth: DECK_PANEL.width,
   pipeDiameter: 0.048,
-  stockLengths: [6, 4.5, 4, 3, 2.4, 2, 1.2, 0.8],
+  stockLengths: [6, 5, 4.5, 4, 3.5, 3, 2.4, 2, 1.2, 0.8],
 }
 
 /** Materials listed in the BOM with a `--` quantity, in display order. */
@@ -791,6 +792,12 @@ function onPlanRun(point: Vector3Tuple, member: ScaffoldMember) {
 }
 
 /** Preserve the preferred alternating sequences, then repair the FINAL graph. */
+/** 5 m stock is available for horizontal members, never for uprights. */
+function postStocks(parameters: ScaffoldParameters) {
+  const allowed = parameters.stockLengths.filter(stock => Math.abs(stock - 5) > 0.001)
+  return allowed.length ? allowed : DEFAULT_PARAMETERS.stockLengths.filter(stock => stock !== 5)
+}
+
 function repairPostSplices(members: ScaffoldMember[], sequences: Map<string, number[]>, parameters: ScaffoldParameters, warnings: LayoutWarning[]) {
   const posts = members.filter(m => m.type === 'post')
   const neighbours = new Map(posts.map(post => [post.id, new Set<string>()]))
@@ -802,8 +809,8 @@ function repairPostSplices(members: ScaffoldMember[], sequences: Map<string, num
       neighbours.get(row[i].id)!.add(row[i - 1].id)
     }
   }
-  const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...parameters.stockLengths) * 0.8))
-  const stocks = parameters.stockLengths.filter(stock => stock > overlap).sort((a, b) => b - a)
+  const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...postStocks(parameters)) * 0.8))
+  const stocks = postStocks(parameters).filter(stock => stock > overlap).sort((a, b) => b - a)
   const assigned = new Set<string>()
   const cache = new Map<string, number[] | null>()
   for (const post of posts) {
@@ -900,6 +907,9 @@ export function calculateScaffold(
   const decks: DeckPanel[] = []
   const baseChannels: BaseChannel[] = []
   const warnings: LayoutWarning[] = []
+  if (parameters.stockLengths.every(stock => Math.abs(stock - 5) < 0.001)) warnings.push({
+    id: 'post-stock-unavailable', message: '库存只有禁用于立柱的 5 m 规格：立柱暂按默认非 5 m 库存估算，请补充可用规格后复核。',
+  })
   const postByPoint = new Map<string, ScaffoldMember>()
   const channelKeys = new Set<string>()
   let memberSequence = 1
@@ -971,11 +981,11 @@ export function calculateScaffold(
   const rowTopEdge = (row: number) =>
     assembledLength(
       rowCarriesRails(row) ? railedHeight : theoreticalHeight,
-      parameters.stockLengths,
+      postStocks(parameters),
       parameters.spliceOverlap,
     )
   /** An open end's two posts are both railed, so a return is tied to the railed height. */
-  const endTopEdge = assembledLength(railedHeight, parameters.stockLengths, parameters.spliceOverlap)
+  const endTopEdge = assembledLength(railedHeight, postStocks(parameters), parameters.spliceOverlap)
   const sweepElevation = parameters.sweepBarHeight > 0 && parameters.sweepBarHeight < parameters.liftHeight
     ? round(parameters.sweepBarHeight)
     : 0
@@ -1035,11 +1045,11 @@ export function calculateScaffold(
     const key = `${requiredLength}:${parity}`
     const cached = postSequenceCache.get(key)
     if (cached) return cached
-    const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...parameters.stockLengths) * 0.8))
-    const primary = chooseStockLengths(requiredLength, parameters.stockLengths, overlap)
+    const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...postStocks(parameters)) * 0.8))
+    const primary = chooseStockLengths(requiredLength, postStocks(parameters), overlap)
     const sequence = parity === 0
       ? primary
-      : neighbourStockSequence(primary, requiredLength, parameters.stockLengths, overlap)
+      : neighbourStockSequence(primary, requiredLength, postStocks(parameters), overlap)
     postSequenceCache.set(key, sequence)
     return sequence
   }
@@ -1876,6 +1886,40 @@ export function calculateScaffold(
     })
   }
 
+  const pathDimensions: PathDimension[] = physical.slice(0, -1).flatMap((point, index) => {
+    const next = physical[index + 1]
+    const dx = next[0] - point[0]
+    const dz = next[1] - point[1]
+    const distance = Math.hypot(dx, dz)
+    if (distance < 0.001) return []
+    // Row 0 is the path. When row 1 is outside, move past the full row width.
+    const offset = parameters.swapInnerOuter ? parameters.width + 1.2 : -1.2
+    return [{
+      index,
+      length: round(Math.max(0.1, segmentLengths[index] ?? distance)),
+      start: [point[0], 0, point[1]] as Vector3Tuple,
+      end: [next[0], 0, next[1]] as Vector3Tuple,
+      labelPosition: [
+        round((point[0] + next[0]) / 2 - dz / distance * offset),
+        0.015,
+        round((point[1] + next[1]) / 2 + dx / distance * offset),
+      ] as Vector3Tuple,
+    }]
+  })
+  resolveDeckCoverage(decks, physical, pathIsClosed)
+  return finishLayout(members, decks, baseChannels, warnings, parameters, postSequences, pathDimensions, {
+    theoretical: theoreticalHeight,
+    inner: round(rowTopEdge(innerRow)),
+    outer: round(rowTopEdge(outerRow)),
+  })
+}
+
+/** One assembly/counting pass for all components of the same drawing. */
+function finishLayout(
+  members: ScaffoldMember[], decks: DeckPanel[], baseChannels: BaseChannel[],
+  warnings: LayoutWarning[], parameters: ScaffoldParameters, postSequences: Map<string, number[]>,
+  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'],
+): ScaffoldLayout {
   // Merge collinear shared runs before stock assembly and coupler counting.
   // This keeps all three views on the same physical quantities.
   mergeSharedRuns(members)
@@ -1898,10 +1942,9 @@ export function calculateScaffold(
       && supported.every(id => supportedByBeam.get(other)!.includes(id)))) baseChannels.splice(index, 1)
   }
   repairPostSplices(members, postSequences, parameters, warnings)
-  resolveDeckCoverage(decks, physical, pathIsClosed)
 
   const assemblies = members.map((member) =>
-    createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap, postSequences.get(member.id)))
+    createPipeAssembly(member, member.type === 'post' ? postStocks(parameters) : parameters.stockLengths, parameters.spliceOverlap, postSequences.get(member.id)))
   const builtPostTops = new Map(assemblies
     .filter((assembly) => assembly.segments[0]?.type === 'post')
     .map((assembly) => [assembly.plan.memberId, Math.max(...assembly.segments.map((segment) => segment.end[1]))]))
@@ -1981,26 +2024,6 @@ export function calculateScaffold(
   ]
   const assemblyPlans = assemblies.map((assembly) => assembly.plan)
 
-  const pathDimensions: PathDimension[] = physical.slice(0, -1).flatMap((point, index) => {
-    const next = physical[index + 1]
-    const dx = next[0] - point[0]
-    const dz = next[1] - point[1]
-    const distance = Math.hypot(dx, dz)
-    if (distance < 0.001) return []
-    // Row 0 is the path. When row 1 is outside, move past the full row width.
-    const offset = parameters.swapInnerOuter ? parameters.width + 1.2 : -1.2
-    return [{
-      index,
-      length: round(Math.max(0.1, segmentLengths[index] ?? distance)),
-      start: [point[0], 0, point[1]] as Vector3Tuple,
-      end: [next[0], 0, next[1]] as Vector3Tuple,
-      labelPosition: [
-        round((point[0] + next[0]) / 2 - dz / distance * offset),
-        0.015,
-        round((point[1] + next[1]) / 2 + dx / distance * offset),
-      ] as Vector3Tuple,
-    }]
-  })
 
   return {
     pathDimensions,
@@ -2019,11 +2042,7 @@ export function calculateScaffold(
       baseChannels,
       parameters,
       assemblyPlans,
-      {
-        theoretical: theoreticalHeight,
-        inner: round(rowTopEdge(innerRow)),
-        outer: round(rowTopEdge(outerRow)),
-      },
+      postHeights,
     ),
   }
 }
@@ -2033,4 +2052,112 @@ export function countMembers(layout: ScaffoldLayout) {
     (counts, member) => ({ ...counts, [member.type]: counts[member.type] + 1 }),
     { post: 0, longitudinal: 0, transverse: 0, guardrail: 0 },
   )
+}
+
+/**
+ * Build each connected trail in its true location, then assemble/count the union.
+ * No synthetic segment is inserted between disconnected components. Branches
+ * remain editable but are flagged because their fabrication detail is unspecified.
+ */
+export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters): ScaffoldLayout {
+  const paths = drawingPaths(drawing)
+  if (!paths.length) return calculateScaffold([], [], parameters)
+  const origin = drawing.points[0]
+  // A normal connected outline needs exactly one domain calculation on mobile.
+  if (paths.length === 1) {
+    const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points), parameters)
+    const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
+    const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
+    result.members.forEach(m => {
+      m.start = move(m.start); m.end = move(m.end); m.connectionPoints = m.connectionPoints.map(move)
+      if (m.pathSegment !== undefined) m.pathSegment = path.edgeIndices[m.pathSegment]
+      m.cornerJunctions = m.cornerJunctions?.map(i => path.edgeIndices[i])
+    })
+    result.pipeSegments.forEach(p => { p.start = move(p.start); p.end = move(p.end) })
+    result.connectors.forEach(c => { c.position = move(c.position) })
+    result.decks.forEach(d => {
+      d.corners = d.corners.map(move) as DeckPanel['corners']; d.coverage = d.coverage?.map(face => face.map(move))
+      d.pathSegment = path.edgeIndices[d.pathSegment]
+    })
+    result.baseChannels.forEach(b => { b.start = move(b.start); b.end = move(b.end); b.pathSegment = path.edgeIndices[b.pathSegment] })
+    result.pathDimensions.forEach(d => { d.index = path.edgeIndices[d.index]; d.start = move(d.start); d.end = move(d.end); d.labelPosition = move(d.labelPosition) })
+    result.pathDimensions.sort((a, b) => a.index - b.index)
+    return result
+  }
+  const members: ScaffoldMember[] = [], decks: DeckPanel[] = [], baseChannels: BaseChannel[] = []
+  const warnings: LayoutWarning[] = [], dimensions: PathDimension[] = []
+  const postSequences = new Map<string, number[]>()
+  let postHeights: MaterialResult['postHeights'] | undefined
+  paths.forEach((path, component) => {
+    const layout = calculateScaffold(path.points, measurePath(path.points), parameters)
+    postHeights ??= layout.materials.postHeights
+    const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER
+    const dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
+    const translate = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
+    const prefix = `G${component}-`
+    const edgeIndex = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
+    const postIds = new Set(layout.members.filter(member => member.type === 'post').map(member => member.id))
+    layout.materials.assemblyPlans.forEach(plan => {
+      if (postIds.has(plan.memberId)) postSequences.set(prefix + plan.memberId, plan.stockLengths)
+    })
+    members.push(...layout.members.map(m => ({ ...m, id: prefix + m.id,
+      start: translate(m.start), end: translate(m.end), connectionPoints: m.connectionPoints.map(translate),
+      pathSegment: edgeIndex(m.pathSegment), cornerJunctions: m.cornerJunctions?.map(index => edgeIndex(index)!),
+    })))
+    decks.push(...layout.decks.map(deck => ({ ...deck, id: prefix + deck.id,
+      corners: deck.corners.map(translate) as DeckPanel['corners'], coverage: deck.coverage?.map(face => face.map(translate)),
+      pathSegment: edgeIndex(deck.pathSegment)!,
+    })))
+    baseChannels.push(...layout.baseChannels.map(beam => ({ ...beam, id: prefix + beam.id,
+      start: translate(beam.start), end: translate(beam.end), pathSegment: edgeIndex(beam.pathSegment)!,
+    })))
+    dimensions.push(...layout.pathDimensions.map(d => ({ ...d, index: edgeIndex(d.index)!,
+      start: translate(d.start), end: translate(d.end), labelPosition: translate(d.labelPosition),
+    })))
+    layout.warnings.forEach(warning => {
+      if (!warnings.some(w => w.id === warning.id)) warnings.push(warning)
+    })
+  })
+  const degrees = new Map<string, number>()
+  drawing.segments.forEach(s => [s.start, s.end].forEach(id => degrees.set(id, (degrees.get(id) ?? 0) + 1)))
+  if ([...degrees.values()].some(degree => degree > 2)) warnings.unshift({
+    id: 'branch-junction', message: '图纸含三向或四向交汇点：已合并共点立杆，支路按各自端部估算；交汇处栏杆、钢笆及搭设细节需人工复核。',
+  })
+  // Shared endpoints belong to one physical post, taking the taller requirement.
+  const posts = new Map<string, ScaffoldMember>()
+  for (let i = members.length - 1; i >= 0; i--) {
+    const post = members[i]
+    if (post.type !== 'post') continue
+    const key = pointKey(post.start), existing = posts.get(key)
+    if (!existing) { posts.set(key, post); continue }
+    if (post.length > existing.length) {
+      existing.length = post.length; existing.end = [...post.end]
+      postSequences.set(existing.id, postSequences.get(post.id)!)
+    }
+    members.splice(i, 1)
+  }
+  const beams = new Set<string>()
+  for (let i = baseChannels.length - 1; i >= 0; i--) {
+    const b = baseChannels[i], key = [pointKey(b.start), pointKey(b.end)].sort().join('|')
+    if (beams.has(key)) baseChannels.splice(i, 1)
+    else beams.add(key)
+  }
+  // Components/branches may overlap in plan. Count and draw covered ground once.
+  const coveredByLayer = new Map<number, PlanPolygon[]>()
+  let overlap = false
+  for (let i = 0; i < decks.length;) {
+    const deck = decks[i], covered = coveredByLayer.get(deck.layer) ?? []
+    const original = (deck.coverage ?? [deck.corners]).map(face => face.map(p => [p[0], p[2]] as [number, number]))
+    const faces = subtractCoverage(original, covered)
+    const area = faces.reduce((sum, face) => sum + Math.abs(signedArea(face)), 0)
+    if (area < deck.area - 0.001) overlap = true
+    if (area < 0.00001) { decks.splice(i, 1); continue }
+    deck.coverage = faces.map(face => face.map(p => [p[0], deck.corners[0][1], p[1]] as Vector3Tuple))
+    deck.area = round(area, 4)
+    coveredByLayer.set(deck.layer, [...covered, ...faces]); i++
+  }
+  if (overlap && !warnings.some(w => w.id === 'branch-junction')) warnings.unshift({ id: 'overlapping-components',
+    message: '独立架段的铺设范围重叠：钢笆覆盖已去重，交汇处立杆、栏杆及搭设细节需人工复核。' })
+  return finishLayout(members, decks, baseChannels, warnings, parameters, postSequences,
+    dimensions.sort((a, b) => a.index - b.index), postHeights!)
 }

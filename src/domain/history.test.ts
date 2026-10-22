@@ -104,3 +104,17 @@ describe('history', () => {
     expect(formatHistoryTime(new Date(2026, 9, 11, 20, 5).getTime())).toBe('10-11 20:05')
   })
 })
+
+it('restores explicit disconnected edges and an intentionally blank saved drawing', () => {
+  const points = [
+    { id: 'a', x: 0, y: 0 }, { id: 'b', x: 100, y: 0 },
+    { id: 'c', x: 300, y: 200 }, { id: 'd', x: 300, y: 300 },
+  ]
+  const segments = [{ id: 'first', start: 'a', end: 'b' }, { id: 'second', start: 'c', end: 'd' }]
+  const records = addHistoryRecord([], snapshot({ points, segments, lengths: [2, 2] }))
+  expect(parseHistory(serialiseHistory(records))[0].segments).toEqual(segments)
+  expect(sameSnapshot(records[0], snapshot({ points, lengths: [2, 2] }))).toBe(false)
+  const blank = snapshot({ points: [], segments: [], lengths: [] })
+  expect(parseHistory(serialiseHistory(addHistoryRecord([], blank)))[0].points).toEqual([])
+  expect(historyLabel(blank)).toBe('空白图纸 · 5 层 · 排距 0.90')
+})

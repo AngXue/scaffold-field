@@ -4,7 +4,8 @@ import {
   type Point2D,
   type ScaffoldParameters,
 } from './scaffold'
-import { measurePath } from './plan'
+import { measureDrawing, measurePath, readDrawing, type PlanSegment } from './plan'
+import { restoreParameters } from './project'
 
 /** How many records the history keeps; the oldest one is dropped beyond this. */
 export const HISTORY_LIMIT = 100
@@ -14,6 +15,7 @@ export const HISTORY_KEY = 'scaffold-history'
 export type HistorySnapshot = {
   points: Point2D[]
   lengths: number[]
+  segments?: PlanSegment[]
   parameters: ScaffoldParameters
   adjustments: MaterialAdjustments
 }
@@ -32,11 +34,11 @@ export type HistoryRecord = HistorySnapshot & {
 export function historyLabel(snapshot: HistorySnapshot): string {
   const lengths = snapshot.lengths.length > 0
     ? snapshot.lengths
-    : measurePath(snapshot.points)
+    : snapshot.segments ? measureDrawing(readDrawing(snapshot.points, snapshot.segments)) : measurePath(snapshot.points)
   const segments = lengths.map((length) => length.toFixed(2)).join(' + ')
   const layers = Math.max(1, Math.round(snapshot.parameters?.layerCount ?? DEFAULT_PARAMETERS.layerCount))
   const width = Number(snapshot.parameters?.width ?? DEFAULT_PARAMETERS.width)
-  return `${segments} m · ${layers} 层 · 排距 ${width.toFixed(2)}`
+  return `${segments ? `${segments} m` : '空白图纸'} · ${layers} 层 · 排距 ${width.toFixed(2)}`
 }
 
 /** Two snapshots are the same project when every saved field matches. */
@@ -46,8 +48,9 @@ export function sameSnapshot(a: HistorySnapshot, b: HistorySnapshot): boolean {
 
 function canonical(snapshot: HistorySnapshot) {
   return {
-    points: snapshot.points,
+    points: readDrawing(snapshot.points, snapshot.segments).points,
     lengths: snapshot.lengths,
+    segments: readDrawing(snapshot.points, snapshot.segments).segments,
     parameters: snapshot.parameters,
     adjustments: snapshot.adjustments ?? {},
   }
@@ -95,7 +98,7 @@ export function parseHistory(raw: string | null): HistoryRecord[] {
   for (const entry of parsed) {
     if (!entry || typeof entry !== 'object') continue
     const candidate = entry as Partial<HistoryRecord>
-    if (!Array.isArray(candidate.points) || candidate.points.length < 2) continue
+    if (!Array.isArray(candidate.points) || (candidate.points.length < 2 && !Array.isArray(candidate.segments))) continue
     if (!Array.isArray(candidate.lengths)) continue
     const savedAt = typeof candidate.savedAt === 'number' && Number.isFinite(candidate.savedAt)
       ? candidate.savedAt
@@ -103,9 +106,10 @@ export function parseHistory(raw: string | null): HistoryRecord[] {
     const snapshot: HistorySnapshot = {
       points: candidate.points as Point2D[],
       lengths: candidate.lengths as number[],
+      ...(Array.isArray(candidate.segments) ? { segments: readDrawing(candidate.points, candidate.segments).segments } : {}),
       // A record from an older build is completed with today's defaults rather than
       // rejected: its own fields still describe the project it saved.
-      parameters: { ...DEFAULT_PARAMETERS, ...(candidate.parameters ?? {}) },
+      parameters: restoreParameters(candidate.parameters),
       adjustments: (candidate.adjustments ?? {}) as MaterialAdjustments,
     }
     records.push({

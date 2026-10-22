@@ -1,9 +1,11 @@
+import { readDrawing, addPlanSegment, EMPTY_DRAWING } from './plan'
 import { describe, expect, it } from 'vitest'
 import { CONFIGURATIONS, generatedShapes, planInput, SHAPES, type Shape } from '../../scripts/geometry-audit/fixtures'
 import { inspect, rectangleUnionArea } from '../../scripts/geometry-audit/checks'
 import { signedArea, subtractCoverage } from './polygons'
 import {
   calculateScaffold,
+  calculateScaffoldPlan,
   countMembers,
   CONNECTOR_LABELS,
   COUPLER_PACK_SIZE,
@@ -37,7 +39,7 @@ describe('calculateScaffold', () => {
   it('lists every default pipe size, putting unused sizes after positive quantities', () => {
     const summary = { '6m': 12, '1.2m': 4 }
     const rows = stockMaterialRows(summary, {})
-    expect(rows.map(row => row.length)).toEqual(['6m', '1.2m', '4.5m', '4m', '3m', '2.4m', '2m', '0.8m'])
+    expect(rows.map(row => row.length)).toEqual(['6m', '1.2m', '5m', '4.5m', '4m', '3.5m', '3m', '2.4m', '2m', '0.8m'])
     expect(rows.find(row => row.length === '4m')).toEqual({ length: '4m', calculated: 0, quantity: 0 })
     expect(stockMaterialRows({}, {})).toHaveLength(DEFAULT_PARAMETERS.stockLengths.length)
     expect(summary).toEqual({ '6m': 12, '1.2m': 4 })
@@ -378,11 +380,11 @@ describe('calculateScaffold', () => {
     expect(planOf(rowPosts[1].id).stockLengths.join('+'))
       .not.toBe(planOf(rowPosts[0].id).stockLengths.join('+'))
     expect(planOf(rowPosts[1].id).effectiveLength)
-      .toBeGreaterThan(planOf(rowPosts[0].id).effectiveLength)
-    // 11.88 m of railed post: 6+6 (12 m) beside 2.4+6+4 (12.4 m) — the cheapest mix
+      .not.toBeCloseTo(planOf(rowPosts[0].id).effectiveLength, 2)
+    // 11.88 m of railed post: 6+6 (12 m) beside 2.4+6+3.5 (11.9 m) — the cheapest mix
     // that differs in BOTH the joint heights (2.4 / 8.4 against 6) and the total.
     expect(planOf(rowPosts[0].id).stockLengths).toEqual([6, 6])
-    expect(planOf(rowPosts[1].id).stockLengths).toEqual([2.4, 6, 4])
+    expect(planOf(rowPosts[1].id).stockLengths).toEqual([2.4, 6, 3.5])
     expect(SPLICE_STAGGER).toBe(0.5)
   })
 
@@ -536,7 +538,7 @@ describe('calculateScaffold', () => {
   })
 
   it('uses the confirmed field stock lengths', () => {
-    expect([...DEFAULT_PARAMETERS.stockLengths].sort((a, b) => a - b)).toEqual([0.8, 1.2, 2, 2.4, 3, 4, 4.5, 6])
+    expect([...DEFAULT_PARAMETERS.stockLengths].sort((a, b) => a - b)).toEqual([0.8, 1.2, 2, 2.4, 3, 3.5, 4, 4.5, 5, 6])
     // Every confirmed length must stay usable, which means the butt-joint
     // engagement has to be shorter than the shortest stock.
     expect(DEFAULT_PARAMETERS.spliceOverlap).toBeLessThan(Math.min(...DEFAULT_PARAMETERS.stockLengths))
@@ -1062,8 +1064,8 @@ describe('calculateScaffold', () => {
     // The corner post is the cheapest mix for the railed 11.88 m and both posts beside
     // it are the staggered one, so no two neighbours share their butt joints.
     expect(plan(postAt(8, 0.9).id).stockLengths).toEqual([6, 6])
-    expect(plan(postAt(7.1, 0.9).id).stockLengths).toEqual([2.4, 6, 4])
-    expect(plan(postAt(8, 0).id).stockLengths).toEqual([2.4, 6, 4])
+    expect(plan(postAt(7.1, 0.9).id).stockLengths).toEqual([2.4, 6, 3.5])
+    expect(plan(postAt(8, 0).id).stockLengths).toEqual([2.4, 6, 3.5])
     expect(plan(postAt(5.325, 0.9).id).stockLengths).toEqual([6, 6])
 
     // One channel direction through the corner: the outgoing leg's first station lays
@@ -1143,4 +1145,103 @@ describe('calculateScaffold', () => {
     expect(layout.materials.guardrail.railCount).toBe(1)
     expect(countMembers(layout).guardrail).toBeGreaterThan(0)
   })
+})
+
+describe('drawing graph and expanded stock inventory', () => {
+  it('uses 5 m and 3.5 m for horizontal runs while excluding 5 m from all post assemblies', () => {
+    for (const run of [4.8, 3.3]) {
+      const layout = calculateScaffold([{ id: 'a', x: 0, y: 0 }, { id: 'b', x: run * 50, y: 0 }], [run], DEFAULT_PARAMETERS)
+      expect(layout.pipeSegments.some(pipe => pipe.type === 'longitudinal' && pipe.stockLength === run + 0.2)).toBe(true)
+    }
+    for (let layerCount = 1; layerCount <= 12; layerCount++) {
+      const layout = calculateScaffold(points, [4, 4], { ...DEFAULT_PARAMETERS, layerCount })
+      const posts = layout.pipeSegments.filter(pipe => pipe.type === 'post')
+      expect(posts.length).toBeGreaterThan(0)
+      expect(posts.every(pipe => pipe.stockLength !== 5)).toBe(true)
+      expect(layout.materials.assemblyPlans.filter(plan => layout.members.find(m => m.id === plan.memberId)?.type === 'post')
+        .every(plan => !plan.stockLengths.includes(5))).toBe(true)
+    }
+  })
+
+  it('keeps the established single-path calculation after migration to explicit edges', () => {
+    const old = calculateScaffold(points, [4, 4], DEFAULT_PARAMETERS)
+    const graph = calculateScaffoldPlan(readDrawing(points), DEFAULT_PARAMETERS)
+    expect(graph.materials).toEqual({ ...old.materials, assemblyPlans: graph.materials.assemblyPlans })
+    expect(graph.pathDimensions).toEqual(old.pathDimensions)
+    expect(graph.members.map(m => [m.type, m.start, m.end])).toEqual(old.members.map(m => [m.type, m.start, m.end]))
+  })
+
+  it('places independent scaffolds at their drawn coordinates with no purchased bridge tubes', () => {
+    let drawing = addPlanSegment(EMPTY_DRAWING, { x: 0, y: 0 }, { x: 200, y: 0 })
+    drawing = addPlanSegment(drawing, { x: 600, y: 400 }, { x: 750, y: 400 })
+    const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+    const first = calculateScaffold(drawing.points.slice(0, 2), [4], DEFAULT_PARAMETERS)
+    const second = calculateScaffold(drawing.points.slice(2), [3], DEFAULT_PARAMETERS)
+    expect(layout.perimeter).toBe(7)
+    expect(layout.pathDimensions.map(d => d.length)).toEqual([4, 3])
+    expect(layout.pathDimensions[1].start).toEqual([12, 0, 8])
+    expect(layout.materials.actualLength).toBeCloseTo(first.materials.actualLength + second.materials.actualLength, 2)
+    expect(layout.materials.deckCount).toBe(first.materials.deckCount + second.materials.deckCount)
+    expect(layout.materials.connectorSummary.cross).toBe(first.materials.connectorSummary.cross + second.materials.connectorSummary.cross)
+    expect(layout.pipeSegments.every(p => p.start[0] < 5 && p.end[0] < 5 || p.start[0] > 11 && p.end[0] > 11)).toBe(true)
+    expect(new Set(layout.pipeSegments.map(p => p.id)).size).toBe(layout.pipeSegments.length)
+  })
+
+  it('preserves the drawn edge numbers when connected strokes were drawn out of order', () => {
+    let drawing = addPlanSegment(EMPTY_DRAWING, { x: 200, y: 0 }, { x: 200, y: 150 })
+    drawing = addPlanSegment(drawing, { x: 0, y: 0 }, { x: 200, y: 0 })
+    const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+    expect(layout.pathDimensions.map(d => [d.index, d.length])).toEqual([[0, 3], [1, 4]])
+    expect(layout.perimeter).toBe(7)
+    expect(layout.warnings.some(w => w.id === 'branch-junction')).toBe(false)
+  })
+
+  it('merges shared branch posts and explicitly flags unspecified junction details', () => {
+    let drawing = addPlanSegment(EMPTY_DRAWING, { x: 0, y: 0 }, { x: 400, y: 0 })
+    drawing = addPlanSegment(drawing, { x: 200, y: 0 }, { x: 200, y: 200 })
+    const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+    expect(layout.perimeter).toBe(12)
+    const posts = layout.members.filter(m => m.type === 'post')
+    expect(new Set(posts.map(p => p.start.join(','))).size).toBe(posts.length)
+    expect(layout.warnings.some(w => w.id === 'branch-junction')).toBe(true)
+    expect(layout.pipeSegments.filter(p => p.type === 'post').every(p => p.stockLength !== 5)).toBe(true)
+  })
+
+  it('accepts an empty canvas without generating any purchased materials', () => {
+    const layout = calculateScaffoldPlan(EMPTY_DRAWING, DEFAULT_PARAMETERS)
+    expect(layout.members).toEqual([])
+    expect(layout.perimeter).toBe(0)
+    expect(layout.materials.actualLength).toBe(0)
+    expect(layout.materials.channelSteel.count).toBe(0)
+    expect(layout.materials.deckCount).toBe(0)
+  })
+})
+
+it('clips overlapping independent deck bands once and warns about their intersection', () => {
+  let drawing = addPlanSegment(EMPTY_DRAWING, { x: 0, y: 0 }, { x: 200, y: 0 })
+  drawing = addPlanSegment(drawing, { x: 0, y: 20 }, { x: 200, y: 20 })
+  const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+  expect(layout.materials.deckArea).toBeCloseTo(4 * 1.3 * 5, 2)
+  expect(layout.warnings.some(w => w.id === 'overlapping-components')).toBe(true)
+  for (const layer of new Set(layout.decks.map(d => d.layer))) {
+    const faces = layout.decks.filter(d => d.layer === layer).flatMap(d => d.coverage ?? [d.corners])
+    const area = faces.reduce((sum, face) => sum + Math.abs(signedArea(face.map(p => [p[0], p[2]]))), 0)
+    expect(area).toBeCloseTo(5.2, 3)
+  }
+})
+
+it('never falls back to 5 m uprights when a saved inventory has no permitted post size', () => {
+  const layout = calculateScaffold(points.slice(0, 2), [4], { ...DEFAULT_PARAMETERS, stockLengths: [5] })
+  expect(layout.pipeSegments.filter(p => p.type === 'post').every(p => p.stockLength !== 5)).toBe(true)
+  expect(layout.warnings.some(w => w.id === 'post-stock-unavailable')).toBe(true)
+})
+
+it('reassembles a merged branch run instead of keeping one short leg stock sequence', () => {
+  let drawing = addPlanSegment(EMPTY_DRAWING, { x: 0, y: 0 }, { x: 400, y: 0 })
+  drawing = addPlanSegment(drawing, { x: 200, y: 0 }, { x: 200, y: 200 })
+  const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+  expect(layout.members.some(m => m.type === 'longitudinal' && m.length > 8)).toBe(true)
+  for (const plan of layout.materials.assemblyPlans) {
+    expect(plan.effectiveLength, `assembly ${plan.memberId}`).toBeGreaterThanOrEqual(plan.requiredLength - 0.001)
+  }
 })

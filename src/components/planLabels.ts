@@ -1,3 +1,4 @@
+import type { PlanDrawing, PlanSegment } from '../domain/plan'
 import type { Point2D } from '../domain/scaffold'
 
 export const PLAN_LABEL_WIDTH = 108
@@ -22,12 +23,15 @@ export function segmentIntersectsLabel(a: Point, b: Point, box: Rect) {
 }
 
 /** Screen-space label avoidance only; never edits the measured path. */
-export function placePlanLabels(points: Point2D[], zoom: number, viewport?: Rect): Point[] {
+export function placePlanLabels(points: Point2D[], zoom: number, viewport?: Rect, edges?: PlanSegment[]): Point[] {
   const screen = points.map(p => ({ x: p.x * zoom, y: p.y * zoom }))
   const occupied: Rect[] = screen.flatMap(p => [
     { x: p.x - 18, y: p.y - 39, width: 36, height: 23 },
     { x: p.x - 15, y: p.y - 15, width: 30, height: 30 },
   ])
+  const nodeMap = new Map(points.map((p, i) => [p.id, screen[i]]))
+  const pairs = edges ? edges.map(s => ({ a: nodeMap.get(s.start)!, b: nodeMap.get(s.end)! }))
+    : screen.slice(1).map((b, i) => ({ a: screen[i], b }))
   const area = screen.slice(1).reduce((sum, b, i) => sum + screen[i].x * b.y - b.x * screen[i].y, 0)
   const side = area > 0 ? -1 : 1
   const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && a.x + a.width > b.x
@@ -37,10 +41,10 @@ export function placePlanLabels(points: Point2D[], zoom: number, viewport?: Rect
   const free = (box: Rect) => (!viewport || (box.x >= viewport.x && box.y >= viewport.y
     && box.x + box.width <= viewport.x + viewport.width && box.y + box.height <= viewport.y + viewport.height))
     && !occupied.some(other => overlaps(box, other))
-    && !screen.slice(1).some((b, i) => segmentIntersectsLabel(screen[i], b, box))
+    && !pairs.some(({ a, b }) => segmentIntersectsLabel(a, b, box))
   const labels: Point[] = []
   // Short edges have fewer nearby slots; let long edges yield their midpoint.
-  const segments = screen.slice(0, -1).map((a, index) => ({ a, b: screen[index + 1], index }))
+  const segments = pairs.map(({ a, b }, index) => ({ a, b, index }))
     .sort((u, v) => Math.hypot(u.b.x - u.a.x, u.b.y - u.a.y) - Math.hypot(v.b.x - v.a.x, v.b.y - v.a.y))
   segments.forEach(({ a, b, index }) => {
     const length = Math.hypot(b.x - a.x, b.y - a.y) || 1
@@ -68,4 +72,8 @@ export function placePlanLabels(points: Point2D[], zoom: number, viewport?: Rect
     labels[index] = { x: chosen.x / zoom, y: chosen.y / zoom }
   })
   return labels
+}
+
+export function placeDrawingLabels(drawing: PlanDrawing, zoom: number, viewport?: Rect) {
+  return placePlanLabels(drawing.points, zoom, viewport, drawing.segments)
 }

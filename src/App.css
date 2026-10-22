@@ -482,3 +482,145 @@ body.has-fullscreen { overflow: hidden; }
   .canvas-toolbar .toolbar-actions { flex: 0 1 auto; min-width: 0; max-width: 100%; flex-wrap: wrap; }
   .canvas-toolbar .toolbar-actions > button { flex-shrink: 0; }
 }
+
+/* Each module owns the remaining viewport; parameters become a drawer on tablets. */
+.app-shell { height: 100dvh; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { flex: 0 0 60px; min-width: 0; }
+.workspace { flex: 1 1 auto; height: auto; min-height: 0; }
+.inspector { height: 100%; min-height: 0; overflow-y: auto; align-self: stretch; overscroll-behavior: contain; }
+.settings-toggle { display: none; }
+.settings-backdrop { display: none; }
+.viewer-shell { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.viewer-canvas { flex: 1 1 auto; height: auto; min-height: 0; }
+.layer-filter { flex: 0 0 auto; flex-wrap: wrap; overflow: visible; gap: 8px; padding: 10px 12px; }
+.layer-option { height: 36px; }
+.layer-option label { padding: 0 8px; }
+.layer-filter > button { height: 36px; }
+
+/* One restrained floating control plane inside the flat drawing surface. */
+.plan-canvas-wrap { overflow: hidden; flex: 1 1 auto; height: auto; min-height: 0; }
+.plan-canvas.tool-draw, .plan-canvas.tool-draw:active { cursor: crosshair; }
+.plan-canvas.tool-edit { cursor: default; }
+.drawing-toolbar { position: absolute; top: 14px; left: 14px; display: flex; align-items: center; gap: 10px; padding: 7px; border-radius: var(--nm-r-3); background: var(--nm-surface); box-shadow: var(--nm-e2), var(--nm-edge); }
+.drawing-tool-group { display: flex; gap: 4px; padding-right: 8px; border-right: 1px solid var(--line); }
+.drawing-toolbar .icon-button, .drawing-view-tools .icon-button { width: 40px; height: 40px; border-radius: var(--nm-r-1); box-shadow: none; }
+.drawing-toolbar .icon-button.active { color: var(--ink); box-shadow: var(--nm-i1), var(--nm-edge); }
+.icon-button:disabled { opacity: .3; cursor: default; }
+.drawing-view-tools { position: absolute; right: 14px; bottom: 60px; display: grid; gap: 4px; padding: 5px; border-radius: var(--nm-r-2); background: var(--nm-surface); box-shadow: var(--nm-e2), var(--nm-edge); }
+.drawing-view-tools .icon-button:active, .drawing-toolbar .icon-button:active { box-shadow: var(--nm-i1), var(--nm-edge); }
+.plan-grid-minor { stroke: var(--line); stroke-width: .5; }
+.plan-grid-major { stroke: var(--nm-border); stroke-width: .6; opacity: .6; }
+.drawing-segment { stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.drawing-node { fill: var(--canvas); stroke: var(--ink); cursor: crosshair; }
+.tool-edit .drawing-node { cursor: grab; }
+.drawing-label rect { fill: var(--canvas); stroke: var(--line); stroke-width: 1; }
+.drawing-label text { fill: var(--ink); font: 500 12px monospace; user-select: none; }
+.drawing-preview { stroke: var(--ink); stroke-width: 2; stroke-dasharray: 6 4; }
+.preview-length { fill: var(--ink); font-family: monospace; paint-order: stroke; stroke: var(--canvas); stroke-width: 3; stroke-linejoin: round; }
+.drawing-empty { position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%); display: grid; gap: 8px; text-align: center; color: var(--muted); font-size: 20px; pointer-events: none; white-space: nowrap; }
+.drawing-empty span { font-size: 12px; }
+.drawing-status { position: absolute; bottom: 16px; left: 16px; display: flex; gap: 20px; color: var(--muted); font-size: 12px; pointer-events: none; background: var(--canvas); padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; }
+.drawing-status strong { color: var(--ink); font-family: monospace; font-weight: 600; }
+.drawing-scale { position: absolute; bottom: 16px; right: 18px; display: grid; gap: 4px; text-align: center; color: var(--muted); font: 10px monospace; pointer-events: none; max-width: 35%; overflow: hidden; }
+.drawing-scale i { display: block; height: 6px; border: 1px solid var(--muted); border-top: 0; max-width: 100%; }
+.segment-popover { position: absolute; width: 288px; padding: 10px 12px 12px; border-radius: var(--nm-r-2); background: var(--nm-surface); box-shadow: var(--nm-e3), var(--nm-edge); }
+.segment-popover header { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.segment-popover header strong { flex: 1; font-size: 12px; }
+.segment-popover header .icon-button { width: 30px; height: 28px; box-shadow: none; }
+.segment-popover .inline-field { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 8px; align-items: center; font-size: 12px; }
+.segment-popover .number-input { height: 40px; }
+
+/* Ten stock sizes remain visible together with connectors and export actions. */
+.materials-view { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 10px; padding: 14px; }
+.material-kpis { flex: 0 0 auto; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.material-kpis > div { min-height: 58px; padding: 10px 12px; border-bottom: 0; }
+.material-kpis > div:nth-child(2) { border-right: 1px solid var(--line); }
+.material-kpis strong { font-size: 18px; }
+.material-columns { flex: 1 1 auto; min-height: 0; margin-top: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.material-columns > .material-section { min-height: 0; display: flex; flex-direction: column; padding: 10px; }
+.section-title { flex: 0 0 auto; margin-bottom: 8px; min-height: 20px; }
+.section-title .field-caption { display: none; }
+.stock-list { flex: 1 1 auto; min-height: 0; grid-template-rows: repeat(var(--stock-rows, 10), minmax(0, 1fr)); gap: 3px; }
+.stock-row { min-height: 0; grid-template-columns: minmax(16px, 1fr) 36px auto; padding: 0 7px; gap: 5px; }
+.stock-row .pipe-swatch { width: 100%; }
+.qty-control { padding-right: 0; gap: 3px; }
+.qty-step { width: 26px; height: 26px; }
+.qty-value { width: 35px; font-size: 14px; }
+.qty-expand { gap: 2px; }
+.qty-reset { padding-inline: 2px; font-size: 9px; }
+.qty-delta { font-size: 10px; }
+.connector-list { gap: 6px; }
+.connector-list > div { min-height: 40px; padding: 0 7px; grid-template-columns: 24px minmax(3em, 1fr) auto; gap: 3px; }
+.pending-section { flex: 0 0 auto; margin-top: 0; padding: 10px; }
+.pending-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pending-list > div { min-height: 36px; }
+.export-actions { flex: 0 0 auto; margin-top: 0; }
+.export-actions button { min-height: 38px; }
+
+@media (max-width: 1200px) {
+  .workspace { display: grid; grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 0; }
+  .settings-toggle { display: inline-grid; }
+  .inspector { display: none; }
+  .inspector.is-open { display: block; position: fixed; z-index: 51; top: 72px; bottom: 12px; right: 12px; width: min(340px, calc(100vw - 24px)); height: auto; }
+  .settings-backdrop { display: block; position: fixed; inset: 60px 0 0; z-index: 50; border: 0; background: rgba(0, 0, 0, .08); }
+  .save-state { display: none; }
+  .topbar { padding-inline: 12px; gap: 12px; }
+  .brand-text span { display: none; }
+  .workflow-step { padding-inline: 12px; }
+}
+@media (max-width: 800px) {
+  .workspace { display: grid; flex-direction: initial; height: auto; padding: 9px; }
+  .work-surface { order: initial; }
+  .plan-canvas-wrap, .viewer-canvas { flex: 1 1 auto; height: auto; min-height: 0; }
+  .brand-mark, .brand-text { display: none; }
+  .topbar .secondary-button { display: flex; padding-inline: 10px; }
+  .topbar-actions { gap: 6px; }
+  .topbar-actions .icon-button { width: 38px; height: 40px; }
+  .workflow-tabs { gap: 4px; }
+  .workflow-step-wrap { flex: 0 1 auto; gap: 0; }
+  .workflow-step { padding-inline: 8px; font-size: 12px; white-space: nowrap; }
+  .workflow-step > span { display: none; }
+  .material-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .material-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .material-kpis > div { min-height: 54px; padding: 10px; }
+  .stock-row { grid-template-columns: 36px minmax(0, 1fr); }
+  .pipe-swatch { display: none; }
+  .connector-list > div { grid-template-columns: minmax(3em, 1fr) auto; }
+  .connector-icon, .channel-icon, .deck-material-icon, .pending-material-icon { display: none; }
+}
+@media (max-height: 760px) {
+  .materials-view { padding: 10px; gap: 8px; }
+  .material-kpis > div { min-height: 48px; padding-block: 8px; }
+  .pending-section { padding-block: 8px; }
+  .pending-section .section-title { margin-bottom: 5px; }
+  .pending-list > div { min-height: 32px; }
+  .stock-row .qty-step { height: 24px; }
+  .inspector { padding-inline: 14px; }
+  .parameter-section { padding-block: 12px; }
+}
+@media (max-width: 540px) {
+  .topbar { padding-inline: 6px; gap: 5px; }
+  .topbar-actions { gap: 4px; }
+  .topbar-actions .icon-button { width: 30px; }
+  .topbar-actions .secondary-button { font-size: 0; width: 30px; padding: 0; }
+  .workflow-step { font-size: 11px; padding-inline: 6px; }
+  .drawing-toolbar { left: 8px; right: 8px; top: 8px; gap: 4px; padding: 5px; justify-content: space-between; }
+  .drawing-toolbar .icon-button { width: 32px; height: 38px; }
+  .drawing-tool-group { gap: 2px; padding-right: 4px; }
+  .material-kpis strong { font-size: 15px; }
+  .material-kpis span { font-size: 10px; }
+  .material-columns { gap: 6px; }
+  .material-columns > .material-section { padding: 6px; }
+  .stock-row { padding-inline: 3px; gap: 2px; grid-template-columns: 28px minmax(0, 1fr); }
+  .qty-control { flex-wrap: wrap; justify-content: flex-end; }
+  .qty-control .qty-expand { flex-basis: 100%; justify-content: flex-end; }
+  .qty-step { width: 24px; }
+  .qty-pack { min-width: 34px; padding-inline: 2px; }
+  .pending-section { padding-inline: 6px; }
+}
+@media print {
+  .app-shell, .workspace, .work-surface, .materials-view { height: auto; overflow: visible; display: block; }
+  .material-columns { display: grid; }
+  .stock-list { grid-template-rows: none; }
+  .stock-row { min-height: 30px; }
+}

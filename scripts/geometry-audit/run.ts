@@ -128,7 +128,7 @@ const details=detailIds.map((id,index)=>{
 }).join('')
 const detailSvg=`<svg xmlns="http://www.w3.org/2000/svg" width="1308" height="792"><rect width="100%" height="100%" fill="#f1f3f4"/><g font-family="Arial, Noto Sans SC, Microsoft YaHei, sans-serif" fill="#16191b"><text x="24" y="42" font-size="25" font-weight="700">修复后俯视图 · 六个回归案例</text><text x="24" y="73" font-size="14">黑线：路径 · 细线：横向杆 · 黑点：立杆 · 灰面：首层钢笆 · 虚线圈：复核区域</text>${details}</g></svg>`
 await mkdir(output, { recursive:true })
-await writeFile(new URL('results.json',output), JSON.stringify({ date:'2026-10-15',sourceHash,seed:'0x20261015',summary,configurations:CONFIGURATIONS,shapes:allShapes,cases,transformations },null,2)+'\n')
+await writeFile(new URL('results.json',output), JSON.stringify({ date:new Date().toISOString().slice(0,10),sourceHash,seed:'0x20261015',summary,configurations:CONFIGURATIONS,shapes:allShapes,cases,transformations },null,2)+'\n')
 await writeFile(new URL('atlas.svg',output),atlas)
 await writeFile(new URL('details.svg',output),detailSvg)
 await writeFile(new URL('projects.json',output),JSON.stringify(SHAPES.map((shape)=>({id:shape.id,label:shape.name,...planInput(shape),parameters:DEFAULT_PARAMETERS,adjustments:{}})),null,2)+'\n')

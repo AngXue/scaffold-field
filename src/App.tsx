@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import {
   Box,
   ChevronRight,
@@ -8,7 +8,6 @@ import {
   History,
   Layers3,
   Map,
-  Menu,
   Save,
   Settings2,
   Trash2,
@@ -19,7 +18,8 @@ import { MaterialView } from './components/MaterialView'
 import { NumberField } from './components/NumberField'
 import { OptionField } from './components/OptionField'
 import { PlanEditor } from './components/PlanEditor'
-import { measurePath, PIXELS_PER_METER } from './domain/plan'
+import { measureDrawing, readDrawing, type PlanSegment } from './domain/plan'
+import { restoreParameters } from './domain/project'
 import {
   addHistoryRecord,
   formatHistoryTime,
@@ -35,12 +35,11 @@ import { saveTextFile } from './platform/files'
 import { exitFullscreenIfActive } from './platform/fullscreen'
 import { useAndroidBackButton } from './platform/useAndroidBackButton'
 import {
-  calculateScaffold,
+  calculateScaffoldPlan,
   countMembers,
   DECK_PANEL_ROW_GAP,
   DECK_PANEL_SIZES,
   DEFAULT_PARAMETERS,
-  TOP_POST_EXTENSION,
   type MaterialAdjustments,
   type Point2D,
   type ScaffoldParameters,
@@ -52,43 +51,18 @@ const ScaffoldViewer = lazy(() => import('./components/ScaffoldViewer').then((mo
   default: module.ScaffoldViewer,
 })))
 
-const INITIAL_POINTS: Point2D[] = [
-  { id: 'P1', x: 110, y: 125 },
-  { id: 'P2', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 },
-  { id: 'P3', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 + 4.8 * PIXELS_PER_METER },
-]
-const INITIAL_LENGTHS = [7.2, 4.8]
-
-/**
- * The drawing the app opens with and returns to: the built-in example until the user
- * says otherwise, and their own project afterwards. Kept under its own key so
- * 「设为默认示例」 never touches the saved project.
- */
 const DEFAULT_DEMO_KEY = 'scaffold-default-demo'
-
-type DefaultDemo = {
-  points: Point2D[]
-  lengths: number[]
-  parameters?: Partial<ScaffoldParameters>
-}
-
+type DefaultDemo = { points: Point2D[]; segments?: PlanSegment[]; lengths: number[]; parameters?: Partial<ScaffoldParameters> }
 function loadDefaultDemo(): DefaultDemo {
-  const fallback: DefaultDemo = { points: INITIAL_POINTS, lengths: INITIAL_LENGTHS }
+  const fallback: DefaultDemo = { points: [], segments: [], lengths: [] }
   try {
     const stored = localStorage.getItem(DEFAULT_DEMO_KEY)
     if (!stored) return fallback
     const demo = JSON.parse(stored) as DefaultDemo
-    if (!Array.isArray(demo.points) || demo.points.length < 2) return fallback
-    return {
-      points: demo.points,
-      lengths: Array.isArray(demo.lengths) && demo.lengths.length === demo.points.length - 1
-        ? demo.lengths
-        : measurePath(demo.points),
-      parameters: demo.parameters,
-    }
-  } catch {
-    return fallback
-  }
+    if (!Array.isArray(demo.points)) return fallback
+    const drawing = readDrawing(demo.points, demo.segments)
+    return { ...drawing, lengths: measureDrawing(drawing), parameters: demo.parameters }
+  } catch { return fallback }
 }
 
 const TAB_META = {
@@ -101,36 +75,12 @@ function loadStoredProject() {
   try {
     const stored = localStorage.getItem('scaffold-project')
     if (!stored) return null
-    const project = JSON.parse(stored) as {
-      points: Point2D[]
-      lengths: number[]
-      parameters: Partial<ScaffoldParameters> & { rowCount?: number; height?: number; guardrailSides?: number }
-      adjustments?: MaterialAdjustments
-    }
-    // `height` and `guardrailSides` are dropped on the way in: the migration below
-    // turns the height into a 作业层 count, and the sides parameter is gone (rails are
-    // always on the 外排). A stale copy would only confuse the domain merge.
-    const storedParameters = { ...project.parameters }
-    const legacyHeight = storedParameters.height
-    delete storedParameters.height
-    delete storedParameters.guardrailSides
-    // A project saved before `layerCount` carried a continuous 搭设高度: keep the
-    // 作业层 it stood for rather than silently resetting it to the default.
-    const layerCount = storedParameters.layerCount ?? (legacyHeight === undefined
-      ? DEFAULT_PARAMETERS.layerCount
-      : Math.max(1, Math.round(
-        (legacyHeight - TOP_POST_EXTENSION) / (storedParameters.liftHeight ?? DEFAULT_PARAMETERS.liftHeight),
-      )))
-    return {
-      ...project,
-      adjustments: project.adjustments ?? {},
-      parameters: {
-        ...DEFAULT_PARAMETERS,
-        ...storedParameters,
-        layerCount,
-        deckSupportRailCount: storedParameters.deckSupportRailCount ?? storedParameters.rowCount ?? DEFAULT_PARAMETERS.deckSupportRailCount,
-      },
-    }
+    const project = JSON.parse(stored) as DefaultDemo & { adjustments?: MaterialAdjustments }
+    if (!Array.isArray(project.points)) return null
+    const drawing = readDrawing(project.points, project.segments)
+    return { ...drawing, lengths: measureDrawing(drawing), adjustments: project.adjustments ?? {},
+      parameters: restoreParameters(project.parameters) }
+
   } catch {
     return null
   }
@@ -148,15 +98,17 @@ function App() {
   const [initialProject] = useState(loadStoredProject)
   const [defaultDemo, setDefaultDemo] = useState(loadDefaultDemo)
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('plan')
-  const [points, setPoints] = useState<Point2D[]>(initialProject?.points ?? defaultDemo.points)
-  const [lengths, setLengths] = useState(initialProject?.lengths ?? defaultDemo.lengths)
+  const [drawing, setDrawing] = useState(() => readDrawing(initialProject?.points ?? defaultDemo.points, initialProject?.segments ?? defaultDemo.segments))
+  const { points, segments } = drawing
+  const lengths = useMemo(() => measureDrawing(drawing), [drawing])
   const [parameters, setParameters] = useState<ScaffoldParameters>(
-    initialProject?.parameters ?? { ...DEFAULT_PARAMETERS, ...defaultDemo.parameters },
+    initialProject?.parameters ?? restoreParameters(defaultDemo.parameters),
   )
   const [adjustments, setAdjustments] = useState<MaterialAdjustments>(initialProject?.adjustments ?? {})
   const [saved, setSaved] = useState(false)
   const [history, setHistory] = useState(loadHistory)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // Android back: leave fullscreen, then walk back to the first tab, then let Android close the app.
   useAndroidBackButton(() => {
@@ -164,6 +116,7 @@ function App() {
       setHistoryOpen(false)
       return true
     }
+    if (settingsOpen) { setSettingsOpen(false); return true }
     if (exitFullscreenIfActive()) return true
     if (activeTab !== 'plan') {
       setActiveTab('plan')
@@ -178,9 +131,9 @@ function App() {
    * state — and a field with no default would then render as unusable. Merging once
    * here means the panel, the calculation and the export always see a complete set.
    */
-  const settings: ScaffoldParameters = { ...DEFAULT_PARAMETERS, ...parameters }
+  const settings = useMemo(() => ({ ...DEFAULT_PARAMETERS, ...parameters }), [parameters])
 
-  const layout = calculateScaffold(points, lengths, settings)
+  const layout = useMemo(() => calculateScaffoldPlan(drawing, settings), [drawing, settings])
   const counts = countMembers(layout)
 
   const updateParameter = <K extends keyof ScaffoldParameters>(key: K, value: ScaffoldParameters[K]) => {
@@ -218,24 +171,23 @@ function App() {
 
   /** Make the drawing and settings on screen the example the app starts from. */
   const saveAsDefaultDemo = () => {
-    const demo: DefaultDemo = { points, lengths, parameters: settings }
+    const demo: DefaultDemo = { points, segments, lengths, parameters: settings }
     try {
       localStorage.setItem(DEFAULT_DEMO_KEY, JSON.stringify(demo))
       setDefaultDemo(demo)
-      window.alert('已设为默认示例：以后打开应用或点「重置示例路径」都会回到这张图。')
+      window.alert('已设为默认示例：以后打开应用或点「恢复默认图纸」都会回到这张图。')
     } catch (error) {
       window.alert(`保存失败：${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
   const resetToDefaultDemo = () => {
-    setPoints(defaultDemo.points)
-    setLengths(defaultDemo.lengths)
+    setDrawing(readDrawing(defaultDemo.points, defaultDemo.segments))
     setSaved(false)
   }
 
   /** What a history record captures: everything a save stores and restores. */
-  const currentSnapshot = (): HistorySnapshot => ({ points, lengths, parameters: settings, adjustments })
+  const currentSnapshot = (): HistorySnapshot => ({ points, segments, lengths, parameters: settings, adjustments })
 
   const persistHistory = (next: HistoryRecord[]) => {
     setHistory(next)
@@ -256,9 +208,8 @@ function App() {
   }
 
   const applyHistoryRecord = (record: HistoryRecord) => {
-    setPoints(record.points)
-    setLengths(record.lengths)
-    setParameters({ ...DEFAULT_PARAMETERS, ...record.parameters })
+    setDrawing(readDrawing(record.points, record.segments))
+    setParameters(restoreParameters(record.parameters))
     setAdjustments(record.adjustments ?? {})
     setSaved(false)
     setHistoryOpen(false)
@@ -269,13 +220,13 @@ function App() {
   }
 
   const saveProject = () => {
-    localStorage.setItem('scaffold-project', JSON.stringify({ points, lengths, parameters: settings, adjustments }))
+    localStorage.setItem('scaffold-project', JSON.stringify({ points, segments, lengths, parameters: settings, adjustments }))
     persistHistory(addHistoryRecord(history, currentSnapshot()))
     setSaved(true)
   }
 
   const exportProject = async () => {
-    const project = { version: '0.5', points, lengths, parameters: settings, adjustments, layout }
+    const project = { version: '0.6', points, segments, lengths, parameters: settings, adjustments, layout }
     try {
       await saveTextFile({
         fileName: '青岚别墅-脚手架项目.json',
@@ -294,7 +245,7 @@ function App() {
           68px topbar plus a 56px tab strip. The project name was dropped with it. */}
       <header className="topbar">
         <div className="brand-block">
-          <button className="icon-button mobile-menu" type="button" title="打开菜单"><Menu size={20} /></button>
+
           <div className="brand-mark"><Layers3 size={24} strokeWidth={1.8} /></div>
           <div className="brand-text"><strong>架算</strong><span>SCAFFOLD FIELD</span></div>
         </div>
@@ -314,6 +265,7 @@ function App() {
         </nav>
 
         <div className="topbar-actions">
+          <button className="icon-button settings-toggle" type="button" title="脚手架参数" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(open => !open)}><Settings2 size={19} /></button>
           <span className={saved ? 'save-state saved' : 'save-state'}>{saved ? '已保存到本机' : '有未保存更改'}</span>
           <button className="secondary-button" type="button" onClick={saveProject}><Save size={17} /> 保存</button>
           <button className="icon-button history-toggle" type="button" onClick={() => setHistoryOpen((open) => !open)} title="历史记录">
@@ -357,11 +309,9 @@ function App() {
         <section className="work-surface">
           {activeTab === 'plan' && (
             <PlanEditor
-              points={points}
-              lengths={lengths}
+              drawing={drawing}
               perimeter={layout.perimeter}
-              onPointsChange={(next) => { setPoints(next); setSaved(false) }}
-              onLengthsChange={(next) => { setLengths(next); setSaved(false) }}
+              onChange={(next) => { setDrawing(next); setSaved(false) }}
               onResetDemo={resetToDefaultDemo}
             />
           )}
@@ -380,7 +330,8 @@ function App() {
           )}
         </section>
 
-        <aside className="inspector">
+        {settingsOpen && <button className="settings-backdrop" aria-label="关闭参数" onClick={() => setSettingsOpen(false)} />}
+        <aside className={`inspector${settingsOpen ? ' is-open' : ''}`}>
           <div className="inspector-heading"><Settings2 size={18} /><strong>脚手架参数</strong><span>住宅模板</span></div>
           <div className="parameter-section">
             <h2>几何参数</h2>
