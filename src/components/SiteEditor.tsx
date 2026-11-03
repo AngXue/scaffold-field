@@ -150,6 +150,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   }
   const select = (id: string | undefined) => {
     setSelected(id); setNotice('')
+    const section = site.sections.find(line => line.id === id)
+    if (section) chooseSurface(section.surfaceId)
     if (id && site.guides.some(guide => guide.id === id)) setGuideIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id])
     else setGuideIds([])
   }
@@ -340,10 +342,11 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                 <g key={block.id} data-site-object={block.id} data-site-face={block.id}>
                   <rect className={`site-block${surfaceId === block.id ? ' active' : ''}${selected === block.id ? ' selected' : ''}${badBlocks.has(block.id) ? ' invalid' : ''}`}
                     x={block.x} y={block.z} width={Math.max(0, block.width)} height={Math.max(0, block.depth)} vectorEffect="non-scaling-stroke" />
-                  <text className="site-svg-label" x={block.x + block.width / 2} y={block.z + block.depth / 2}
-                    fontSize={12 / view.scale} textAnchor="middle" dominantBaseline="central" pointerEvents="none">
-                    {block.id} · {formatMetres(surfaceElevation(layout.blocks, block.id))} m
-                  </text>
+                  {block.width * view.scale >= 85 && block.depth * view.scale >= 25 &&
+                    <text className="site-svg-label" x={block.x + 9 / view.scale} y={block.z + 16 / view.scale}
+                      fontSize={12 / view.scale} pointerEvents="none">
+                      {block.id} · {formatMetres(surfaceElevation(layout.blocks, block.id))} m
+                    </text>}
                 </g>)}
               {site.guides.map(guide => <g key={guide.id} data-site-object={guide.id} className={guide.surfaceId === surfaceId ? '' : 'site-off-plane'}>
                 <line x1={guide.start.x} y1={guide.start.z} x2={guide.end.x} y2={guide.end.z} vectorEffect="non-scaling-stroke" className="site-hit" />
@@ -354,12 +357,14 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                 points={strip({ x: selectedDimension.start[0], z: selectedDimension.start[2] }, { x: selectedDimension.end[0], z: selectedDimension.end[2] })} />}
               {site.sections.map((line, index) => {
                 const mid = midpoint(line.start, line.end)
+                const vertical = Math.abs(line.end.z - line.start.z) > Math.abs(line.end.x - line.start.x)
                 return <g key={line.id} data-site-object={line.id} className={line.surfaceId === surfaceId ? '' : 'site-off-plane'}>
                   <line x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke" className="site-hit" />
                   <line x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke"
                     className={`site-section${selected === line.id ? ' selected' : ''}${badIds.has(line.id) ? ' invalid' : ''}`} />
-                  <text className="site-svg-label" x={mid.x} y={mid.z - 9 / view.scale} fontSize={12 / view.scale}
-                    textAnchor="middle" pointerEvents="none">第 {index + 1} 段 · {formatMetres(siteLength(line))} m</text>
+                  <text className="site-svg-label" x={mid.x + (vertical ? 9 / view.scale : 0)}
+                    y={mid.z + (vertical ? 4 / view.scale : -9 / view.scale)} fontSize={12 / view.scale}
+                    textAnchor={vertical ? 'start' : 'middle'} pointerEvents="none">第 {index + 1} 段 · {formatMetres(siteLength(line))} m</text>
                   {selected === line.id && tool === 'scaffold' && !pick && (['start', 'end'] as const).map(endpoint =>
                     <circle key={endpoint} data-endpoint={endpoint} cx={line[endpoint].x} cy={line[endpoint].z} r={7 / view.scale}
                       vectorEffect="non-scaling-stroke" className="site-endpoint" />)}
