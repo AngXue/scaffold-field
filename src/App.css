@@ -669,6 +669,9 @@ body.has-fullscreen { overflow: hidden; }
 .site-hit { stroke: transparent; stroke-width: 16px; pointer-events: stroke; }
 .site-endpoint { fill: white; stroke: #266fe5; stroke-width: 2px; cursor: grab; }
 .site-strip { fill: #53aaac46; stroke: #43868c; stroke-width: 1.5px; }
+.site-strip.raised { fill: #d5ab5d65; stroke: #946e2b; }
+.site-routed-spans { display: grid; gap: 6px; font-size: 12px; }
+.site-routed-spans > div { padding: 5px 7px; background: var(--nm-surface); border-left: 2px solid var(--nm-border); }
 .site-details { flex: 0 0 220px; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; border-left: 1px solid #dce4e5; padding: 8px; background: #f9fbfb; }
 .site-details:not(.open) { flex-basis: 115px; }
 .site-panel-toggle { width: 100%; justify-content: space-between; font-weight: 650; }

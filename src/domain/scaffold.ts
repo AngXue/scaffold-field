@@ -312,6 +312,7 @@ export type MaterialResult = {
 
 export type PathDimension = {
   index: number
+  labelIndex?: string
   length: number
   start: Vector3Tuple
   end: Vector3Tuple
@@ -581,6 +582,27 @@ function assembledLength(requiredLength: number, stockLengths: number[], request
   return round(
     selectedStocks.reduce((sum, stock) => sum + stock, 0) - overlap * (selectedStocks.length - 1),
   )
+}
+
+export function scaffoldTransverseLength(parameters: ScaffoldParameters) {
+  return assembledLength(parameters.width, parameters.stockLengths, parameters.spliceOverlap)
+}
+
+/** Panels in the bay between two existing end stations, with no extra posts. */
+export function deckBetweenStations(start: [Vector3Tuple, Vector3Tuple], end: [Vector3Tuple, Vector3Tuple],
+  layer: number, pathSegment: number, id: string, parameters: ScaffoldParameters): DeckPanel[] {
+  const length = vectorDistance(start[0], end[0]), width = vectorDistance(start[0], start[1])
+  const along = deckPanelCount(length, Math.max(0.1, parameters.deckPanelLength))
+  const across = deckPanelCount(width, Math.max(0.1, parameters.deckPanelWidth))
+  const point = (s: number, t: number): Vector3Tuple => [0, 1, 2].map(axis => round(
+    start[0][axis] + (end[0][axis] - start[0][axis]) * s + (start[1][axis] - start[0][axis]) * t
+      + (axis === 1 ? DECK_SURFACE_OFFSET : 0), 6)) as Vector3Tuple
+  return Array.from({ length: along * across }, (_, index) => {
+    const s = Math.floor(index / across), t = index % across
+    return { id: `${id}-${index + 1}`, layer, pathSegment, area: round(length * width / (along * across)),
+      corners: [point(s / along, t / across), point((s + 1) / along, t / across),
+        point((s + 1) / along, (t + 1) / across), point(s / along, (t + 1) / across)] }
+  })
 }
 
 function createPipeAssembly(
@@ -895,6 +917,7 @@ export function calculateScaffold(
   segmentLengths: number[],
   parameters: ScaffoldParameters,
   localLifts?: readonly number[],
+  deckLayerOffset = 0,
 ): ScaffoldLayout {
   const legacyParameters = parameters as ScaffoldParameters & { rowCount?: number; height?: number }
   parameters = {
@@ -1025,11 +1048,7 @@ export function calculateScaffold(
   // The 横向杆 is a 1.2 m site tube with NO `tubeEndExtension`: the 排距 is narrower,
   // so the tube overhangs both 立杆 by half the surplus (createPipeAssembly centres
   // the excess). The 槽钢 base beam is laid to the same length as that tube.
-  const transverseTubeLength = assembledLength(
-    parameters.width,
-    parameters.stockLengths,
-    parameters.spliceOverlap,
-  )
+  const transverseTubeLength = scaffoldTransverseLength(parameters)
 
   /** Rails a row cannot reach — reported once, after every segment is walked. */
   const railsAboveRow = [new Set<string>(), new Set<string>()]
@@ -1801,7 +1820,7 @@ export function calculateScaffold(
       // a full 步距 up, and `TOP_POST_EXTENSION` is the 立杆 extension above the TOP
       // one rather than a start offset.
       const elevation = liftElevation(layer)
-      const withDeck = layer % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0
+      const withDeck = (layer + deckLayerOffset) % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0
       // A decked lift is a 作业层 and gets its rails; a deckless lift gets only the
       // two normal longitudinal rows — except the top lift, which always carries
       // the 架顶栏杆 that carries the top of the scaffold.
@@ -1830,7 +1849,7 @@ export function calculateScaffold(
     const deckInterval = Math.max(1, Math.round(parameters.deckLiftInterval))
     for (const corner of cornerDecks) {
       for (let layer = 1; layer <= layerCount; layer += 1) {
-        if (layer % deckInterval !== 0) continue
+        if ((layer + deckLayerOffset) % deckInterval !== 0) continue
         const deckElevation = round(liftElevation(layer) + DECK_SURFACE_OFFSET)
         const corners = corner.points.map(
           (point) => [point[0], deckElevation, point[2]] as Vector3Tuple,
@@ -1924,7 +1943,7 @@ export function calculateScaffold(
 function finishLayout(
   members: ScaffoldMember[], decks: DeckPanel[], baseChannels: BaseChannel[],
   warnings: LayoutWarning[], parameters: ScaffoldParameters, postSequences: Map<string, number[]>,
-  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'],
+  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'], fixedPostsAndBases = false,
 ): ScaffoldLayout {
   // Merge collinear shared runs before stock assembly and coupler counting.
   // This keeps all three views on the same physical quantities.
@@ -1932,22 +1951,24 @@ function finishLayout(
   // A relocated station may now carry a mitre that already had its own beam.
   // Remove a beam only when ALL of its posts are carried by one other beam;
   // never join beams into a longer piece or leave a post without a base.
-  const postsForBases = members.filter(member => member.type === 'post')
-  const beamSupports = (beam: BaseChannel) => postsForBases.filter(post => {
-    const dx = beam.end[0] - beam.start[0], dz = beam.end[2] - beam.start[2]
-    const length = Math.hypot(dx, dz)
-    const x = post.start[0] - beam.start[0], z = post.start[2] - beam.start[2]
-    const along = (x * dx + z * dz) / length
-    return along >= -0.001 && along <= length + 0.001 && Math.abs(x * dz - z * dx) / length < 0.001
-  }).map(post => post.id)
-  const supportedByBeam = new Map(baseChannels.map(beam => [beam, beamSupports(beam)]))
-  for (let index = baseChannels.length - 1; index >= 0; index--) {
-    const beam = baseChannels[index], supported = supportedByBeam.get(beam)!
-    if (supported.length === 0 || baseChannels.some(other => other !== beam
-      && supportedByBeam.get(other)!.length > supported.length
-      && supported.every(id => supportedByBeam.get(other)!.includes(id)))) baseChannels.splice(index, 1)
+  if (!fixedPostsAndBases) {
+    const postsForBases = members.filter(member => member.type === 'post')
+    const beamSupports = (beam: BaseChannel) => postsForBases.filter(post => {
+      const dx = beam.end[0] - beam.start[0], dz = beam.end[2] - beam.start[2]
+      const length = Math.hypot(dx, dz)
+      const x = post.start[0] - beam.start[0], z = post.start[2] - beam.start[2]
+      const along = (x * dx + z * dz) / length
+      return along >= -0.001 && along <= length + 0.001 && Math.abs(x * dz - z * dx) / length < 0.001
+    }).map(post => post.id)
+    const supportedByBeam = new Map(baseChannels.map(beam => [beam, beamSupports(beam)]))
+    for (let index = baseChannels.length - 1; index >= 0; index--) {
+      const beam = baseChannels[index], supported = supportedByBeam.get(beam)!
+      if (supported.length === 0 || baseChannels.some(other => other !== beam
+        && supportedByBeam.get(other)!.length > supported.length
+        && supported.every(id => supportedByBeam.get(other)!.includes(id)))) baseChannels.splice(index, 1)
+    }
+    repairPostSplices(members, postSequences, parameters, warnings)
   }
-  repairPostSplices(members, postSequences, parameters, warnings)
 
   const assemblies = members.map((member) =>
     createPipeAssembly(member, member.type === 'post' ? postStocks(parameters) : parameters.stockLengths, parameters.spliceOverlap, postSequences.get(member.id)))
@@ -1991,7 +2012,7 @@ function finishLayout(
     if (member.type === 'post') continue
     const elevation = member.start[1]
     for (const post of posts) {
-      if (elevation > (builtPostTops.get(post.id) ?? post.end[1]) + 0.001) continue
+      if (elevation < post.start[1] - 0.001 || elevation > (builtPostTops.get(post.id) ?? post.end[1]) + 0.001) continue
       if (planDistanceToRun(member, post.start[0], post.start[2]) < 0.005) {
         addCross(member, post, [post.start[0], elevation, post.start[2]])
       }
@@ -2000,9 +2021,10 @@ function finishLayout(
     // Only the intermediate deck-support rows: the two ordinary rows already
     // have their two main-node ties (longitudinal→post and transverse→post).
     for (const point of member.connectionPoints) {
-      if (posts.some(post => Math.hypot(post.start[0] - point[0], post.start[2] - point[2]) < 0.005)) continue
+      if (posts.some(post => elevation >= post.start[1] - 0.001 && elevation <= (builtPostTops.get(post.id) ?? post.end[1]) + 0.001
+        && Math.hypot(post.start[0] - point[0], post.start[2] - point[2]) < 0.005)) continue
       const support = longitudinals.find((candidate) =>
-        candidate.id !== member.id && candidate.layer === member.layer
+        candidate.id !== member.id && candidate.layer === member.layer && Math.abs(candidate.start[1] - elevation) <= 0.001
         && Math.abs(memberAxis(candidate).reduce((sum, value, i) => sum + value * memberAxis(member)[i], 0)) < 0.01
         && planDistanceToRun(candidate, point[0], point[2]) < 0.005)
       if (support) addCross(support, member, point)
@@ -2053,6 +2075,15 @@ function finishLayout(
   }
 }
 
+/** Rebuild merged lift runs and their fittings while keeping the solved uprights and bases. */
+export function reassembleSiteRuns(layout: ScaffoldLayout, members: ScaffoldMember[], decks: DeckPanel[], settings: ScaffoldParameters) {
+  const posts = new Set(members.filter(member => member.type === 'post').map(member => member.id))
+  const sequences = new Map(layout.materials.assemblyPlans.filter(plan => posts.has(plan.memberId))
+    .map(plan => [plan.memberId, plan.stockLengths]))
+  return finishLayout(members, decks, layout.baseChannels, layout.warnings, settings, sequences,
+    layout.pathDimensions, layout.materials.postHeights, true)
+}
+
 export function countMembers(layout: ScaffoldLayout) {
   return layout.members.reduce<Record<MemberType, number>>(
     (counts, member) => ({ ...counts, [member.type]: counts[member.type] + 1 }),
@@ -2065,13 +2096,13 @@ export function countMembers(layout: ScaffoldLayout) {
  * No synthetic segment is inserted between disconnected components. Branches
  * remain editable but are flagged because their fabrication detail is unspecified.
  */
-export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[]): ScaffoldLayout {
+export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0): ScaffoldLayout {
   const paths = drawingPaths(drawing)
   if (!paths.length) return calculateScaffold([], [], parameters)
   const origin = drawing.points[0]
   // A normal connected outline needs exactly one domain calculation on mobile.
   if (paths.length === 1) {
-    const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts)
+    const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset)
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     result.members.forEach(m => {
@@ -2095,7 +2126,7 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   const postSequences = new Map<string, number[]>()
   let postHeights: MaterialResult['postHeights'] | undefined
   paths.forEach((path, component) => {
-    const layout = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts)
+    const layout = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset)
     postHeights ??= layout.materials.postHeights
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER
     const dz = (path.points[0].y - origin.y) / PIXELS_PER_METER

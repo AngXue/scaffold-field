@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GRID_SIZE, snapPlanPoint, orthogonalEnd, addPlanSegment, EMPTY_DRAWING, measureDrawing, drawingPaths, deletePlanSegment, readDrawing, resizeDrawingSegment, movePlanNode, insertPathSegment, measurePath, PIXELS_PER_METER, resizePathSegment } from './plan'
 import { alignSiteBlock } from './siteAlignment'
+import { snapScaffoldStroke } from './siteRouting'
 
 const points = [
   { id: 'P1', x: 100, y: 100 },
@@ -9,6 +10,12 @@ const points = [
 ]
 
 describe('plan geometry', () => {
+  it('snaps both stroke ends to the same wall and captures nearby corners', () => {
+    const edge = { axis: 'x', at: 0.035, low: 0, high: 10, outward: -1 } as const
+    expect(snapScaffoldStroke({ x: 0.1, z: 0.1 }, { x: 0, z: 9.9 }, [edge], 0.2))
+      .toEqual({ start: { x: 0.035, z: 0 }, end: { x: 0.035, z: 10 }, edge })
+    expect(snapScaffoldStroke({ x: 0.1, z: 0 }, { x: 0.5, z: 10 }, [edge], 0.2).edge).toBeUndefined()
+  })
   it('snaps a block edge to a rectangle and its centre to a drawn line independently', () => {
     const block = { x: 0, z: 0, width: 4, depth: 5 }
     const house = { x: 2.025, z: 0, width: 8, depth: 10 }

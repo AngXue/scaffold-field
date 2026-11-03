@@ -17,12 +17,9 @@ const demo = (id: string, title: string, site: Site, check: string, parameters: 
 
 export const SITE_DEMOS = [
   demo('corridor', '左侧居中走廊 · 前左相连', scene([corridorHouse, corridor], [
-    section('S1', GROUND, 5, 8, -0.35, -0.35, -0.35),
-    section('S2', GROUND, 5, -0.35, -0.35, -0.35, 2.2),
-    section('S3', 'B2', 4, -0.35, 2.65, -0.35, 7.35),
-    section('S4', GROUND, 5, -0.35, 7.8, -0.35, 10),
-  ]), '主屋 8 × 10 × 10 m；走廊沿左墙长 5 m、外伸 4 m、高 3.50 m。前面和左前段共用转角；沿左侧依次为 5 / 4 / 5 层，四段均到 9.40 m。走廊两端留出杆件净空，转换位置需现场复核。',
-  { swapInnerOuter: true }),
+    { ...section('S1', GROUND, 5, 8, 0, 0, 0), automatic: true },
+    { ...section('S2', GROUND, 5, 0, 0, 0, 10), automatic: true },
+  ]), '主屋 8 × 10 × 10 m，左侧贴墙居中走廊高 3.50 m。正面和左侧各画一笔。左侧自动分为 5 / 4 / 5 层，1.88 m 层在走廊处断开，3.76 m 起接通到 9.40 m。'),
   demo('roof', '屋顶单跨手算', scene([roof], [section('S1', 'B1', 1, 1, 1, 2.8, 1)]),
     '首层 3.76 m、距顶面 0.26 m。立杆 4、底座 2、钢笆 2、十字扣 28；钢管 33.60 m。'),
   demo('aligned', '正面与花园齐顶', scene([house, garden], [

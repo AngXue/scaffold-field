@@ -14,12 +14,12 @@ function GroundDimension({ dimension }: { dimension: PathDimension }) {
     context.textAlign = 'center'
     context.textBaseline = 'middle'
     context.fillStyle = '#42484a'
-    context.fillText(`#${dimension.index + 1} · ${dimension.length.toFixed(2)} m`, 512, 96)
+    context.fillText(`#${dimension.labelIndex ?? dimension.index + 1} · ${dimension.length.toFixed(2)} m`, 512, 96)
     const result = new THREE.CanvasTexture(canvas)
     result.colorSpace = THREE.SRGBColorSpace
     result.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy())
     return result
-  }, [dimension.index, dimension.length, gl])
+  }, [dimension.index, dimension.labelIndex, dimension.length, gl])
   useEffect(() => () => texture.dispose(), [texture])
   let angle = Math.atan2(dimension.end[2] - dimension.start[2], dimension.end[0] - dimension.start[0])
   if (angle > Math.PI / 2) angle -= Math.PI

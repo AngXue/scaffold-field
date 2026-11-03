@@ -286,6 +286,7 @@ export function ScaffoldViewer({ layout, blocks = [], onSelectSurface, pipeDiame
   const selectedDeck = layout.decks.find((deck) => deck.id === selectedId)
   const selectedChannel = layout.baseChannels.find((channel) => channel.id === selectedId)
   const selectedConnector = layout.connectors.find((connector) => connector.id === selectedId)
+  const pathLabel = (index: number) => layout.pathDimensions.find(dimension => dimension.index === index)?.labelIndex ?? index + 1
   const memberPoints = [...layout.pipeSegments.flatMap((segment) => [segment.start, segment.end]), ...blocks.flatMap(block => [
     [block.x, block.base, block.z] as [number, number, number],
     [block.x + block.width, block.top, block.z + block.depth] as [number, number, number],
@@ -497,7 +498,7 @@ export function ScaffoldViewer({ layout, blocks = [], onSelectSurface, pipeDiame
             <dl>
               <div><dt>覆盖面积</dt><dd>{selectedDeck.area.toFixed(2)} m²</dd></div>
               <div><dt>所在层</dt><dd>第 {selectedDeck.layer} 层</dd></div>
-              <div><dt>路径段</dt><dd>#{selectedDeck.pathSegment + 1}</dd></div>
+              <div><dt>路径段</dt><dd>#{pathLabel(selectedDeck.pathSegment)}</dd></div>
             </dl>
           </>
         )}
@@ -508,7 +509,7 @@ export function ScaffoldViewer({ layout, blocks = [], onSelectSurface, pipeDiame
             <dl>
               <div><dt>单根长度</dt><dd>{selectedChannel.length.toFixed(2)} m</dd></div>
               <div><dt>方向</dt><dd>与横向杆一致</dd></div>
-              <div><dt>路径段</dt><dd>#{selectedChannel.pathSegment + 1}</dd></div>
+              <div><dt>路径段</dt><dd>#{pathLabel(selectedChannel.pathSegment)}</dd></div>
             </dl>
           </>
         )}

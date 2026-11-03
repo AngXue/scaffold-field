@@ -18,6 +18,7 @@ import {
   DECK_PANEL_ROW_GAP,
   DECK_PANEL_SIZES,
   deckPanelCount,
+  deckBetweenStations,
   DEFAULT_PARAMETERS,
   TOP_POST_EXTENSION,
   GUARDRAIL_TOP_EDGE,
@@ -25,6 +26,14 @@ import {
   SWEEP_BAR_LAYER,
   type ScaffoldLayout,
 } from './scaffold'
+
+it('closes a deck bay between end stations with no double coverage', () => {
+  const panels = deckBetweenStations([[0, 3.76, 0], [0, 3.76, 0.9]], [[0.45, 3.76, 0], [0.45, 3.76, 0.9]],
+    2, 0, 'gap', DEFAULT_PARAMETERS)
+  expect(panels).toHaveLength(1)
+  expect(panels[0]).toMatchObject({ id: 'gap-1', layer: 2, area: 0.405,
+    corners: [[0, 3.815, 0], [0.45, 3.815, 0], [0.45, 3.815, 0.9], [0, 3.815, 0.9]] })
+})
 
 /** Tube centreline offset used when checking a rail's 上皮. */
 const HALF_PIPE = DEFAULT_PARAMETERS.pipeDiameter / 2

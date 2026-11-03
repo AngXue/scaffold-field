@@ -18,6 +18,7 @@ describe('分段测算的独立手算验收', () => {
     expect([corridor.depth, corridor.width, corridor.height]).toEqual([5, 4, 3.5])
     expect(corridor.x + corridor.width).toBe(house.x)
     expect(corridor.z + corridor.depth / 2).toBe(house.z + house.depth / 2)
+    expect(site.sections).toHaveLength(2)
     expect(site.sections[0].end).toEqual(site.sections[1].start)
     const layout = run('corridor')
     expect(layout.issues).toEqual([])
@@ -25,7 +26,69 @@ describe('分段测算的独立手算验收', () => {
       [0, 1.88, 5, 9.4], [0, 1.88, 5, 9.4], [3.5, 3.76, 4, 9.4], [0, 1.88, 5, 9.4],
     ])
     expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.25, 0, -1.25]])
+    expect(layout.perimeter).toBe(18)
+    expect(layout.spans?.filter(span => span.sourceId === 'S2').map(span => span.line.surfaceId)).toEqual([GROUND, 'B2', GROUND])
+    expect(layout.joinedLifts?.map(join => join.levels)).toEqual(Array(2).fill([3.76, 5.64, 7.52, 9.4]))
+    const spansAt = (level: number) => layout.members.filter(m => m.type === 'longitudinal' && m.start[1] === level
+      && m.start[0] === m.end[0] && m.start[2] < 2.5 && m.end[2] > 7.5)
+    expect(spansAt(1.88)).toHaveLength(0)
+    for (const level of [3.76, 5.64, 7.52, 9.4]) expect(spansAt(level)).toHaveLength(2)
+    expect(layout.decks.filter(deck => deck.id.startsWith('transition')).map(deck => deck.layer).sort()).toEqual([2, 2, 3, 3, 4, 4, 5, 5])
+    expect(layout.baseChannels.filter(channel => channel.start[1] === 3.5)).toHaveLength(4)
+    expect(layout.members.filter(m => m.type === 'guardrail' && m.start[1] === 4.7 && m.start[2] === m.end[2]
+      && [2.2, 2.65, 7.35, 7.8].includes(m.start[2]))).toHaveLength(0)
+    expect(layout.members.some(m => m.type === 'guardrail' && m.start[1] === 2.82 && m.start[2] === 2.2 && m.end[2] === 2.2)).toBe(true)
     expect(layout.canExportMaterials).toBe(true)
+  })
+
+  it('贴墙反向落笔和交换绘制顺序，仍使用同一个外侧转角', () => {
+    const { site, parameters } = demo('corridor')
+    const sections = [...site.sections].reverse().map(s => ({ ...s, start: s.end, end: s.start }))
+    const layout = calculateSite({ ...site, sections }, parameters)
+    expect(layout.issues).toEqual([])
+    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.25, 0, -1.25]])
+    expect(layout.materials.stockSummary).toEqual(run('corridor').materials.stockSummary)
+  })
+
+  it('按全局层交替铺板时，两种落脚面在同一层铺板和接通', () => {
+    const { site, parameters } = demo('corridor')
+    const layout = calculateSite(site, { ...parameters, deckLiftInterval: 2 })
+    expect(layout.canExportMaterials).toBe(true)
+    expect(layout.decks.filter(deck => deck.id.startsWith('transition')).map(deck => deck.layer).sort()).toEqual([2, 2, 4, 4])
+    expect(new Set(layout.decks.map(deck => deck.layer))).toEqual(new Set([2, 4]))
+  })
+
+  it.each([
+    [{ x: 0, z: 0 }, { x: 8, z: 0 }, 2, -1.25], [{ x: 0, z: 10 }, { x: 8, z: 10 }, 2, 11.25],
+    [{ x: 0, z: 0 }, { x: 0, z: 10 }, 0, -1.25], [{ x: 8, z: 0 }, { x: 8, z: 10 }, 0, 9.25],
+  ] as const)('房屋任一边的外排都在墙外', (start, end, axis, outer) => {
+    const { site, parameters } = demo('corridor')
+    const layout = calculateSite({ ...site, blocks: site.blocks.slice(0, 1),
+      sections: [{ ...site.sections[0], start, end }] }, parameters)
+    expect(layout.canExportMaterials).toBe(true)
+    const sideRails = layout.members.filter(m => m.type === 'guardrail' && m.start[axis] === m.end[axis])
+    expect(sideRails.length).toBeGreaterThan(0)
+    expect(sideRails.every(m => m.start[axis] === outer)).toBe(true)
+  })
+
+  it('未贴墙的自动地面线也能跨越完整覆盖两排柱脚的顶面', () => {
+    const { site, parameters } = demo('corridor')
+    const section = { ...site.sections[1], start: { x: -1.5, z: 0 }, end: { x: -1.5, z: 10 } }
+    const layout = calculateSite({ ...site, sections: [section] }, parameters)
+    expect(layout.canExportMaterials).toBe(true)
+    expect(layout.spans?.map(span => span.line.surfaceId)).toEqual([GROUND, 'B2', GROUND])
+    expect(layout.joinedLifts).toHaveLength(2)
+    const low = calculateSite({ ...site, sections: [{ ...section, layers: 1 }] }, parameters)
+    expect(low.issues).toContainEqual(expect.objectContaining({ code: 'automatic-route', blocking: true }))
+    expect(low.joinedLifts).toHaveLength(0)
+  })
+
+  it('跨高差补出的杆件与独立架体相交时，定位相关笔画并拦截出量', () => {
+    const { site, parameters } = demo('corridor')
+    const crossing = { id: 'S3', surfaceId: GROUND, layers: 5, start: { x: -0.7, z: 2.3 }, end: { x: -3.7, z: 2.3 } }
+    const layout = calculateSite({ ...site, sections: [...site.sections, crossing] }, parameters)
+    expect(layout.canExportMaterials).toBe(false)
+    expect(layout.issues).toContainEqual(expect.objectContaining({ code: 'bridge-overlap', sectionIds: ['S2', 'S3'] }))
   })
 
   it('3.50 m 屋顶单跨：按两排、两站、两道防护手算所有钢管和扣件', () => {
