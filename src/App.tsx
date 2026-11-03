@@ -17,8 +17,10 @@ import './App.css'
 import { MaterialView } from './components/MaterialView'
 import { NumberField } from './components/NumberField'
 import { OptionField } from './components/OptionField'
-import { PlanEditor } from './components/PlanEditor'
-import { measureDrawing, readDrawing, type PlanSegment } from './domain/plan'
+import { SiteEditor } from './components/SiteEditor'
+import { measureDrawing, type PlanSegment } from './domain/plan'
+import { calculateSite, EMPTY_SITE, legacySiteDrawing, legacySnapshot, readSite, siteFromSnapshot, type Site } from './domain/site'
+import type { SiteDemo } from './domain/siteDemos'
 import { restoreParameters } from './domain/project'
 import {
   addHistoryRecord,
@@ -51,59 +53,44 @@ const ScaffoldViewer = lazy(() => import('./components/ScaffoldViewer').then((mo
   default: module.ScaffoldViewer,
 })))
 
+const PROJECT_KEY = 'scaffold-project'
 const DEFAULT_DEMO_KEY = 'scaffold-default-demo'
-type DefaultDemo = { points: Point2D[]; segments?: PlanSegment[]; lengths: number[]; parameters?: Partial<ScaffoldParameters> }
-function loadDefaultDemo(): DefaultDemo {
-  const fallback: DefaultDemo = { points: [], segments: [], lengths: [] }
+const siteKey = (key: string) => key + '.v07'
+type StoredProject = { scene: Site; parameters: ScaffoldParameters; adjustments: MaterialAdjustments }
+
+function loadProject(key: string): StoredProject | null {
   try {
-    const stored = localStorage.getItem(DEFAULT_DEMO_KEY)
-    if (!stored) return fallback
-    const demo = JSON.parse(stored) as DefaultDemo
-    if (!Array.isArray(demo.points)) return fallback
-    const drawing = readDrawing(demo.points, demo.segments)
-    return { ...drawing, lengths: measureDrawing(drawing), parameters: demo.parameters }
-  } catch { return fallback }
+    const raw = localStorage.getItem(siteKey(key)) ?? localStorage.getItem(key)
+    if (!raw) return null
+    const snapshot = JSON.parse(raw) as { scene?: unknown; points?: Point2D[]; segments?: PlanSegment[];
+      parameters?: Partial<ScaffoldParameters>; adjustments?: MaterialAdjustments }
+    const parameters = restoreParameters(snapshot.parameters)
+    const scene = snapshot.scene === undefined && Array.isArray(snapshot.points)
+      ? siteFromSnapshot({ ...snapshot, scene: undefined, parameters })
+      : readSite(snapshot.scene)
+    return scene ? { scene, parameters, adjustments: snapshot.adjustments ?? {} } : null
+  } catch { return null }
 }
 
 const TAB_META = {
-  plan: { label: '二维测量', icon: Map },
+  plan: { label: '三维绘图', icon: Map },
   model: { label: '三维检查', icon: Box },
   materials: { label: '材料结果', icon: ClipboardCheck },
 } as const
 
-function loadStoredProject() {
-  try {
-    const stored = localStorage.getItem('scaffold-project')
-    if (!stored) return null
-    const project = JSON.parse(stored) as DefaultDemo & { adjustments?: MaterialAdjustments }
-    if (!Array.isArray(project.points)) return null
-    const drawing = readDrawing(project.points, project.segments)
-    return { ...drawing, lengths: measureDrawing(drawing), adjustments: project.adjustments ?? {},
-      parameters: restoreParameters(project.parameters) }
-
-  } catch {
-    return null
-  }
-}
-
 function loadHistory(): HistoryRecord[] {
-  try {
-    return parseHistory(localStorage.getItem(HISTORY_KEY))
-  } catch {
-    return []
-  }
+  try { return parseHistory(localStorage.getItem(siteKey(HISTORY_KEY)) ?? localStorage.getItem(HISTORY_KEY)) }
+  catch { return [] }
 }
 
 function App() {
-  const [initialProject] = useState(loadStoredProject)
-  const [defaultDemo, setDefaultDemo] = useState(loadDefaultDemo)
+  const [initialProject] = useState(() => loadProject(PROJECT_KEY))
+  const [defaultDemo, setDefaultDemo] = useState<StoredProject>(() => loadProject(DEFAULT_DEMO_KEY)
+    ?? { scene: EMPTY_SITE, parameters: DEFAULT_PARAMETERS, adjustments: {} })
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('plan')
-  const [drawing, setDrawing] = useState(() => readDrawing(initialProject?.points ?? defaultDemo.points, initialProject?.segments ?? defaultDemo.segments))
-  const { points, segments } = drawing
-  const lengths = useMemo(() => measureDrawing(drawing), [drawing])
-  const [parameters, setParameters] = useState<ScaffoldParameters>(
-    initialProject?.parameters ?? restoreParameters(defaultDemo.parameters),
-  )
+  const [site, setSite] = useState(() => initialProject?.scene ?? defaultDemo.scene)
+  const [editorRevision, setEditorRevision] = useState(0)
+  const [parameters, setParameters] = useState(() => initialProject?.parameters ?? defaultDemo.parameters)
   const [adjustments, setAdjustments] = useState<MaterialAdjustments>(initialProject?.adjustments ?? {})
   const [saved, setSaved] = useState(false)
   const [history, setHistory] = useState(loadHistory)
@@ -133,7 +120,8 @@ function App() {
    */
   const settings = useMemo(() => ({ ...DEFAULT_PARAMETERS, ...parameters }), [parameters])
 
-  const layout = useMemo(() => calculateScaffoldPlan(drawing, settings), [drawing, settings])
+  const layout = useMemo(() => calculateSite(site, settings), [site, settings])
+  const legacy = useMemo(() => legacySiteDrawing(site), [site])
   const counts = countMembers(layout)
 
   const updateParameter = <K extends keyof ScaffoldParameters>(key: K, value: ScaffoldParameters[K]) => {
@@ -171,9 +159,9 @@ function App() {
 
   /** Make the drawing and settings on screen the example the app starts from. */
   const saveAsDefaultDemo = () => {
-    const demo: DefaultDemo = { points, segments, lengths, parameters: settings }
+    const demo = { version: '0.7', scene: site, parameters: settings, adjustments: {} }
     try {
-      localStorage.setItem(DEFAULT_DEMO_KEY, JSON.stringify(demo))
+      localStorage.setItem(siteKey(DEFAULT_DEMO_KEY), JSON.stringify(demo))
       setDefaultDemo(demo)
       window.alert('已设为默认示例：以后打开应用或点「恢复默认图纸」都会回到这张图。')
     } catch (error) {
@@ -181,18 +169,24 @@ function App() {
     }
   }
 
-  const resetToDefaultDemo = () => {
-    setDrawing(readDrawing(defaultDemo.points, defaultDemo.segments))
+  const loadIntoEditor = (next: StoredProject) => {
+    setSite(next.scene)
+    setParameters(next.parameters)
+    setAdjustments(next.adjustments)
     setSaved(false)
+    setEditorRevision(value => value + 1)
+    setActiveTab('plan')
   }
 
-  /** What a history record captures: everything a save stores and restores. */
-  const currentSnapshot = (): HistorySnapshot => ({ points, segments, lengths, parameters: settings, adjustments })
+  const resetToDefaultDemo = () => loadIntoEditor(defaultDemo)
+  const loadDemo = (demo: SiteDemo) => loadIntoEditor({ scene: demo.site, parameters: demo.parameters, adjustments: {} })
+
+  const currentSnapshot = (): HistorySnapshot => ({ ...legacySnapshot(site), scene: site, parameters: settings, adjustments })
 
   const persistHistory = (next: HistoryRecord[]) => {
     setHistory(next)
     try {
-      localStorage.setItem(HISTORY_KEY, serialiseHistory(next))
+      localStorage.setItem(siteKey(HISTORY_KEY), serialiseHistory(next))
     } catch (error) {
       window.alert(`历史记录写入失败：${error instanceof Error ? error.message : String(error)}`)
     }
@@ -208,10 +202,7 @@ function App() {
   }
 
   const applyHistoryRecord = (record: HistoryRecord) => {
-    setDrawing(readDrawing(record.points, record.segments))
-    setParameters(restoreParameters(record.parameters))
-    setAdjustments(record.adjustments ?? {})
-    setSaved(false)
+    loadIntoEditor({ scene: siteFromSnapshot(record), parameters: restoreParameters(record.parameters), adjustments: record.adjustments ?? {} })
     setHistoryOpen(false)
   }
 
@@ -220,16 +211,25 @@ function App() {
   }
 
   const saveProject = () => {
-    localStorage.setItem('scaffold-project', JSON.stringify({ points, segments, lengths, parameters: settings, adjustments }))
-    persistHistory(addHistoryRecord(history, currentSnapshot()))
-    setSaved(true)
+    try {
+      localStorage.setItem(siteKey(PROJECT_KEY), JSON.stringify({ version: '0.7', scene: site, parameters: settings, adjustments }))
+      persistHistory(addHistoryRecord(history, currentSnapshot()))
+      setSaved(true)
+    } catch (error) {
+      window.alert(`保存失败：${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
-  const exportProject = async () => {
-    const project = { version: '0.6', points, segments, lengths, parameters: settings, adjustments, layout }
+  const exportProject = async (oa = false) => {
+    if (oa && (!legacy || !layout.canExportMaterials)) return
+    const project = oa && legacy ? (() => {
+      const lengths = measureDrawing(legacy.drawing)
+      const parameters = { ...settings, layerCount: legacy.layers ?? settings.layerCount }
+      return { version: '0.6', ...legacy.drawing, lengths, parameters, adjustments, layout: calculateScaffoldPlan(legacy.drawing, parameters) }
+    })() : { version: '0.7', scene: site, parameters: settings, adjustments, ...(layout.canExportMaterials ? { layout } : {}) }
     try {
       await saveTextFile({
-        fileName: '青岚别墅-脚手架项目.json',
+        fileName: oa ? '架算-OA兼容项目.json' : '架算-场景项目.json',
         mimeType: 'application/json',
         contents: JSON.stringify(project, null, 2),
         title: '导出脚手架项目数据',
@@ -273,7 +273,13 @@ function App() {
             {history.length > 0 && <span className="history-badge">{history.length}</span>}
           </button>
           <button className="icon-button" type="button" onClick={saveAsDefaultDemo} title="把当前图纸与参数设为默认示例"><BookmarkPlus size={19} /></button>
-          <button className="icon-button" type="button" onClick={() => { void exportProject() }} title="导出项目数据"><Download size={19} /></button>
+          <details className="site-export-menu">
+            <summary className="icon-button" aria-label="导出项目数据" title="导出项目数据"><Download size={19} /></summary>
+            <div><button className="site-action" type="button" onClick={() => { void exportProject() }}>导出场景 JSON 0.7</button>
+              <button className="site-action" type="button" disabled={!legacy || !layout.canExportMaterials} onClick={() => { void exportProject(true) }}>导出 OA 兼容 JSON 0.6</button>
+              {!legacy && <small>有体块、辅助线或分段层数时须使用 0.7。</small>}
+            </div>
+          </details>
         </div>
         {historyOpen && (
           <>
@@ -308,26 +314,27 @@ function App() {
       <main className="workspace">
         <section className="work-surface">
           {activeTab === 'plan' && (
-            <PlanEditor
-              drawing={drawing}
-              perimeter={layout.perimeter}
-              onChange={(next) => { setDrawing(next); setSaved(false) }}
-              onResetDemo={resetToDefaultDemo}
-            />
+            <SiteEditor key={editorRevision} site={site} layout={layout} parameters={settings}
+              onChange={(next) => { setSite(next); setSaved(false) }} onDemo={loadDemo} onReset={resetToDefaultDemo} />
           )}
           {activeTab === 'model' && (
             <Suspense fallback={<div className="viewer-loading">正在加载三维引擎…</div>}>
-              <ScaffoldViewer layout={layout} />
+              <ScaffoldViewer layout={layout} blocks={layout.blocks} pipeDiameter={settings.pipeDiameter} />
             </Suspense>
           )}
-          {activeTab === 'materials' && (
+          {activeTab === 'materials' && (layout.canExportMaterials ? (
             <MaterialView
               layout={layout}
               adjustments={adjustments}
               onAdjust={adjustMaterial}
               onResetAdjustment={resetMaterial}
             />
-          )}
+          ) : <section className="site-blocked" role="status">
+            <TriangleAlert size={25} /><h2>整图材料清单暂不可用</h2>
+            <p>修正以下问题后即可查看、打印和导出；场景草图仍可保存。</p>
+            <ul>{layout.issues.filter(issue => issue.blocking).map((issue, i) => <li key={i}>{issue.message}</li>)}</ul>
+            <button className="secondary-button" onClick={() => setActiveTab('plan')}>返回绘图定位</button>
+          </section>)}
         </section>
 
         {settingsOpen && <button className="settings-backdrop" aria-label="关闭参数" onClick={() => setSettingsOpen(false)} />}
@@ -337,10 +344,8 @@ function App() {
             <h2>几何参数</h2>
             {/* The four that carry most of the estimate stay in the open; the rest
                 are refinements a user only reaches for deliberately. */}
-            {/* 作业层数 is the one height input: every elevation follows from it, so
-                the scaffold grows in whole 步距 instead of stretching to a height. */}
             <div className="parameter-grid">
-              <NumberField label="作业层数" value={settings.layerCount} unit="层" step={1} min={1} max={20} onChange={(value) => updateParameter('layerCount', Math.round(value))} />
+              <NumberField label="新段默认目标层" value={settings.layerCount} unit="层" step={1} min={1} max={20} onChange={(value) => updateParameter('layerCount', Math.round(value))} />
               <NumberField label="钢笆纵向杆数" value={settings.deckSupportRailCount} unit="根" step={1} min={2} max={4} onChange={(value) => updateParameter('deckSupportRailCount', Math.round(value))} />
               <NumberField label="扫地杆高度" value={settings.sweepBarHeight} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('sweepBarHeight', value)} />
               {/* §7.3.12(2)(4) gives 上栏杆 + 中栏杆, but a site that only builds the
@@ -388,19 +393,15 @@ function App() {
           </div>
 
           <div className="live-summary">
-            <div className="summary-title"><span>实时估算</span><small>{layout.pipeSegments.length} 根标准管</small></div>
+            <div className="summary-title"><span>{layout.canExportMaterials ? '实时估算' : '草图预览 · 不可出量'}</span><small>{layout.canExportMaterials ? layout.pipeSegments.length + ' 根标准管' : '待复核'}</small></div>
             <div className="summary-grid">
               <div><span>立杆</span><strong>{counts.post}</strong></div>
               <div><span>水平杆</span><strong>{counts.longitudinal}</strong></div>
               <div><span>横向杆</span><strong>{counts.transverse}</strong></div>
               <div><span>防护栏杆</span><strong>{counts.guardrail}</strong></div>
             </div>
-            {/* The height model in one line: the user sets 作业层数, everything else is
-                derived, and the two 立杆 rows come out different lengths. */}
-            <div className="utilization-row"><span>理论搭设高度</span><strong>{layout.materials.postHeights.theoretical} m</strong></div>
-            <div className="utilization-row">
-              <span>立杆 内 / 外</span>
-              <strong>{layout.materials.postHeights.inner} / {layout.materials.postHeights.outer} m</strong>
+            <div className="utilization-row"><span>最高作业层标高</span>
+              <strong>{layout.sections.length ? Math.max(...layout.sections.map(section => section.top)).toFixed(2) + ' m' : '—'}</strong>
             </div>
             <div className="utilization-row"><span>钢管利用率</span><strong>{layout.materials.utilization}%</strong></div>
             <div className="utilization-track"><i style={{ width: `${layout.materials.utilization}%` }} /></div>

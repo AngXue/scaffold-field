@@ -5,27 +5,26 @@ import * as THREE from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { Box, Focus, Maximize2, Minimize2, Rotate3D, ScanEye } from 'lucide-react'
 import type { DeckPanel, MemberType, PipeSegment, ScaffoldLayout } from '../domain/scaffold'
-import { CONNECTOR_LABELS, SWEEP_BAR_LAYER } from '../domain/scaffold'
+import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, CONNECTOR_LABELS, SWEEP_BAR_LAYER } from '../domain/scaffold'
 import { GroundDimensions } from './GroundDimensions'
 import { Couplers } from './Couplers'
+import type { ResolvedBlock } from '../domain/site'
 import { useCssFullscreen } from '../platform/fullscreen'
 
 type ViewerProps = {
   layout: ScaffoldLayout
+  blocks?: ResolvedBlock[]
+  onSelectSurface?: (id: string) => void
+  pipeDiameter?: number
 }
 
-type RenderLayer = MemberType | 'deck' | 'connector' | 'channel'
-
-/** 10# 槽钢: 100 mm high, 48 mm flange. */
-const CHANNEL_HEIGHT = 0.1
-const CHANNEL_FLANGE = 0.048
+type RenderLayer = MemberType | 'deck' | 'connector' | 'channel' | 'house'
 
 /**
  * True tube radius. The domain models a 48 mm scaffold tube
  * (`pipeDiameter: 0.048` in src/domain/scaffold.ts); the viewer used to draw a
  * 76 mm one, which swallowed the joint clearances the domain already emits.
  */
-const TUBE_RADIUS = 0.024
 const TUBE_SEGMENTS = 12
 /**
  * Abutting segments are pulled back along their axis so a shared joint shows a
@@ -74,6 +73,7 @@ const LAYER_LABELS: Record<RenderLayer, string> = {
   deck: '钢笆',
   connector: '扣件',
   channel: '槽钢',
+  house: '房屋',
 }
 
 const LAYER_COLORS: Record<RenderLayer, string> = {
@@ -81,6 +81,7 @@ const LAYER_COLORS: Record<RenderLayer, string> = {
   deck: '#87989a',
   connector: '#8a8f93',
   channel: '#6f7a7d',
+  house: '#b5aa98',
 }
 
 const RENDER_LAYERS = Object.keys(LAYER_LABELS) as RenderLayer[]
@@ -143,8 +144,9 @@ function CameraRig({ position, target, maximumDistance }: {
   return <OrbitControls makeDefault target={initialView.target} minDistance={3} maxDistance={maximumDistance} />
 }
 
-function Pipe({ segment, selected, onSelect }: {
+function Pipe({ segment, selected, onSelect, radius }: {
   segment: PipeSegment
+  radius: number
   selected: boolean
   onSelect: () => void
 }) {
@@ -181,7 +183,7 @@ function Pipe({ segment, selected, onSelect }: {
       {/* Constant geometry across selection states: resizing on select rebuilt
           and re-uploaded the geometry on every click and made the part visibly
           jump. Selection is emissive now, so nothing moves. */}
-      <cylinderGeometry args={[TUBE_RADIUS, TUBE_RADIUS, tubeLength, TUBE_SEGMENTS]} />
+      <cylinderGeometry args={[radius, radius, tubeLength, TUBE_SEGMENTS]} />
       {painted ? (
         <meshPhysicalMaterial
           color={albedo}
@@ -270,7 +272,7 @@ function SteelDeck({ deck, selected, onSelect }: {
   )
 }
 
-export function ScaffoldViewer({ layout }: ViewerProps) {
+export function ScaffoldViewer({ layout, blocks = [], onSelectSurface, pipeDiameter = 0.048 }: ViewerProps) {
   const viewerRef = useRef<HTMLDivElement>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [cameraPreset, setCameraPreset] = useState(0)
@@ -284,7 +286,10 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
   const selectedDeck = layout.decks.find((deck) => deck.id === selectedId)
   const selectedChannel = layout.baseChannels.find((channel) => channel.id === selectedId)
   const selectedConnector = layout.connectors.find((connector) => connector.id === selectedId)
-  const memberPoints = layout.pipeSegments.flatMap((segment) => [segment.start, segment.end])
+  const memberPoints = [...layout.pipeSegments.flatMap((segment) => [segment.start, segment.end]), ...blocks.flatMap(block => [
+    [block.x, block.base, block.z] as [number, number, number],
+    [block.x + block.width, block.top, block.z + block.depth] as [number, number, number],
+  ])]
   const scenePoints = memberPoints.length > 0
     ? memberPoints
     : [[0, 0, 0], [6, 6, 6]] as [number, number, number][]
@@ -380,6 +385,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
               <Pipe
                 key={segment.id}
                 segment={segment}
+                radius={pipeDiameter / 2}
                 selected={segment.id === selectedId}
                 onSelect={() => setSelectedId(segment.id)}
               />
@@ -397,12 +403,12 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
               return (
                 <mesh
                   key={channel.id}
-                  position={[midpoint.x, CHANNEL_HEIGHT / 2, midpoint.z]}
+                  position={[midpoint.x, midpoint.y + BASE_CHANNEL_HEIGHT / 2, midpoint.z]}
                   rotation={[0, angle, 0]}
                   userData={PICK_PART}
                   onClick={(event) => { event.stopPropagation(); setSelectedId(channel.id) }}
                 >
-                  <boxGeometry args={[CHANNEL_FLANGE, CHANNEL_HEIGHT, channel.length]} />
+                  <boxGeometry args={[BASE_CHANNEL_WIDTH, BASE_CHANNEL_HEIGHT, channel.length]} />
                   <meshStandardMaterial
                     color={channel.id === selectedId ? SELECTED_COLOR : LAYER_COLORS.channel}
                     metalness={0.85}
@@ -414,6 +420,17 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
               )
             })}
           </group>
+          {visibility.house && blocks.map(block => (
+            <mesh key={block.id} position={[block.x + block.width / 2, (block.top + block.base) / 2, block.z + block.depth / 2]}
+              name={block.id} onClick={onSelectSurface ? (event) => {
+                if (event.delta > 4 || event.face?.normal.y !== 1) return
+                event.stopPropagation()
+                onSelectSurface(block.id)
+              } : undefined}>
+              <boxGeometry args={[block.width, block.height, block.depth]} />
+              <meshStandardMaterial color={LAYER_COLORS.house} roughness={0.92} metalness={0.02} />
+            </mesh>
+          ))}
           <GroundDimensions dimensions={layout.pathDimensions} />
           <ContactShadows
             key={shadowKey}

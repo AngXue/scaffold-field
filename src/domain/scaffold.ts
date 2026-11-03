@@ -207,6 +207,10 @@ export type ScaffoldConnector = {
   connectedMemberId?: string
 }
 
+/** Model dimensions for the 10# 槽钢 base beam, in metres. */
+export const BASE_CHANNEL_HEIGHT = 0.1
+export const BASE_CHANNEL_WIDTH = 0.048
+
 /**
  * 槽钢 base beam. One piece is laid under each pair of posts, running in the same
  * direction as the transverse members, and the posts stand on it.
@@ -689,7 +693,7 @@ function guardrailRailCountOf(parameters: ScaffoldParameters) {
   return Math.max(1, Math.min(GUARDRAILS.length, Math.round(requested)))
 }
 
-function calculateMaterials(
+export function calculateMaterials(
   members: ScaffoldMember[],
   pipeSegments: PipeSegment[],
   decks: DeckPanel[],
@@ -890,6 +894,7 @@ export function calculateScaffold(
   points: Point2D[],
   segmentLengths: number[],
   parameters: ScaffoldParameters,
+  localLifts?: readonly number[],
 ): ScaffoldLayout {
   const legacyParameters = parameters as ScaffoldParameters & { rowCount?: number; height?: number }
   parameters = {
@@ -961,8 +966,9 @@ export function calculateScaffold(
   const guardrailRailCount = guardrailRailCountOf(parameters)
   const guardrails: ReturnType<typeof guardrailsFor> = guardrailsFor(guardrailRailCount, parameters.liftHeight)
   const layerCount = Math.max(1, Math.round(parameters.layerCount ?? DEFAULT_PARAMETERS.layerCount))
-  const theoreticalHeight = round(TOP_POST_EXTENSION + layerCount * parameters.liftHeight)
-  const topLiftElevation = round(layerCount * parameters.liftHeight)
+  const liftElevation = (layer: number) => localLifts?.[layer - 1] ?? round(layer * parameters.liftHeight)
+  const topLiftElevation = liftElevation(layerCount)
+  const theoreticalHeight = round(TOP_POST_EXTENSION + topLiftElevation)
   const railedHeight = round(theoreticalHeight + parameters.liftHeight + TOP_POST_EXTENSION)
   // Which row of the drawing is which. The path is the 外立杆 line unless the user
   // says the building is on that side (`swapInnerOuter`), and ONLY the 外排 is railed.
@@ -1794,7 +1800,7 @@ export function calculateScaffold(
       // Every 作业层 is exactly `layer × liftHeight` above the base: the first one is
       // a full 步距 up, and `TOP_POST_EXTENSION` is the 立杆 extension above the TOP
       // one rather than a start offset.
-      const elevation = round(layer * parameters.liftHeight)
+      const elevation = liftElevation(layer)
       const withDeck = layer % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0
       // A decked lift is a 作业层 and gets its rails; a deckless lift gets only the
       // two normal longitudinal rows — except the top lift, which always carries
@@ -1825,7 +1831,7 @@ export function calculateScaffold(
     for (const corner of cornerDecks) {
       for (let layer = 1; layer <= layerCount; layer += 1) {
         if (layer % deckInterval !== 0) continue
-        const deckElevation = round(round(layer * parameters.liftHeight) + DECK_SURFACE_OFFSET)
+        const deckElevation = round(liftElevation(layer) + DECK_SURFACE_OFFSET)
         const corners = corner.points.map(
           (point) => [point[0], deckElevation, point[2]] as Vector3Tuple,
         ) as [Vector3Tuple, Vector3Tuple, Vector3Tuple, Vector3Tuple]
@@ -2059,13 +2065,13 @@ export function countMembers(layout: ScaffoldLayout) {
  * No synthetic segment is inserted between disconnected components. Branches
  * remain editable but are flagged because their fabrication detail is unspecified.
  */
-export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters): ScaffoldLayout {
+export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[]): ScaffoldLayout {
   const paths = drawingPaths(drawing)
   if (!paths.length) return calculateScaffold([], [], parameters)
   const origin = drawing.points[0]
   // A normal connected outline needs exactly one domain calculation on mobile.
   if (paths.length === 1) {
-    const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points), parameters)
+    const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts)
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     result.members.forEach(m => {
@@ -2089,7 +2095,7 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   const postSequences = new Map<string, number[]>()
   let postHeights: MaterialResult['postHeights'] | undefined
   paths.forEach((path, component) => {
-    const layout = calculateScaffold(path.points, measurePath(path.points), parameters)
+    const layout = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts)
     postHeights ??= layout.materials.postHeights
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER
     const dz = (path.points[0].y - origin.y) / PIXELS_PER_METER

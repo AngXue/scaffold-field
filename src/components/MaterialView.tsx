@@ -150,7 +150,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
     const csv = `\uFEFF${rows.map((row) => row.join(',')).join('\n')}`
     try {
       await saveTextFile({
-        fileName: '青岚别墅-材料清单.csv',
+        fileName: '架算-材料清单.csv',
         mimeType: 'text/csv;charset=utf-8',
         contents: csv,
         title: '导出材料清单',
@@ -162,7 +162,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
 
   const printMaterials = async () => {
     try {
-      await printDocument('青岚别墅-材料清单')
+      await printDocument('架算-材料清单')
     } catch (error) {
       window.alert(`打印失败：${error instanceof Error ? error.message : String(error)}`)
     }

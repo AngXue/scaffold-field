@@ -624,3 +624,80 @@ body.has-fullscreen { overflow: hidden; }
   .stock-list { grid-template-rows: none; }
   .stock-row { min-height: 30px; }
 }
+
+/* Scene workbench: the active elevation stays visible while drawing. */
+.site-editor { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; color: #172b33; }
+.site-editor.is-fullscreen { position: fixed; inset: 0; z-index: 60; background: #f4f7f7; }
+.site-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #dce4e5; }
+.site-tools, .site-canvas-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.site-toolbar button, .site-canvas-tools button, .site-action, .site-panel-toggle {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 34px;
+  border: 1px solid #d8e1e2; border-radius: 6px; background: #fff; padding: 5px 9px; color: #203b43; cursor: pointer;
+  font-size: 12px; line-height: 1.3;
+}
+.site-toolbar button[aria-pressed="true"], .site-canvas-tools button[aria-pressed="true"] {
+  background: #1d6065; border-color: #1d6065; color: white;
+}
+.site-toolbar button:disabled, .site-canvas-tools button:disabled, .site-action:disabled { opacity: 0.48; cursor: default; }
+.site-toolbar .site-icon { width: 34px; padding-inline: 4px; }
+.site-surface { display: flex; gap: 6px; align-items: center; font-size: 12px; margin-left: auto; }
+.site-toolbar select, .site-details select, .site-field input {
+  max-width: 100%; min-height: 32px; background: #fff; border: 1px solid #cfdadb; border-radius: 5px; color: #203b43; padding: 4px 7px; font-size: 13px;
+}
+.site-editor-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+.site-stage { flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; flex-direction: column; background: #f5f8f8; }
+.site-plan { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; cursor: crosshair; }
+.site-plan.is-panning { cursor: grab; }
+.site-canvas-tools { position: absolute; z-index: 1; left: 8px; top: 8px; max-width: calc(100% - 16px); }
+.site-canvas-tools button { background: #fffffff2; }
+.site-canvas-status { position: absolute; pointer-events: none; bottom: 8px; left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 9px; width: fit-content; max-width: calc(100% - 16px); font-size: 12px; border-radius: 5px; background: #fff; color: #254850; }
+.site-block { fill: #cfc3b06b; stroke: #a09480; stroke-width: 1.5px; }
+.site-block.active { fill: #89bbaf82; stroke: #458976; }
+.site-block.selected { stroke: #0d6463; stroke-width: 2.5px; }
+.site-block.invalid, .site-section.invalid { stroke: #a83328; }
+.site-svg-label { fill: #19343c; paint-order: stroke; stroke: white; stroke-width: 3px; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.site-guide { stroke: #577477; stroke-width: 1.7px; stroke-dasharray: 5px 3px; }
+.site-guide.selected { stroke: #266fe5; stroke-width: 2.7px; }
+.site-section { stroke: #1a646c; stroke-width: 3px; }
+.site-section.selected { stroke: #266fe5; stroke-width: 4px; }
+.site-off-plane { opacity: 0.55; }
+.site-hit { stroke: transparent; stroke-width: 16px; pointer-events: stroke; }
+.site-endpoint { fill: white; stroke: #266fe5; stroke-width: 2px; cursor: grab; }
+.site-strip { fill: #53aaac46; stroke: #43868c; stroke-width: 1.5px; }
+.site-details { flex: 0 0 220px; min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; border-left: 1px solid #dce4e5; padding: 8px; background: #f9fbfb; }
+.site-details:not(.open) { flex-basis: 115px; }
+.site-panel-toggle { width: 100%; justify-content: space-between; font-weight: 650; }
+.site-panel-toggle span { font-weight: 400; color: #52696e; }
+.site-details-content, .site-object { display: grid; gap: 8px; padding-top: 8px; font-size: 13px; }
+.site-details p { margin: 2px 0; line-height: 1.5; overflow-wrap: anywhere; }
+.site-field { display: grid; gap: 3px; min-width: 0; font-size: 12px; }
+.site-field input, .site-field select, .site-demos select { width: 100%; }
+.site-levels { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; margin: 4px 0; }
+.site-levels dt { color: #52696e; }
+.site-levels dd { margin: 0; font-weight: 650; }
+.site-notice { padding: 6px 8px; background: #fff1d6; color: #654400; border-radius: 4px; }
+.site-issues { display: grid; gap: 5px; }
+.site-issues button { text-align: left; color: #684702; background: #fff5df; padding: 6px; border: 1px solid #ebd4a7; border-radius: 5px; font-size: 12px; cursor: pointer; }
+.site-issues button.blocking { color: #873528; border-color: #e8c6bd; background: #ffefe9; }
+.site-issues button span { font-weight: 700; text-decoration: underline; }
+.site-demos summary { cursor: pointer; margin-block: 4px; font-weight: 650; }
+.site-export-menu { position: relative; }
+.site-export-menu summary { list-style: none; cursor: pointer; }
+.site-export-menu summary::-webkit-details-marker { display: none; }
+.site-export-menu > div { position: absolute; z-index: 10; right: 0; top: calc(100% + 6px); display: grid; gap: 6px; width: 215px; padding: 8px; background: #fff; border: 1px solid #d8e1e2; border-radius: 8px; box-shadow: 0 5px 18px #16343a22; }
+.site-export-menu small { color: #52696e; }
+.site-blocked { overflow: auto; padding: 24px; color: #873528; }
+.site-blocked h2 { font-size: 1.25rem; margin: 6px 0; }
+.site-blocked ul { padding-left: 1.3em; line-height: 1.65; }
+.site-blocked button { margin-top: 12px; }
+@media (min-width: 1201px) and (max-width: 1400px) {
+  .site-details { flex-basis: 196px; }
+}
+@media (max-width: 800px) {
+  .site-editor-body { flex-direction: column; }
+  .site-details, .site-details:not(.open) { flex: 0 0 auto; max-height: min(34dvh, 250px); border-left: 0; border-top: 1px solid #dce4e5; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  .site-toolbar { padding: 6px 8px; gap: 5px; }
+  .site-surface { margin-left: 0; }
+  .site-details input, .site-details select { font-size: 16px; }
+  .site-canvas-tools button, .site-toolbar button, .site-panel-toggle { min-height: 36px; }
+}

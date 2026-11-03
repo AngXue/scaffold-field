@@ -6,6 +6,7 @@ import {
 } from './scaffold'
 import { measureDrawing, measurePath, readDrawing, type PlanSegment } from './plan'
 import { restoreParameters } from './project'
+import { readSite, type Site } from './site'
 
 /** How many records the history keeps; the oldest one is dropped beyond this. */
 export const HISTORY_LIMIT = 100
@@ -18,6 +19,7 @@ export type HistorySnapshot = {
   segments?: PlanSegment[]
   parameters: ScaffoldParameters
   adjustments: MaterialAdjustments
+  scene?: Site
 }
 
 export type HistoryRecord = HistorySnapshot & {
@@ -38,6 +40,12 @@ export function historyLabel(snapshot: HistorySnapshot): string {
   const segments = lengths.map((length) => length.toFixed(2)).join(' + ')
   const layers = Math.max(1, Math.round(snapshot.parameters?.layerCount ?? DEFAULT_PARAMETERS.layerCount))
   const width = Number(snapshot.parameters?.width ?? DEFAULT_PARAMETERS.width)
+  if (snapshot.scene) {
+    const counts = snapshot.scene.sections.map(s => s.layers)
+    const range = counts.length ? Math.min(...counts) === Math.max(...counts)
+      ? `${counts[0]} 层` : `${Math.min(...counts)}–${Math.max(...counts)} 层` : '无架段'
+    return `${snapshot.scene.blocks.length} 个体块 · ${counts.length} 段 · ${range}`
+  }
   return `${segments ? `${segments} m` : '空白图纸'} · ${layers} 层 · 排距 ${width.toFixed(2)}`
 }
 
@@ -53,6 +61,7 @@ function canonical(snapshot: HistorySnapshot) {
     segments: readDrawing(snapshot.points, snapshot.segments).segments,
     parameters: snapshot.parameters,
     adjustments: snapshot.adjustments ?? {},
+    scene: snapshot.scene,
   }
 }
 
@@ -100,6 +109,7 @@ export function parseHistory(raw: string | null): HistoryRecord[] {
     const candidate = entry as Partial<HistoryRecord>
     if (!Array.isArray(candidate.points) || (candidate.points.length < 2 && !Array.isArray(candidate.segments))) continue
     if (!Array.isArray(candidate.lengths)) continue
+    if (candidate.scene && !readSite(candidate.scene)) continue
     const savedAt = typeof candidate.savedAt === 'number' && Number.isFinite(candidate.savedAt)
       ? candidate.savedAt
       : 0
@@ -111,6 +121,7 @@ export function parseHistory(raw: string | null): HistoryRecord[] {
       // rejected: its own fields still describe the project it saved.
       parameters: restoreParameters(candidate.parameters),
       adjustments: (candidate.adjustments ?? {}) as MaterialAdjustments,
+      ...(candidate.scene ? { scene: readSite(candidate.scene) } : {}),
     }
     records.push({
       ...snapshot,

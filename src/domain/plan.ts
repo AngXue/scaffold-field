@@ -5,10 +5,10 @@ export const GRID_SIZE = PIXELS_PER_METER / 10
 
 const round = (value: number, precision = 2) => Number(value.toFixed(precision))
 
-export function measurePath(points: Point2D[]) {
+export function measurePath(points: Point2D[], precision = 2) {
   return points.slice(0, -1).map((point, index) => {
     const next = points[index + 1]
-    return round(Math.hypot(next.x - point.x, next.y - point.y) / PIXELS_PER_METER)
+    return round(Math.hypot(next.x - point.x, next.y - point.y) / PIXELS_PER_METER, precision)
   })
 }
 
@@ -141,11 +141,11 @@ export function normalizeDrawing(drawing: PlanDrawing): PlanDrawing {
   return { points: points.filter(p => used.has(p.id)), segments }
 }
 
-export function measureDrawing(drawing: PlanDrawing) {
+export function measureDrawing(drawing: PlanDrawing, precision = 2) {
   const nodes = new Map(drawing.points.map(p => [p.id, p]))
   return drawing.segments.map(s => {
     const a = nodes.get(s.start)!, b = nodes.get(s.end)!
-    return round(Math.hypot(b.x - a.x, b.y - a.y) / PIXELS_PER_METER)
+    return round(Math.hypot(b.x - a.x, b.y - a.y) / PIXELS_PER_METER, precision)
   })
 }
 

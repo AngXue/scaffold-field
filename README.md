@@ -103,3 +103,5 @@ ScaffoldPath + Parameters
 当前建议保留 React + TypeScript + Three.js/R3F + Capacitor，优先优化渲染和计算。
 安卓端的性能目标、优化顺序及迁移条件见 [技术栈评估](docs/技术栈评估.md)；
 扣件数量复核及本次修正见 [扣件计算复核](docs/扣件计算复核.md)。
+
+三维场景分支的规则、网页和平板操作设计、手算 Demo 与复测方法见 [三维房屋与分段测算方案](docs/三维房屋与分段测算方案.md)。
