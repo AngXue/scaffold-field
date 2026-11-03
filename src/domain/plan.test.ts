@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GRID_SIZE, snapPlanPoint, orthogonalEnd, addPlanSegment, EMPTY_DRAWING, measureDrawing, drawingPaths, deletePlanSegment, readDrawing, resizeDrawingSegment, movePlanNode, insertPathSegment, measurePath, PIXELS_PER_METER, resizePathSegment } from './plan'
+import { alignSiteBlock } from './siteAlignment'
 
 const points = [
   { id: 'P1', x: 100, y: 100 },
@@ -8,6 +9,20 @@ const points = [
 ]
 
 describe('plan geometry', () => {
+  it('snaps a block edge to a rectangle and its centre to a drawn line independently', () => {
+    const block = { x: 0, z: 0, width: 4, depth: 5 }
+    const house = { x: 2.025, z: 0, width: 8, depth: 10 }
+    const line = { start: { x: -5, z: 5.125 }, end: { x: -3, z: 5.125 } }
+    expect(alignSiteBlock(block, { x: -1.96, z: 2.67 }, [house], [line], 0.1)).toEqual({
+      position: { x: -1.975, z: 2.625 }, guides: [
+        { axis: 'x', at: 2.025, from: 0, to: 10 },
+        { axis: 'z', at: 5.125, from: -5, to: 2.025 },
+      ],
+    })
+    expect(alignSiteBlock(block, { x: -1.96, z: 2.67 }, [house], [line], 0.01))
+      .toEqual({ position: { x: -2, z: 2.7 }, guides: [] })
+  })
+
   it('uses one consistent canvas scale for every measured segment', () => {
     expect(measurePath(points)).toEqual([7.2, 4.8])
   })

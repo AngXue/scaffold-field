@@ -11,6 +11,23 @@ const run = (id: string) => calculateSite(demo(id).site, demo(id).parameters)
 const posts = (layout: ReturnType<typeof run>) => layout.members.filter(m => m.type === 'post')
 
 describe('分段测算的独立手算验收', () => {
+  it('居中走廊：前左共角，左侧三段 5 / 4 / 5 层，四段齐顶', () => {
+    const { site } = demo('corridor')
+    const [house, corridor] = site.blocks
+    expect([house.width, house.depth, house.height]).toEqual([8, 10, 10])
+    expect([corridor.depth, corridor.width, corridor.height]).toEqual([5, 4, 3.5])
+    expect(corridor.x + corridor.width).toBe(house.x)
+    expect(corridor.z + corridor.depth / 2).toBe(house.z + house.depth / 2)
+    expect(site.sections[0].end).toEqual(site.sections[1].start)
+    const layout = run('corridor')
+    expect(layout.issues).toEqual([])
+    expect(layout.sections.map(s => [s.base, s.levels[0], s.levels.length, s.top])).toEqual([
+      [0, 1.88, 5, 9.4], [0, 1.88, 5, 9.4], [3.5, 3.76, 4, 9.4], [0, 1.88, 5, 9.4],
+    ])
+    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.25, 0, -1.25]])
+    expect(layout.canExportMaterials).toBe(true)
+  })
+
   it('3.50 m 屋顶单跨：按两排、两站、两道防护手算所有钢管和扣件', () => {
     const layout = run('roof')
     expect(layout.canExportMaterials).toBe(true)

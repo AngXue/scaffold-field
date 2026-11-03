@@ -654,6 +654,11 @@ body.has-fullscreen { overflow: hidden; }
 .site-block { fill: #cfc3b06b; stroke: #a09480; stroke-width: 1.5px; }
 .site-block.active { fill: #89bbaf82; stroke: #458976; }
 .site-block.selected { stroke: #0d6463; stroke-width: 2.5px; }
+.site-block.movable, .site-block-move-edge { cursor: grab; }
+.site-block.movable:active, .site-block-move-edge:active { cursor: grabbing; }
+.site-block-move-edge { fill: none; stroke: transparent; stroke-width: 10px; pointer-events: stroke; }
+.site-block-dimensions path { fill: none; stroke: var(--muted); stroke-width: 1px; }
+.site-alignment-guide { fill: none; stroke: var(--accent); stroke-width: 1px; stroke-dasharray: 5px 4px; }
 .site-block.invalid, .site-section.invalid { stroke: #a83328; }
 .site-svg-label { fill: #19343c; paint-order: stroke; stroke: white; stroke-width: 3px; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 .site-guide { stroke: #577477; stroke-width: 1.7px; stroke-dasharray: 5px 3px; }

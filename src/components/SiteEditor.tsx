@@ -3,6 +3,7 @@ import { Box, Crosshair, Focus, Hand, Magnet, Maximize2, Minimize2, Pencil, Redo
 import { blockHasDependents, defaultSectionLayers, GROUND, MIN_SECTION_LENGTH, rectangleFromGuides, reverseSectionGroup, roundSite, siteLength, surfaceElevation, type Footprint, type Site, type SiteBlock, type SiteLayout, type SitePoint, type SiteSection } from '../domain/site'
 import type { ScaffoldParameters } from '../domain/scaffold'
 import { SITE_DEMOS, type SiteDemo } from '../domain/siteDemos'
+import { alignSiteBlock, type AlignmentGuide } from '../domain/siteAlignment'
 import { useCssFullscreen } from '../platform/fullscreen'
 
 const Viewer = lazy(() => import('./ScaffoldViewer').then(module => ({ default: module.ScaffoldViewer })))
@@ -10,7 +11,8 @@ const Viewer = lazy(() => import('./ScaffoldViewer').then(module => ({ default: 
 type Tool = 'house' | 'scaffold' | 'browse'
 type View = { x: number; z: number; scale: number }
 type Draft = { start: SitePoint; end: SitePoint; kind: 'rectangle' | 'guide' | 'section' | 'end' }
-type Gesture = { startScreen: SitePoint; start: SitePoint; view: View; target?: string; surface?: string; endpoint?: 'start' | 'end'; kind: 'pan' | 'draw' | 'pick' }
+  | { kind: 'move-block'; id: string; position: SitePoint; guides: AlignmentGuide[] }
+type Gesture = { startScreen: SitePoint; start: SitePoint; view: View; target?: string; surface?: string; endpoint?: 'start' | 'end'; block?: SiteBlock; kind: 'pan' | 'draw' | 'pick' }
 type Props = { site: Site; layout: SiteLayout; parameters: ScaffoldParameters; onChange: (site: Site) => void; onDemo: (demo: SiteDemo) => void; onReset: () => void }
 const clampZoom = (scale: number) => Math.min(420, Math.max(2, scale))
 const distance = (a: SitePoint, b: SitePoint) => Math.hypot(a.x - b.x, a.z - b.z)
@@ -29,6 +31,29 @@ const nextId = (site: Site, prefix: string) => {
   let i = 1
   while (taken.has(prefix + i)) i++
   return prefix + i
+}
+
+function BlockDimensions({ block, scale }: { block: Footprint; scale: number }) {
+  const { x, z, width, depth } = block
+  return <g className="site-block-dimensions" pointerEvents="none">
+    {(['top', 'bottom', 'left', 'right'] as const).map(side => {
+      const horizontal = side === 'top' || side === 'bottom'
+      const near = side === 'top' || side === 'left'
+      const along = horizontal ? x : z
+      const length = horizontal ? width : depth
+      const edge = horizontal ? (near ? z : z + depth) : (near ? x : x + width)
+      const offset = edge + (near ? -1 : 1) * 14 / scale
+      const mid = along + length / 2
+      return <g key={side}>
+        <path vectorEffect="non-scaling-stroke" d={horizontal ? `M${along} ${edge}V${offset}H${along + length}V${edge}`
+          : `M${edge} ${along}H${offset}V${along + length}H${edge}`} />
+        <text className="site-svg-label" transform={horizontal ? undefined : `rotate(-90 ${offset} ${mid})`}
+          x={horizontal ? mid : offset} y={horizontal ? offset : mid} textAnchor="middle" dominantBaseline="central" fontSize={11 / scale}>
+          {formatMetres(length)} m
+        </text>
+      </g>
+    })}
+  </g>
 }
 
 function EditorNumber({ label, value, onCommit, min = 0.01, max = 1000, integer = false }: {
@@ -77,6 +102,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   const selectedSection = site.sections.find(section => section.id === selected)
   const selectedSummary = layout.sections.find(section => section.id === selected)
   const selectedGuide = site.guides.find(guide => guide.id === selected)
+  const moving = draft?.kind === 'move-block' ? draft : undefined
+  const moveTool = tool === 'house' && houseBrush === 'rectangle' && !pan && !pick
   const selectedDimension = layout.pathDimensions.find(d => site.sections[d.index]?.id === selected)
   const blockLabel = (id: string) => id === GROUND ? '最低地面' : id + ' 顶面'
   const setViewport = useCallback((next: View) => { viewRef.current = next; setView(next) }, [])
@@ -183,13 +210,25 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
       gesture.current = null; setDraft(undefined)
       return
     }
-    const target = (e.target as Element).closest('[data-site-object]')
+    const hit = e.target as Element
+    const target = hit.closest('[data-site-object]')
+    const face = target?.getAttribute('data-site-face')
+    const block = moveTool && (face !== surfaceId || hit.closest('[data-site-move]'))
+      ? site.blocks.find(item => item.id === face) : undefined
     gesture.current = { startScreen: p, start: sitePoint(p, houseBrush !== 'rectangle' || tool === 'scaffold'), view: viewRef.current,
-      target: target?.getAttribute('data-site-object') ?? undefined, surface: target?.getAttribute('data-site-face') ?? undefined,
-      endpoint: (e.target as Element).closest('[data-endpoint]')?.getAttribute('data-endpoint') as Gesture['endpoint'] || undefined,
+      target: target?.getAttribute('data-site-object') ?? undefined, surface: face ?? undefined, block,
+      endpoint: hit.closest('[data-endpoint]')?.getAttribute('data-endpoint') as Gesture['endpoint'] || undefined,
       kind: pan || e.button === 1 || e.shiftKey ? 'pan' : pick ? 'pick' : 'draw' }
   }
   const makeDraft = (g: Gesture, p: SitePoint): Draft => {
+    if (g.block) {
+      const block = g.block
+      const position = { x: block.x + (p.x - g.startScreen.x) / g.view.scale, z: block.z + (p.z - g.startScreen.z) / g.view.scale }
+      const aligned = snap ? alignSiteBlock(block, position, site.blocks.filter(other => other.id !== block.id),
+        [...site.guides, ...site.sections], Math.min(0.35, 8 / g.view.scale))
+        : { position: { x: roundSite(position.x), z: roundSite(position.z) }, guides: [] }
+      return { ...aligned, kind: 'move-block', id: block.id }
+    }
     const end = sitePoint(p, tool === 'scaffold' || houseBrush === 'guide')
     if (g.endpoint && selectedSection) {
       const other = selectedSection[g.endpoint === 'start' ? 'end' : 'start']
@@ -213,7 +252,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     const g = gesture.current
     if (!g) return
     if (g.kind === 'pan') setViewport({ ...g.view, x: g.view.x + p.x - g.startScreen.x, z: g.view.z + p.z - g.startScreen.z })
-    if (g.kind === 'draw' && distance(p, g.startScreen) > 4) setDraft(makeDraft(g, p))
+    if (g.kind === 'draw') setDraft(distance(p, g.startScreen) > 4 ? makeDraft(g, p) : undefined)
   }
   function finish(e: PointerEvent<SVGSVGElement>, cancel = false) {
     pointers.current.delete(e.pointerId)
@@ -225,6 +264,11 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     const p = screen(e)
     if (distance(p, g.startScreen) <= 4) { select(g.target); return }
     const draw = makeDraft(g, p)
+    if (draw.kind === 'move-block') {
+      updateBlock(draw.id, draw.position)
+      select(draw.id)
+      return
+    }
     if (draw.kind === 'end' && selectedSection && g.endpoint) {
       if (distance(draw.start, draw.end) >= MIN_SECTION_LENGTH) updateSection(selectedSection.id, { [g.endpoint]: draw.end })
       else setNotice('架段至少需要 0.10 m。')
@@ -338,16 +382,22 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
             </pattern></defs>
             <rect width="100%" height="100%" fill="url(#site-grid)" />
             <g transform={`translate(${view.x} ${view.z}) scale(${view.scale})`}>
-              {[...site.blocks].sort((a, b) => (surfaceElevation(layout.blocks, a.id) ?? 0) - (surfaceElevation(layout.blocks, b.id) ?? 0)).map(block =>
-                <g key={block.id} data-site-object={block.id} data-site-face={block.id}>
-                  <rect className={`site-block${surfaceId === block.id ? ' active' : ''}${selected === block.id ? ' selected' : ''}${badBlocks.has(block.id) ? ' invalid' : ''}`}
+              {[...site.blocks].sort((a, b) => (surfaceElevation(layout.blocks, a.id) ?? 0) - (surfaceElevation(layout.blocks, b.id) ?? 0)).map(item => {
+                const isMoving = moving?.id === item.id
+                const block = isMoving ? { ...item, ...moving.position } : item
+                return <g key={block.id} data-site-object={block.id} data-site-face={block.id}>
+                  <rect className={`site-block${surfaceId === block.id ? ' active' : ''}${selected === block.id || isMoving ? ' selected' : ''}${badBlocks.has(block.id) ? ' invalid' : ''}${moveTool && surfaceId !== block.id ? ' movable' : ''}`}
                     x={block.x} y={block.z} width={Math.max(0, block.width)} height={Math.max(0, block.depth)} vectorEffect="non-scaling-stroke" />
                   {block.width * view.scale >= 85 && block.depth * view.scale >= 25 &&
                     <text className="site-svg-label" x={block.x + 9 / view.scale} y={block.z + 16 / view.scale}
                       fontSize={12 / view.scale} pointerEvents="none">
                       {block.id} · {formatMetres(surfaceElevation(layout.blocks, block.id))} m
                     </text>}
-                </g>)}
+                  <BlockDimensions block={block} scale={view.scale} />
+                  {moveTool && <rect data-site-move="" className="site-block-move-edge" vectorEffect="non-scaling-stroke"
+                    x={block.x} y={block.z} width={Math.max(0, block.width)} height={Math.max(0, block.depth)} />}
+                </g>
+              })}
               {site.guides.map(guide => <g key={guide.id} data-site-object={guide.id} className={guide.surfaceId === surfaceId ? '' : 'site-off-plane'}>
                 <line x1={guide.start.x} y1={guide.start.z} x2={guide.end.x} y2={guide.end.z} vectorEffect="non-scaling-stroke" className="site-hit" />
                 <line x1={guide.start.x} y1={guide.start.z} x2={guide.end.x} y2={guide.end.z} vectorEffect="non-scaling-stroke"
@@ -370,7 +420,12 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                       vectorEffect="non-scaling-stroke" className="site-endpoint" />)}
                 </g>
               })}
-              {draft && <g pointerEvents="none">
+              {moving?.guides.map(({ axis, at, from, to }) => {
+                const padding = 7 / view.scale
+                return <path key={axis} className="site-alignment-guide" vectorEffect="non-scaling-stroke" pointerEvents="none"
+                  d={axis === 'x' ? `M${at} ${from - padding}V${to + padding}` : `M${from - padding} ${at}H${to + padding}`} />
+              })}
+              {draft && draft.kind !== 'move-block' && <g pointerEvents="none">
                 {draft.kind === 'rectangle' ? <rect x={rectOf(draft.start, draft.end).x} y={rectOf(draft.start, draft.end).z}
                   width={rectOf(draft.start, draft.end).width} height={rectOf(draft.start, draft.end).depth} className="site-block active" vectorEffect="non-scaling-stroke" />
                   : <>
@@ -382,7 +437,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
           </svg>
           <div className="site-canvas-status"><strong>{blockLabel(surfaceId)} · {formatMetres(surface)} m</strong>
             <span>周长 {formatMetres(layout.perimeter)} m</span>
-            <span>{pick ? '点选一个顶面；点空白选择地面' : pan ? '拖动画布' : tool === 'house' && houseBrush === 'rectangle' ? '拖出矩形建立体块' : '拖动画线 · 双指平移缩放'}</span></div>
+            <span>{pick ? '点选一个顶面；点空白选择地面' : pan ? '拖动画布' : moveTool ? '空白处画矩形 · 拖体块或边框移动' : '拖动画线 · 双指平移缩放'}</span></div>
         </>}
       </div>
       <aside className={`site-details${panelOpen ? ' open' : ''}`} aria-label="对象与测算">

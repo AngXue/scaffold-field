@@ -6,6 +6,8 @@ const section = (id: string, surfaceId: string, layers: number, x: number, z: nu
 const roof = { id: 'B1', parentId: GROUND, x: 0, z: 0, width: 6, depth: 4, height: 3.5 }
 const house = { id: 'B1', parentId: GROUND, x: 0, z: 0, width: 8, depth: 6, height: 7.5 }
 const garden = { id: 'B2', parentId: GROUND, x: -4, z: 0, width: 4, depth: 6, height: 3.5 }
+const corridorHouse = { ...house, depth: 10, height: 10 }
+const corridor = { ...garden, z: 2.5, depth: 5 }
 const stacked: SiteBlock[] = [{ ...roof, height: 3 }, { ...roof, id: 'B2', parentId: 'B1', x: 1, width: 4, height: 0.5 }]
 const scene = (blocks: SiteBlock[], sections: SiteSection[]): Site => ({ ...EMPTY_SITE, blocks, sections })
 
@@ -14,6 +16,13 @@ const demo = (id: string, title: string, site: Site, check: string, parameters: 
   ({ id, title, site, check, parameters: { ...DEFAULT_PARAMETERS, ...parameters } })
 
 export const SITE_DEMOS = [
+  demo('corridor', '左侧居中走廊 · 前左相连', scene([corridorHouse, corridor], [
+    section('S1', GROUND, 5, 8, -0.35, -0.35, -0.35),
+    section('S2', GROUND, 5, -0.35, -0.35, -0.35, 2.2),
+    section('S3', 'B2', 4, -0.35, 2.65, -0.35, 7.35),
+    section('S4', GROUND, 5, -0.35, 7.8, -0.35, 10),
+  ]), '主屋 8 × 10 × 10 m；走廊沿左墙长 5 m、外伸 4 m、高 3.50 m。前面和左前段共用转角；沿左侧依次为 5 / 4 / 5 层，四段均到 9.40 m。走廊两端留出杆件净空，转换位置需现场复核。',
+  { swapInnerOuter: true }),
   demo('roof', '屋顶单跨手算', scene([roof], [section('S1', 'B1', 1, 1, 1, 2.8, 1)]),
     '首层 3.76 m、距顶面 0.26 m。立杆 4、底座 2、钢笆 2、十字扣 28；钢管 33.60 m。'),
   demo('aligned', '正面与花园齐顶', scene([house, garden], [
