@@ -2,14 +2,14 @@ import { measureDrawing, normalizeDrawing, PIXELS_PER_METER, readDrawing, type P
 import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, calculateMaterials, calculateScaffold, calculateScaffoldPlan, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
 import { routeSiteSections, type RoutedSpan } from './siteRouting.ts'
-import { connectSiteTransitions, type JoinedLift } from './siteTransitions.ts'
+import { connectSiteTransitions, fitTransitionStock, isWallEndGuard, type JoinedLift, type TransitionEnd } from './siteTransitions.ts'
 
 /** Horizontal site coordinates and vertical heights are all measured in metres. */
 export type SitePoint = { x: number; z: number }
 export type Footprint = { x: number; z: number; width: number; depth: number }
 export type SiteBlock = Footprint & { id: string; parentId: string; height: number }
 export type SiteLine = { id: string; surfaceId: string; start: SitePoint; end: SitePoint }
-export type SiteSection = SiteLine & { layers: number; automatic?: boolean }
+export type SiteSection = SiteLine & { layers: number; automatic?: boolean; followGlobal?: boolean }
 export type Site = { blocks: SiteBlock[]; guides: SiteLine[]; sections: SiteSection[] }
 export type ResolvedBlock = SiteBlock & { base: number; top: number }
 export type SiteIssue = { code: string; blocking: boolean; message: string; sectionIds: string[]; blockId?: string }
@@ -177,7 +177,8 @@ export function readSite(value: unknown): Site | undefined {
   const guides = raw.guides.map(readLine)
   const sections = raw.sections.map(value => {
     const line = readLine(value), fields = object(value), layers = fields?.layers
-    return line && number(layers) ? { ...line, layers: sectionLayerCount(layers), ...(fields?.automatic === true && { automatic: true }) } : undefined
+    return line && number(layers) ? { ...line, layers: sectionLayerCount(layers),
+      ...(fields?.automatic === true && { automatic: true }), ...(fields?.followGlobal === true && { followGlobal: true }) } : undefined
   })
   const all = [...blocks, ...guides, ...sections]
   if (all.some(item => !item) || new Set(all.map(item => item?.id)).size !== all.length) return
@@ -287,7 +288,7 @@ function deckBounds(corners: Vector3Tuple[]): AxisBox {
     max: [Math.max(...corners.map(p => p[0])), corners[0][1] + 0.004, Math.max(...corners.map(p => p[2]))] }
 }
 
-function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = new Set<string>()): SiteLayout {
+function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = new Set<string>(), transitionEnds = new Map<number, TransitionEnd[]>()): SiteLayout {
   const { blocks, issues } = resolveBlocks(site)
   const summaries: SectionSummary[] = []
   const flat = legacySiteDrawing(site)
@@ -370,16 +371,27 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     const memberOwners = new Map(part.members.map(member => [member.id, owner(member.pathSegment)]))
     const radius = settings.pipeDiameter / 2
     for (const line of group) if (!supported(line.start, line.end)) supportIssue(line.id, '绘制线')
-    for (const member of part.members) {
-      const start = world(member.start), end = world(member.end)
+    const removed = new Set<string>()
+    const members = part.members.map(member => ({ ...member, start: world(member.start), end: world(member.end),
+      connectionPoints: member.connectionPoints.map(world), pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) }))
+      .filter(member => {
+        const skip = isWallEndGuard(member, transitionEnds.get(member.pathSegment) ?? [])
+        if (skip) removed.add(member.id)
+        return !skip
+      })
+    const pipeSegments = part.pipeSegments.filter(pipe => !removed.has(pipe.memberId))
+      .map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
+    const connectors = part.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
+      .map(c => ({ ...c, position: world(c.position) }))
+    fitTransitionStock({ members, pipeSegments, connectors }, transitionEnds, radius)
+    for (const member of members) {
+      const start = member.start
       if (member.type === 'post') {
         const { x, z } = xz(start)
         const rim = [{ x: x - radius, z }, { x: x + radius, z }, { x, z: z - radius }, { x, z: z + radius }]
-        if (rim.some(p => !supported(p, p))) supportIssue(owner(member.pathSegment), '立杆柱脚')
+        if (rim.some(p => !supported(p, p))) supportIssue(memberOwners.get(member.id)!, '立杆柱脚')
       }
-      layout.members.push({ ...member, id: prefix + member.id, start, end,
-        connectionPoints: member.connectionPoints.map(world), pathSegment: pathIndex(member.pathSegment),
-        cornerJunctions: member.cornerJunctions?.map(pathIndex) })
+      layout.members.push({ ...member, id: prefix + member.id })
     }
     for (const beam of part.baseChannels) {
       const start = world(beam.start), end = world(beam.end)
@@ -398,10 +410,10 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
       elements.push({ bounds, sectionId: owner(beam.pathSegment) })
       layout.baseChannels.push({ ...beam, id: prefix + beam.id, start, end, pathSegment: pathIndex(beam.pathSegment) })
     }
-    for (const pipe of part.pipeSegments) {
-      const start = world(pipe.start), end = world(pipe.end), sid = memberOwners.get(pipe.memberId) ?? section.id
+    for (const pipe of pipeSegments) {
+      const { start, end } = pipe, sid = memberOwners.get(pipe.memberId) ?? section.id
       if (blocks.some(block => pipeEntersBlock(start, end, block, radius))) penetration(sid)
-      layout.pipeSegments.push({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId, start, end })
+      layout.pipeSegments.push({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })
       elements.push({ bounds: stockBounds(start, end, radius), sectionId: sid })
     }
     for (const deck of part.decks) {
@@ -422,9 +434,10 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
       }), elements[0].bounds),
       elements: elements.sort((a, b) => a.bounds.min[0] - b.bounds.min[0]),
     })
-    layout.connectors.push(...part.connectors.map(c => ({ ...c, id: prefix + c.id, position: world(c.position),
+    layout.connectors.push(...connectors.map(c => ({ ...c, id: prefix + c.id,
       memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })))
-    layout.materials.assemblyPlans.push(...part.materials.assemblyPlans.map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })))
+    layout.materials.assemblyPlans.push(...part.materials.assemblyPlans.filter(p => !removed.has(p.memberId))
+      .map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })))
     for (const d of part.pathDimensions) {
       const index = pathIndex(d.index)
       if (layout.pathDimensions.some(dimension => dimension.index === index)) continue
@@ -463,13 +476,40 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
   return { ...layout, blocks, sections: summaries, issues, canExportMaterials: !issues.some(issue => issue.blocking) }
 }
 
-export function calculateSite(site: Site, settings: ScaffoldParameters): SiteLayout {
+export function siteWithTargetLayers(site: Site, settings: ScaffoldParameters, blocks = resolveBlocks(site).blocks): Site {
+  return { ...site, sections: site.sections.map(section => {
+    if (section.automatic) return { ...section, layers: sectionLayerCount(settings.layerCount) }
+    if (section.followGlobal) {
+      const base = surfaceElevation(blocks, section.surfaceId)
+      if (base !== undefined) return { ...section, layers: defaultSectionLayers(base, settings.liftHeight, settings.layerCount).layers }
+    }
+    return section
+  }) }
+}
+
+export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLayout {
+  const { blocks } = resolveBlocks(input)
+  const site = siteWithTargetLayers(input, settings, blocks)
   if (!site.blocks.length || !site.sections.some(section => section.automatic)) return calculateSiteSpans(site, settings)
-  const { blocks } = resolveBlocks(site)
   const { spans, transitions, errors } = routeSiteSections(site.sections, blocks, settings)
   const wallIds = new Set(spans.filter(span => span.wall).map(span => span.line.id))
   const sourceIds = new Map(spans.map(span => [span.line.id, span.sourceId]))
-  const spanLayout = calculateSiteSpans({ ...site, sections: spans.map(span => span.line) }, settings, wallIds)
+  const indices = new Map(spans.map((span, index) => [span.line.id, index]))
+  const transitionEnds = new Map<number, TransitionEnd[]>()
+  for (const { before, after, boundary } of transitions) {
+    const leftBase = surfaceElevation(blocks, before.surfaceId) ?? 0, rightBase = surfaceElevation(blocks, after.surfaceId) ?? 0
+    if (mm(leftBase) === mm(rightBase)) continue
+    const axis = before.start.x === before.end.x ? 2 : 0
+    const coordinate = (point: SitePoint) => axis === 2 ? point.z : point.x
+    const lowFirst = leftBase < rightBase, low = lowFirst ? before : after
+    const station = coordinate(lowFirst ? before.end : after.start)
+    const roofStation = coordinate(lowFirst ? after.start : before.end)
+    const index = indices.get(low.id)!
+    const ends = transitionEnds.get(index) ?? []
+    ends.push({ axis, boundary, station, roof: Math.max(leftBase, rightBase), towardRoof: Math.sign(roofStation - station), wall: wallIds.has(low.id) })
+    transitionEnds.set(index, ends)
+  }
+  const spanLayout = calculateSiteSpans({ ...site, sections: spans.map(span => span.line) }, settings, wallIds, transitionEnds)
   const labels = new Map(site.sections.map((line, i) => [line.id, i + 1]))
   const issues = spanLayout.issues.map(issue => ({ ...issue,
     message: issue.message.replace(/第 (\d+) 段/g, (_, index) => `第 ${labels.get(spans[Number(index) - 1]?.sourceId) ?? index} 段`),
@@ -478,6 +518,7 @@ export function calculateSite(site: Site, settings: ScaffoldParameters): SiteLay
   for (const error of errors) issues.push({ code: 'automatic-route', blocking: true, sectionIds: [error.id],
     message: `第 ${labels.get(error.id)} 段${error.message}` })
   const result = connectSiteTransitions(spanLayout, spans, spanLayout.sections, transitions, settings)
+  if (result.layout !== spanLayout) fitTransitionStock(result.layout, transitionEnds, settings.pipeDiameter / 2)
   for (const { before, after } of result.failed) {
     const ids = [...new Set([before.id, after.id].map(id => sourceIds.get(id) ?? id))]
     issues.push({ code: 'unjoined-transition', blocking: true, sectionIds: ids,

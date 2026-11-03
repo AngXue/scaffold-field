@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calculateSite, defaultSectionLayers, drawingFromSections, GROUND, getSectionLevels, legacySiteDrawing,
+import { calculateSite, defaultSectionLayers, drawingFromSections, GROUND, getSectionLevels, legacySiteDrawing, roundSite, siteWithTargetLayers,
   legacySnapshot, readSite, rectangleFromGuides, siteFromLegacy, siteFromSnapshot, blockHasDependents, type Site, type SitePoint } from './site'
 import { SITE_DEMOS } from './siteDemos'
 import { calculateScaffoldPlan, DEFAULT_PARAMETERS, SWEEP_BAR_LAYER, type ScaffoldParameters } from './scaffold'
@@ -25,7 +25,7 @@ describe('分段测算的独立手算验收', () => {
     expect(layout.sections.map(s => [s.base, s.levels[0], s.levels.length, s.top])).toEqual([
       [0, 1.88, 5, 9.4], [0, 1.88, 5, 9.4], [3.5, 3.76, 4, 9.4], [0, 1.88, 5, 9.4],
     ])
-    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.25, 0, -1.25]])
+    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.2, 0, -1.2]])
     expect(layout.perimeter).toBe(18)
     expect(layout.spans?.filter(span => span.sourceId === 'S2').map(span => span.line.surfaceId)).toEqual([GROUND, 'B2', GROUND])
     expect(layout.joinedLifts?.map(join => join.levels)).toEqual(Array(2).fill([3.76, 5.64, 7.52, 9.4]))
@@ -33,11 +33,17 @@ describe('分段测算的独立手算验收', () => {
       && m.start[0] === m.end[0] && m.start[2] < 2.5 && m.end[2] > 7.5)
     expect(spansAt(1.88)).toHaveLength(0)
     for (const level of [3.76, 5.64, 7.52, 9.4]) expect(spansAt(level)).toHaveLength(2)
-    expect(layout.decks.filter(deck => deck.id.startsWith('transition')).map(deck => deck.layer).sort()).toEqual([2, 2, 3, 3, 4, 4, 5, 5])
-    expect(layout.baseChannels.filter(channel => channel.start[1] === 3.5)).toHaveLength(4)
-    expect(layout.members.filter(m => m.type === 'guardrail' && m.start[1] === 4.7 && m.start[2] === m.end[2]
-      && [2.2, 2.65, 7.35, 7.8].includes(m.start[2]))).toHaveLength(0)
-    expect(layout.members.some(m => m.type === 'guardrail' && m.start[1] === 2.82 && m.start[2] === 2.2 && m.end[2] === 2.2)).toBe(true)
+    expect(layout.decks.filter(deck => deck.id.startsWith('transition'))).toHaveLength(16)
+    const roofPosts = posts(layout).filter(post => post.start[1] === 3.5)
+    expect(roofPosts.map(post => post.start.map(roundSite)).sort()).toEqual([
+      [-0.3, 3.5, 4.1], [-0.3, 3.5, 5.9], [-1.2, 3.5, 4.1], [-1.2, 3.5, 5.9],
+    ])
+    expect(layout.baseChannels.filter(channel => channel.start[1] === 3.5)).toHaveLength(2)
+    expect(layout.materials).toMatchObject({ channelSteel: { count: 14 }, deckCount: 109 })
+    const lowerGuards = layout.members.filter(m => m.type === 'guardrail' && m.start[1] === 2.82)
+    expect(lowerGuards.some(m => m.start[2] === m.end[2] && [2.3, 7.7].includes(roundSite(m.start[2])))).toBe(false)
+    expect(lowerGuards.some(m => m.start[2] === 10 && m.end[2] === 10)).toBe(true)
+    expect(lowerGuards.some(m => m.start[0] === -1.2 && m.end[0] === -1.2 && m.start[2] < 2.3 && roundSite(m.end[2]) >= 2.3)).toBe(true)
     expect(layout.canExportMaterials).toBe(true)
   })
 
@@ -46,7 +52,7 @@ describe('分段测算的独立手算验收', () => {
     const sections = [...site.sections].reverse().map(s => ({ ...s, start: s.end, end: s.start }))
     const layout = calculateSite({ ...site, sections }, parameters)
     expect(layout.issues).toEqual([])
-    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.25, 0, -1.25]])
+    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.2, 0, -1.2]])
     expect(layout.materials.stockSummary).toEqual(run('corridor').materials.stockSummary)
   })
 
@@ -54,13 +60,13 @@ describe('分段测算的独立手算验收', () => {
     const { site, parameters } = demo('corridor')
     const layout = calculateSite(site, { ...parameters, deckLiftInterval: 2 })
     expect(layout.canExportMaterials).toBe(true)
-    expect(layout.decks.filter(deck => deck.id.startsWith('transition')).map(deck => deck.layer).sort()).toEqual([2, 2, 4, 4])
+    expect(layout.decks.filter(deck => deck.id.startsWith('transition')).map(deck => deck.layer).sort()).toEqual([2, 2, 2, 2, 4, 4, 4, 4])
     expect(new Set(layout.decks.map(deck => deck.layer))).toEqual(new Set([2, 4]))
   })
 
   it.each([
-    [{ x: 0, z: 0 }, { x: 8, z: 0 }, 2, -1.25], [{ x: 0, z: 10 }, { x: 8, z: 10 }, 2, 11.25],
-    [{ x: 0, z: 0 }, { x: 0, z: 10 }, 0, -1.25], [{ x: 8, z: 0 }, { x: 8, z: 10 }, 0, 9.25],
+    [{ x: 0, z: 0 }, { x: 8, z: 0 }, 2, -1.2], [{ x: 0, z: 10 }, { x: 8, z: 10 }, 2, 11.2],
+    [{ x: 0, z: 0 }, { x: 0, z: 10 }, 0, -1.2], [{ x: 8, z: 0 }, { x: 8, z: 10 }, 0, 9.2],
   ] as const)('房屋任一边的外排都在墙外', (start, end, axis, outer) => {
     const { site, parameters } = demo('corridor')
     const layout = calculateSite({ ...site, blocks: site.blocks.slice(0, 1),
@@ -68,7 +74,7 @@ describe('分段测算的独立手算验收', () => {
     expect(layout.canExportMaterials).toBe(true)
     const sideRails = layout.members.filter(m => m.type === 'guardrail' && m.start[axis] === m.end[axis])
     expect(sideRails.length).toBeGreaterThan(0)
-    expect(sideRails.every(m => m.start[axis] === outer)).toBe(true)
+    expect(sideRails.every(m => roundSite(m.start[axis]) === outer)).toBe(true)
   })
 
   it('未贴墙的自动地面线也能跨越完整覆盖两排柱脚的顶面', () => {
@@ -78,9 +84,30 @@ describe('分段测算的独立手算验收', () => {
     expect(layout.canExportMaterials).toBe(true)
     expect(layout.spans?.map(span => span.line.surfaceId)).toEqual([GROUND, 'B2', GROUND])
     expect(layout.joinedLifts).toHaveLength(2)
-    const low = calculateSite({ ...site, sections: [{ ...section, layers: 1 }] }, parameters)
+    const low = calculateSite({ ...site, sections: [section] }, { ...parameters, layerCount: 1 })
     expect(low.issues).toContainEqual(expect.objectContaining({ code: 'automatic-route', blocking: true }))
     expect(low.joinedLifts).toHaveLength(0)
+  })
+
+  it('改全局目标会重算现有自动笔画和启用跟随的手选面，保留手填层数', () => {
+    const { site, parameters } = demo('corridor')
+    const lower = { ...parameters, layerCount: 4 }
+    const layout = calculateSite(site, lower)
+    expect(layout.sections.map(s => [s.levels.length, s.top])).toEqual([[4, 7.52], [4, 7.52], [3, 7.52], [4, 7.52]])
+    const roof = demo('roof').site
+    expect(calculateSite(roof, lower).sections[0].top).toBe(3.76)
+    const follows = { ...roof, sections: [{ ...roof.sections[0], followGlobal: true }] }
+    expect(calculateSite(follows, lower).sections[0].top).toBe(7.52)
+    const ground = { ...site, blocks: [], sections: [site.sections[0]] }
+    expect(legacySiteDrawing(siteWithTargetLayers(ground, lower))?.layers).toBe(4)
+  })
+
+  it('纵距缩为 1.50 m 时按上限增加走廊柱位', () => {
+    const { site, parameters } = demo('corridor')
+    const layout = calculateSite(site, { ...parameters, postSpacing: 1.5 })
+    expect(layout.canExportMaterials).toBe(true)
+    expect(layout.baseChannels.filter(channel => channel.start[1] === 3.5).map(channel => roundSite(channel.start[2])))
+      .toEqual([3.6, 5, 6.4])
   })
 
   it('跨高差补出的杆件与独立架体相交时，定位相关笔画并拦截出量', () => {

@@ -3,7 +3,54 @@ import { mm, roundSite, type SectionSummary } from './site.ts'
 import type { RoutedSpan, SiteTransition } from './siteRouting.ts'
 
 export type JoinedLift = { before: string; after: string; levels: number[] }
+export type TransitionEnd = { axis: 0 | 2; boundary: number; roof: number; station: number; towardRoof: number; wall: boolean }
 type Bridge = { left: number; right: number; rails: ScaffoldMember[]; decks: DeckPanel[] }
+
+export function isWallEndGuard(member: ScaffoldMember, ends: TransitionEnd[]) {
+  return member.type === 'guardrail' && ends.some(end => end.wall && member.start[1] < end.roof
+    && member.connectionPoints.every(point => mm(point[end.axis]) === mm(end.station)))
+}
+
+/** Move stock surplus away from the higher face without shortening a tube or moving its ties. */
+export function fitTransitionStock(layout: Pick<ScaffoldLayout, 'members' | 'pipeSegments' | 'connectors'>,
+  constraints: Map<number, TransitionEnd[]>, radius: number) {
+  if (!constraints.size) return
+  const pipesByMember = new Map<string, ScaffoldLayout['pipeSegments']>()
+  const buttByMember = new Map<string, ScaffoldLayout['connectors']>()
+  for (const pipe of layout.pipeSegments) {
+    const pipes = pipesByMember.get(pipe.memberId) ?? []
+    pipes.push(pipe); pipesByMember.set(pipe.memberId, pipes)
+  }
+  for (const connector of layout.connectors) if (connector.type === 'butt') {
+    const fittings = buttByMember.get(connector.memberId) ?? []
+    fittings.push(connector); buttByMember.set(connector.memberId, fittings)
+  }
+  for (const member of layout.members) {
+    if (member.type !== 'longitudinal' && member.type !== 'guardrail') continue
+    const ends = constraints.get(member.pathSegment ?? -1) ?? []
+    const axis = mm(member.start[0]) === mm(member.end[0]) ? 2 : 0
+    const cross = axis === 0 ? 2 : 0
+    if (mm(member.start[cross]) !== mm(member.end[cross])) continue
+    const relevant = ends.filter(end => end.axis === axis && member.start[1] < end.roof + radius
+      && member.connectionPoints.some(point => mm(point[axis]) === mm(end.station)))
+    const pipes = pipesByMember.get(member.id)
+    if (!relevant.length || !pipes?.length) continue
+    const points = pipes.flatMap(pipe => [pipe.start[axis], pipe.end[axis]])
+    const stockLow = Math.min(...points), stockHigh = Math.max(...points)
+    let lower = Math.max(member.start[axis], member.end[axis]) - stockHigh
+    let upper = Math.min(member.start[axis], member.end[axis]) - stockLow
+    for (const end of relevant) {
+      if (end.towardRoof > 0) upper = Math.min(upper, end.boundary - radius - 0.002 - stockHigh)
+      else lower = Math.max(lower, end.boundary + radius + 0.002 - stockLow)
+    }
+    if (lower > upper + 1e-6) continue
+    const shift = Math.max(lower, Math.min(0, upper))
+    if (Math.abs(shift) < 1e-6) continue
+    const moved = (point: Vector3Tuple): Vector3Tuple => point.map((value, i) => i === axis ? value + shift : value) as Vector3Tuple
+    for (const pipe of pipes) { pipe.start = moved(pipe.start); pipe.end = moved(pipe.end) }
+    for (const fitting of buttByMember.get(member.id) ?? []) fitting.position = moved(fitting.position)
+  }
+}
 
 export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan[], summaries: SectionSummary[],
   transitions: SiteTransition[], settings: ScaffoldParameters) {
@@ -23,7 +70,8 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
   })
   const links: ScaffoldMember[] = [], panels: DeckPanel[] = []
   const remove = new Set<string>()
-  for (const { before, after } of transitions) {
+  for (const transition of transitions) {
+    const { before, after } = transition
     const left = spanIndex.get(before.id)!, right = spanIndex.get(after.id)!
     const linkStart = links.length, panelStart = panels.length
     const along = before.start.x === before.end.x ? 2 : 0, cross = along === 0 ? 2 : 0
@@ -40,7 +88,7 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
     const first = ends(left, a), second = ends(right, b)
     const hasPanel = (index: number, layer: number, station: number) => decks.some(deck => deck.pathSegment === index
       && deck.layer === layer && deck.corners.some(p => mm(p[along]) === mm(station)))
-    if (gap < 0.001 || gap > settings.postSpacing + 0.001) { failed.push({ before, after }); continue }
+    if (gap < 0.001 || gap > settings.postSpacing + 0.001) { failed.push(transition); continue }
     for (const elevation of shared) {
       const layer = Math.round(elevation / settings.liftHeight)
       const matches = first.filter(item => item.member.layer === layer).flatMap(from => {
@@ -74,7 +122,7 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
       joined.push({ before: before.id, after: after.id, levels })
       bridges.push({ left, right, rails: links.slice(linkStart), decks: panels.slice(panelStart) })
     }
-    if (levels.length !== shared.length) failed.push({ before, after })
+    if (levels.length !== shared.length) failed.push(transition)
   }
   if (!links.length) return { layout, joined, failed, bridges }
   const joinedIndices = new Set(bridges.flatMap(bridge => [bridge.left, bridge.right]))

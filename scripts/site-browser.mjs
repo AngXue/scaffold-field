@@ -203,6 +203,13 @@ try {
   await pick(page).selectOption('S2')
   await inside(page, '自动分为 3 段')
   await inside(page, '同层接通：3.76 / 5.64 / 7.52 / 9.40 m')
+  await inside(page, '内排中心距墙 0.30 m，外排位于离墙一侧。')
+  await page.getByTitle('减小全局目标层数', { exact: true }).click()
+  await inside(page, '跟随全局目标 · 第 4 层')
+  await inside(page, '同层接通：3.76 / 5.64 / 7.52 m')
+  assert.match(await page.locator('.site-routed-spans > div').nth(1).textContent(), /3 层.*顶层 7\.52 m/)
+  await page.getByTitle('增大全局目标层数', { exact: true }).click()
+  await inside(page, '跟随全局目标 · 第 5 层')
   assert.deepEqual(await page.locator('.site-routed-spans > div').allTextContents(), [
     '最低地面 · 0.00 m5 层 · 全局第 1 层起 · 顶层 9.40 m', 'B2 顶面 · 3.50 m4 层 · 全局第 2 层起 · 顶层 9.40 m', '最低地面 · 0.00 m5 层 · 全局第 1 层起 · 顶层 9.40 m',
   ])
@@ -221,8 +228,8 @@ try {
   await page.screenshot({ path: resolve(output, 'corridor-3d.png') })
   await materials(page).click()
   const corridorCsv = await downloadText(page, page.getByRole('button', { name: /导出 Excel CSV/ }))
-  assert.match(corridorCsv, /型钢,槽钢,16,根/)
-  assert.match(corridorCsv, /铺设材料,钢笆片,117,片/)
+  assert.match(corridorCsv, /型钢,槽钢,14,根/)
+  assert.match(corridorCsv, /铺设材料,钢笆片,109,片/)
   await plan(page).click()
   for (const id of ['S1', 'S2']) {
     await pick(page).selectOption(id)
@@ -235,6 +242,7 @@ try {
   await page.mouse.move(leftEnd.x, leftEnd.y, { steps: 12 })
   await inside(page, '沿途识别 3 段 · 松手后测算')
   assert.equal(await canvas(page).locator('polygon.raised').count(), 1)
+  assert.equal(await canvas(page).locator('polygon.bridge').count(), 2)
   await page.screenshot({ path: resolve(output, 'corridor-wall-preview.png') })
   await page.mouse.up()
   assert.equal(await canvas(page).locator('[data-site-object^="S"]').count(), 2)
@@ -249,6 +257,12 @@ try {
     [{ x: 0, z: 0 }, { x: 8, z: 0 }], [{ x: 0, z: 10 }, { x: 0, z: 0 }],
   ])
   assert.deepEqual(routed.layout.joinedLifts.map(join => join.levels), [[3.76, 5.64, 7.52, 9.4], [3.76, 5.64, 7.52, 9.4]])
+  const roofPosts = routed.layout.members.filter(member => member.type === 'post' && member.start[1] === 3.5)
+  assert.deepEqual(roofPosts.map(member => member.start).sort(), [
+    [-0.3, 3.5, 4.1], [-0.3, 3.5, 5.9], [-1.2, 3.5, 4.1], [-1.2, 3.5, 5.9],
+  ])
+  assert(!routed.layout.members.some(m => m.type === 'guardrail' && m.start[1] === 2.82 && m.start[2] === m.end[2]
+    && [2.3, 7.7].includes(m.start[2])))
   await page.getByLabel('导出项目数据', { exact: true }).click()
   await page.getByRole('button', { name: '房屋笔' }).click()
   const from = await point(page, -2, 5), to = await point(page, -3, 5.055)

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
 import { Box, Crosshair, Focus, Hand, Magnet, Maximize2, Minimize2, Pencil, Redo2, Square, Trash2, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
-import { blockHasDependents, defaultSectionLayers, getSectionLevels, GROUND, MIN_SECTION_LENGTH, rectangleFromGuides, reverseSectionGroup, roundSite, siteLength, surfaceElevation, type Footprint, type Site, type SiteBlock, type SiteLayout, type SitePoint, type SiteSection } from '../domain/site'
+import { blockHasDependents, defaultSectionLayers, GROUND, MIN_SECTION_LENGTH, rectangleFromGuides, reverseSectionGroup, roundSite, siteLength, surfaceElevation, type Footprint, type Site, type SiteBlock, type SiteLayout, type SitePoint, type SiteSection } from '../domain/site'
 import type { ScaffoldParameters } from '../domain/scaffold'
 import { SITE_DEMOS, type SiteDemo } from '../domain/siteDemos'
 import { alignSiteBlock, type AlignmentGuide } from '../domain/siteAlignment'
@@ -303,7 +303,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
           ((samePoint(s.start, line.start) && samePoint(s.end, line.end)) || (samePoint(s.start, line.end) && samePoint(s.end, line.start))))) {
           setNotice('这个落脚面上已有相同的架段，请选择该段编辑。'); return
         }
-        commit({ ...site, sections: [...site.sections, { ...line, layers: initial.layers, ...(surfaceId === GROUND && { automatic: true }) }] })
+        commit({ ...site, sections: [...site.sections, { ...line, layers: initial.layers,
+          ...(surfaceId === GROUND ? { automatic: true } : { followGlobal: true }) }] })
         setNotice(initial.aboveTarget ? '落脚面已到达或高过项目默认目标，先填 1 层。' : '')
       } else commit({ ...site, guides: [...site.guides, line] })
       setGuideIds([]); setSelected(id)
@@ -359,6 +360,11 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   const preview = draft?.kind === 'section' && surfaceId === GROUND && layout.blocks.length
     ? routeSiteSections([{ id: 'preview', surfaceId, automatic: true, layers: parameters.layerCount,
       start: draft.start, end: draft.end }], layout.blocks, parameters) : undefined
+  const selectedLinks = selectedJoins.flatMap(join => {
+    const before = selectedSpans.find(span => span.line.id === join.before)?.line
+    const after = selectedSpans.find(span => span.line.id === join.after)?.line
+    return before && after ? [{ before, after }] : []
+  })
   const frameAll = () => frame(bounds(site))
   const showDemo = () => {
     const demo = SITE_DEMOS.find(item => item.id === demoId)
@@ -431,6 +437,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               {!draft && selectedDimensions.map(dimension => <polygon key={dimension.index} className={`site-strip${dimension.start[1] > 0 ? ' raised' : ''}`}
                 pointerEvents="none" vectorEffect="non-scaling-stroke"
                 points={strip({ x: dimension.start[0], z: dimension.start[2] }, { x: dimension.end[0], z: dimension.end[2] })} />)}
+              {!draft && selectedLinks.map(({ before, after }) => <polygon key={before.id} className="site-strip bridge"
+                pointerEvents="none" vectorEffect="non-scaling-stroke" points={strip(before.end, after.start)} />)}
               {site.sections.map((line, index) => {
                 const mid = midpoint(line.start, line.end)
                 const vertical = Math.abs(line.end.z - line.start.z) > Math.abs(line.end.x - line.start.x)
@@ -461,6 +469,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                     {preview?.spans.length ? preview.spans.map(({ line }) => <polygon key={line.id} points={strip(line.start, line.end)}
                       className={`site-strip${line.surfaceId === GROUND ? '' : ' raised'}`} vectorEffect="non-scaling-stroke" />)
                       : (draft.kind === 'section' || draft.kind === 'end') && <polygon points={draftStrip(draft.start, draft.end, draft.edge)} className="site-strip" vectorEffect="non-scaling-stroke" />}
+                    {preview?.transitions.map(({ before, after }) => <polygon key={before.id} points={strip(before.end, after.start)}
+                      className="site-strip bridge" vectorEffect="non-scaling-stroke" />)}
                     <line x1={draft.start.x} y1={draft.start.z} x2={draft.end.x} y2={draft.end.z} className="site-guide selected" vectorEffect="non-scaling-stroke" />
                   </>}
               </g>}
@@ -502,18 +512,23 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               const automatic = e.currentTarget.value === 'automatic'
               const next = automatic ? GROUND : e.currentTarget.value
               const base = surfaceElevation(layout.blocks, next) ?? 0
-              const previousBase = surfaceElevation(layout.blocks, selectedSection.surfaceId) ?? 0
-              const first = getSectionLevels(base, parameters.liftHeight, 1).firstLayer
-              const previousFirst = getSectionLevels(previousBase, parameters.liftHeight, 1).firstLayer
-              const layers = automatic ? Math.min(20, selectedSection.layers + previousFirst - 1)
-                : selectedSection.automatic ? Math.max(1, selectedSection.layers - first + 1) : selectedSection.layers
-              updateSection(selectedSection.id, { surfaceId: next, automatic: automatic ? true : undefined, layers }); chooseSurface(next)
+              const followGlobal = !automatic && (selectedSection.automatic || selectedSection.followGlobal)
+              const layers = automatic ? parameters.layerCount : followGlobal
+                ? defaultSectionLayers(base, parameters.liftHeight, parameters.layerCount).layers : selectedSection.layers
+              updateSection(selectedSection.id, { surfaceId: next, automatic: automatic ? true : undefined,
+                followGlobal: followGlobal ? true : undefined, layers }); chooseSurface(next)
             }}>
               <option value="automatic">自动识别落脚面</option>
               {surfaceElevation(layout.blocks, selectedSection.surfaceId) === undefined && <option value={selectedSection.surfaceId}>不可用：{selectedSection.surfaceId}</option>}
               {options}</select></label>
             <EditorNumber label="段长 (m)" min={MIN_SECTION_LENGTH} value={siteLength(selectedSection)} onCommit={n => updateSection(selectedSection.id, { end: pointAlong(selectedSection.start, selectedSection.end, n) })} />
-            <EditorNumber label={selectedSection.automatic ? '目标全局层' : '作业层数'} value={selectedSection.layers} min={1} max={20} integer onCommit={layers => updateSection(selectedSection.id, { layers })} />
+            {selectedSection.automatic ? <p>跟随全局目标 · 第 {parameters.layerCount} 层</p> : <>
+              <label><input type="checkbox" checked={selectedSection.followGlobal ?? false} onChange={event => updateSection(selectedSection.id, {
+                followGlobal: event.currentTarget.checked ? true : undefined, layers: selectedSummary?.levels.length ?? selectedSection.layers,
+              })} /> 跟随全局目标层数</label>
+              <EditorNumber label="作业层数" value={selectedSummary?.levels.length ?? selectedSection.layers} min={1} max={20} integer
+                onCommit={layers => updateSection(selectedSection.id, { layers, followGlobal: undefined })} />
+            </>}
             {selectedSummaries.length > 1 && <div className="site-routed-spans">
               <strong>自动分为 {selectedSummaries.length} 段</strong>
               {selectedSpans.map(span => {
@@ -529,7 +544,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               <dt>首层距地</dt><dd>{formatMetres(selectedSummary.firstClearance)} m</dd>
               <dt>顶层标高</dt><dd>{formatMetres(selectedSummary.top)} m</dd>
             </dl>}
-            {selectedSpans.some(span => span.wall) ? <p>贴墙布置，外排自动放在离墙一侧。</p>
+            {selectedSpans.some(span => span.wall) ? <p>内排中心距墙 {formatMetres(wallStandOff(parameters))} m，外排位于离墙一侧。</p>
               : <button className="site-action" onClick={() => commit(reverseSectionGroup(site, selectedSection.id))}>连通架段反向布置</button>}
           </section>}
           {selectedGuide && <p>已选辅助线 {guideIds.length} 条。逐条点选四条矩形边。</p>}

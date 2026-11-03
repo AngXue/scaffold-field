@@ -4,7 +4,7 @@ import { GROUND, MIN_SECTION_LENGTH, roundSite, getSectionLevels, type ResolvedB
 type Axis = 'x' | 'z'
 export type WallEdge = { axis: Axis; at: number; low: number; high: number; outward: -1 | 1 }
 export type RoutedSpan = { sourceId: string; line: SiteSection; wall: boolean }
-export type SiteTransition = { before: SiteSection; after: SiteSection }
+export type SiteTransition = { before: SiteSection; after: SiteSection; boundary: number }
 const EPS = 0.001
 const other = (axis: Axis): Axis => axis === 'x' ? 'z' : 'x'
 
@@ -33,7 +33,7 @@ export function snapScaffoldStroke(start: SitePoint, end: SitePoint, edges: Wall
 
 export function wallStandOff(settings: ScaffoldParameters) {
   const excess = Math.max(0, scaffoldTransverseLength(settings) - settings.width) / 2
-  return roundSite(Math.max(0.35, excess + settings.pipeDiameter / 2 + 0.05))
+  return roundSite(Math.max(0.30, excess + settings.pipeDiameter / 2 + 0.05))
 }
 
 export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock[], settings: ScaffoldParameters) {
@@ -82,13 +82,37 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
     }
     const setback = (here: number, there: number) => Math.max(here < there ? 0.30 : 0.15,
       settings.tubeEndExtension + settings.pipeDiameter + (here < there ? 0.1 : 0))
-    const parts = intervals.map((interval, i) => {
+    const placements = intervals.map((interval, i) => {
       const base = interval.block?.top ?? 0
       const limits = interval.block && run(interval.block)
       const a = interval.low + (i ? setback(base, intervals[i - 1].block?.top ?? 0)
         : limits ? Math.max(0, limits[0] + 0.15 - interval.low) : 0)
       const b = interval.high - (i + 1 < intervals.length ? setback(base, intervals[i + 1].block?.top ?? 0)
         : limits ? Math.max(0, interval.high - limits[1] + 0.15) : 0)
+      return { a: roundSite(a), b: roundSite(b), base }
+    })
+    // When both sides stand lower, count the crossing bays from the two lower end
+    // stations. The upper surface needs only the stations that fall between them.
+    for (let i = 1; i + 1 < placements.length; i++) {
+      const low = placements[i - 1], high = placements[i], far = placements[i + 1]
+      if (high.base <= Math.max(low.base, far.base)) continue
+      const roof = intervals[i], inset = Math.max(0.20, settings.tubeEndExtension + settings.pipeDiameter + 0.05)
+      const nearOptions = [[low.b, far.a], [roundSite(roof.low - inset), roundSite(roof.high + inset)]]
+      let stationCount = Math.ceil(roundSite(high.b - high.a) / settings.postSpacing - 1e-9) + 1
+      let placement: { start: number; end: number; a: number; b: number } | undefined
+      for (const [start, end] of nearOptions) {
+        const pitch = roundSite((end - start) / Math.max(3, Math.ceil(roundSite(end - start) / settings.postSpacing - 1e-9)))
+        const a = roundSite(start + pitch), b = roundSite(end - pitch)
+        const count = Math.ceil(roundSite(b - a) / settings.postSpacing - 1e-9) + 1
+        if (count >= stationCount || pitch > settings.postSpacing || b - a < MIN_SECTION_LENGTH - EPS
+          || a < high.a - EPS || b > high.b + EPS || start - low.a < MIN_SECTION_LENGTH || far.b - end < MIN_SECTION_LENGTH) continue
+        placement = { start, end, a, b }
+        stationCount = count
+      }
+      if (placement) { low.b = placement.start; high.a = placement.a; high.b = placement.b; far.a = placement.end }
+    }
+    const parts = placements.map(({ a, b, base }, i) => {
+      const interval = intervals[i]
       const layers = source.layers - getSectionLevels(base, settings.liftHeight, 1).firstLayer + 1
       if (layers < 1 || b - a < MIN_SECTION_LENGTH - EPS) {
         errors.push({ id: source.id, message: layers < 1 ? '目标作业层低于经过的顶面，请提高目标层或调整路线。' : '高差边界附近没有足够的柱脚位置，请调整路线。' })
@@ -108,7 +132,10 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
       if (!line) return
       spans.push({ sourceId: source.id, line, wall: !!wall })
       const before = parts[i - 1]
-      if (before) transitions.push({ before, after: line })
+      if (before) {
+        const boundary = sign > 0 ? intervals[i].low : intervals[intervals.length - i - 1].high
+        transitions.push({ before, after: line, boundary })
+      }
     })
   })
   return { spans, transitions, errors }

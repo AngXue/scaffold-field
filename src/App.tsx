@@ -19,7 +19,7 @@ import { NumberField } from './components/NumberField'
 import { OptionField } from './components/OptionField'
 import { SiteEditor } from './components/SiteEditor'
 import { measureDrawing, type PlanSegment } from './domain/plan'
-import { calculateSite, EMPTY_SITE, legacySiteDrawing, legacySnapshot, readSite, siteFromSnapshot, type Site } from './domain/site'
+import { calculateSite, EMPTY_SITE, legacySiteDrawing, legacySnapshot, readSite, siteFromSnapshot, siteWithTargetLayers, type Site } from './domain/site'
 import type { SiteDemo } from './domain/siteDemos'
 import { restoreParameters } from './domain/project'
 import {
@@ -121,7 +121,7 @@ function App() {
   const settings = useMemo(() => ({ ...DEFAULT_PARAMETERS, ...parameters }), [parameters])
 
   const layout = useMemo(() => calculateSite(site, settings), [site, settings])
-  const legacy = useMemo(() => legacySiteDrawing(site), [site])
+  const legacy = useMemo(() => site.blocks.length ? undefined : legacySiteDrawing(siteWithTargetLayers(site, settings, [])), [site, settings])
   const counts = countMembers(layout)
 
   const updateParameter = <K extends keyof ScaffoldParameters>(key: K, value: ScaffoldParameters[K]) => {
@@ -345,7 +345,7 @@ function App() {
             {/* The four that carry most of the estimate stay in the open; the rest
                 are refinements a user only reaches for deliberately. */}
             <div className="parameter-grid">
-              <NumberField label="新段默认目标层" value={settings.layerCount} unit="层" step={1} min={1} max={20} onChange={(value) => updateParameter('layerCount', Math.round(value))} />
+              <NumberField label="全局目标层数" value={settings.layerCount} unit="层" step={1} min={1} max={20} onChange={(value) => updateParameter('layerCount', Math.round(value))} />
               <NumberField label="钢笆纵向杆数" value={settings.deckSupportRailCount} unit="根" step={1} min={2} max={4} onChange={(value) => updateParameter('deckSupportRailCount', Math.round(value))} />
               <NumberField label="扫地杆高度" value={settings.sweepBarHeight} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('sweepBarHeight', value)} />
               {/* §7.3.12(2)(4) gives 上栏杆 + 中栏杆, but a site that only builds the
