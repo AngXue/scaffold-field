@@ -60,6 +60,19 @@ function PlanDimensionLine({ dimension, scale }: { dimension: PlanDimension; sca
   </g>
 }
 
+/** The drawing preview uses the same snapped endpoints as the committed edge. */
+function OutlineDimension({ start, end, active, scale }: { start: SitePoint; end: SitePoint; active: boolean; scale: number }) {
+  const horizontal = start.z === end.z
+  const length = roundSite(distance(start, end))
+  return <g data-outline-dimension={active ? 'active' : 'fixed'} pointerEvents="none">
+    <PlanDimensionLine scale={scale} dimension={{
+      key: 'outline', blockId: 'outline', side: horizontal ? 'top' : 'right', length,
+      from: start, to: end, normal: horizontal ? { x: 0, z: -1 } : { x: 1, z: 0 },
+      offset: 12 / scale, selected: active, text: `${formatMetres(length)} m`,
+    }} />
+  </g>
+}
+
 function PlanSectionAnnotation({ label, selected, scale }: { label: PlanSectionLabel; selected: boolean; scale: number }) {
   const width = (label.text.length * 6.4 + 12) / scale
   const height = 16 / scale
@@ -130,6 +143,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   const selectedGuide = site.guides.find(guide => guide.id === selected)
   const moving = draft?.kind === 'move-block' ? draft : undefined
   const outlineMode = tool === 'house' && houseBrush === 'outline'
+  const activeOutline = outlineMode && draft?.kind === 'outline' ? draft : undefined
+  const drawnOutlineLength = houseOutline.slice(1).reduce((sum, end, index) => sum + distance(houseOutline[index], end), 0)
   const moveTool = tool === 'house' && houseBrush === 'rectangle' && !pan && !pick
   const selectedDimensions = layout.pathDimensions.filter(d => (layout.spans?.[d.index]?.sourceId ?? site.sections[d.index]?.id) === selected)
   const wallEdges = siteWallEdges(layout.blocks)
@@ -588,11 +603,18 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                 {blockLabels.map(label => <text key={label.id} className={label.isSelected ? 'site-block-label is-selected' : 'site-block-label'}
                   data-block-label={label.id} x={label.x + 9 / view.scale} y={label.z + 16 / view.scale}
                   fontSize={12 / view.scale} pointerEvents="none">{label.text}</text>)}
+                {houseOutline.slice(1).map((end, index) => <OutlineDimension key={index}
+                  start={houseOutline[index]} end={end} active={false} scale={view.scale} />)}
+                {activeOutline && distance(activeOutline.start, activeOutline.end) >= 0.001 && <OutlineDimension
+                  start={activeOutline.start} end={activeOutline.end} active scale={view.scale} />}
               </g>
             </g>
           </svg>
           <div className="site-canvas-status"><strong>{blockLabel(surfaceId)} · {formatMetres(surface)} m</strong>
-            <span>周长 {formatMetres(layout.perimeter)} m</span>
+            {outlineMode && (houseOutline.length > 0 || activeOutline) ? <span data-outline-readout="">
+              {activeOutline ? `当前边 ${formatMetres(roundSite(distance(activeOutline.start, activeOutline.end)))} m`
+                : `已画 ${formatMetres(roundSite(drawnOutlineLength))} m`}
+            </span> : <span>周长 {formatMetres(layout.perimeter)} m</span>}
             <span className="status-hint">{outlineMode && houseOutline.length ? `轮廓 ${houseOutline.length} 点 · 点起点闭合` : pick ? '点选一个顶面；点空白选择地面' : pan ? '拖动画布' : moveTool ? '空白处画矩形 · 拖体块或边框移动'
               : tool === 'scaffold' && surfaceId === GROUND ? preview?.errors[0]?.message
                 ?? (preview && preview.spans.length > 1 ? `沿途识别 ${preview.spans.length} 段 · 松手后测算`
