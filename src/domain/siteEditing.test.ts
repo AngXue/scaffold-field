@@ -91,3 +91,24 @@ it.each([[1.5,6.55,8.1],[2,7.05,7.6]])('uses configured %s m spacing for termina
   }
   expect(result.joinedLifts).toHaveLength(2)
 })
+
+it.each([1,2])('keeps every S1 upper guard continuous across the height change with %s rail courses', guardrailRailCount => {
+  const result=calculateSite(site,{...fixture.parameters,guardrailRailCount})
+  expect(result.issues).toEqual([])
+  const roof=result.spans!.findIndex(s=>s.sourceId==='S1' && s.line.surfaceId==='B2')
+  const rails=result.members.filter(m=>m.type==='guardrail' && m.pathSegment===roof && Math.abs(m.start[2]+3.25)<.001 && Math.abs(m.end[2]+3.25)<.001)
+  const heights=[...new Set(rails.map(m=>m.start[1]))]
+  expect(heights).toHaveLength(guardrailRailCount*2+1)
+  for(const y of heights) {
+    const actual=result.members.filter(m=>m.type==='guardrail' && Math.abs(m.start[1]-y)<.001 && Math.abs(m.start[2]+3.25)<.001 && Math.abs(m.end[2]+3.25)<.001)
+    const intervals=actual.flatMap(m=>result.pipeSegments.filter(p=>p.memberId===m.id).map(p=>[Math.min(p.start[0],p.end[0]),Math.max(p.start[0],p.end[0])])).sort((a,b)=>a[0]-b[0])
+    let end=5.05
+    for(const [a,b] of intervals) if(a<=end+.001 && b>end) end=b
+    expect(end,`S1 guard continuity at ${y} m`).toBeGreaterThanOrEqual(9.25)
+    expect(result.members.some(m=>m.type==='guardrail' && Math.abs(m.start[1]-y)<.001 && Math.abs(m.start[0]-6.85)<.001 && Math.abs(m.end[0]-6.85)<.001)).toBe(false)
+    expect(result.members.some(m=>m.type==='guardrail' && Math.abs(m.start[1]-y)<.001
+      && Math.abs(m.start[0]-5.05)<.001 && Math.abs(m.end[0]-5.05)<.001
+      && Math.min(m.start[2],m.end[2])<=-4.85 && Math.abs(Math.max(m.start[2],m.end[2])+3.25)<.001)).toBe(true)
+    expect(result.members.filter(m=>m.type==='post')).toHaveLength(140)
+  }
+})

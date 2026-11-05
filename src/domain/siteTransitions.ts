@@ -68,8 +68,12 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
     const section = summaryById.get(spans[deck.pathSegment]?.line.id)
     return { ...deck, layer: deck.layer + (section?.firstLayer ?? 1) - 1 }
   })
+  const postTops = new Map<string,number>()
+  for (const pipe of layout.pipeSegments) if (pipe.type === 'post') {
+    postTops.set(pipe.memberId, Math.max(postTops.get(pipe.memberId) ?? -Infinity, pipe.start[1], pipe.end[1]))
+  }
   const links: ScaffoldMember[] = [], panels: DeckPanel[] = []
-  const remove = new Set<string>()
+  const capCuts = new Map<string, Array<{ axis: 0 | 2; low: number; high: number }>>()
   for (const transition of transitions) {
     const { before, after } = transition
     const left = spanIndex.get(before.id)!, right = spanIndex.get(after.id)!
@@ -79,12 +83,35 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
     const gap = Math.abs(b - a)
     const shared = (summaryById.get(before.id)?.levels ?? []).filter(y => summaryById.get(after.id)?.levels.includes(y))
     const levels: number[] = []
-    const ends = (index: number, station: number) => members.flatMap(member => {
-      if (member.pathSegment !== index || !member.layer || (member.type !== 'longitudinal' && member.type !== 'guardrail')
-        || mm(member.start[cross]) !== mm(member.end[cross])) return []
-      const point = member.connectionPoints.find(p => mm(p[along]) === mm(station))
-      return point ? [{ member, point }] : []
-    })
+    const ends = (index: number, station: number) => {
+      const own = members.flatMap(member => {
+        if (member.pathSegment !== index || !member.layer || (member.type !== 'longitudinal' && member.type !== 'guardrail')
+          || mm(member.start[cross]) !== mm(member.end[cross])) return []
+        const point = member.connectionPoints.find(p => mm(p[along]) === mm(station))
+        return point ? [{ member, point }] : []
+      })
+      // A short inward return can have no longitudinal guard of its own: it
+      // finishes at the corner post already carrying the adjacent face's guard.
+      // That real supported corner is also a valid end for the transition rail.
+      const span = spans[index], line = span.line
+      const direction = Math.sign(along === 0 ? line.end.x - line.start.x : line.end.z - line.start.z)
+      const offset = span.wall || settings.swapInnerOuter ? settings.width * direction * (along === 0 ? 1 : -1) : 0
+      const outside = (cross === 0 ? line.start.x : line.start.z) + offset
+      const base = summaryById.get(line.id)!.base
+      const posts = members.filter(m => m.type === 'post' && mm(m.start[along]) === mm(station)
+        && mm(m.start[cross]) === mm(outside) && mm(m.start[1]) === mm(base))
+      if (!posts.length) return own
+      for (const member of members) {
+        if (member.type !== 'guardrail' || !member.layer || member.pathSegment === undefined
+          || spans[member.pathSegment].line.surfaceId !== line.surfaceId) continue
+        const point: Vector3Tuple = along === 0 ? [station,member.start[1],outside] : [outside,member.start[1],station]
+        if (!posts.some(post => point[1] >= post.start[1] && point[1] <= (postTops.get(post.id) ?? post.end[1]) + 0.001)
+          || !member.connectionPoints.some(p => p.every((v,i) => mm(v) === mm(point[i])))
+          || own.some(item => item.member.type === 'guardrail' && item.member.layer === member.layer && item.point.every((v,i) => mm(v) === mm(point[i])))) continue
+        own.push({member,point})
+      }
+      return own
+    }
     const first = ends(left, a), second = ends(right, b)
     const hasPanel = (index: number, layer: number, station: number) => decks.some(deck => deck.pathSegment === index
       && deck.layer === layer && deck.corners.some(p => mm(p[along]) === mm(station)))
@@ -106,9 +133,15 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
           start, end, length: roundSite(gap), connectionPoints: [start, end] })
         if (from.member.type !== 'guardrail') continue
         for (const cap of members) {
-          const station = cap.pathSegment === left ? a : cap.pathSegment === right ? b : undefined
-          if (station !== undefined && cap.type === 'guardrail' && cap.layer === layer && mm(cap.start[1]) === mm(start[1])
-            && cap.connectionPoints.every(p => mm(p[along]) === mm(station))) remove.add(cap.id)
+          if (cap.type !== 'guardrail' || cap.layer !== layer || mm(cap.start[1]) !== mm(start[1])) continue
+          const low = rails[0].from.point[cross], high = rails.at(-1)!.from.point[cross]
+          // A cap may have merged into the adjoining face's longitudinal guard.
+          // Find its geometry, not its surviving owner, and cut only the interior
+          // return between the two post rows. Keep the adjoining outside guard.
+          if (![a,b].some(station => cap.connectionPoints.every(p => mm(p[along]) === mm(station))
+            && [low,high].every(at => cap.connectionPoints.some(p => mm(p[cross]) === mm(at))))) continue
+          const cuts = capCuts.get(cap.id) ?? []
+          cuts.push({axis:cross,low,high}); capCuts.set(cap.id,cuts)
         }
       }
       if (hasPanel(left, layer, a) && hasPanel(right, layer, b)) {
@@ -120,16 +153,33 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
     }
     if (levels.length) {
       joined.push({ before: before.id, after: after.id, levels })
-      bridges.push({ left, right, rails: links.slice(linkStart), decks: panels.slice(panelStart) })
+      // Merging the final runs mutates members. Keep the validation envelope
+      // limited to the new bridge, rather than the whole merged roof-side rail.
+      bridges.push({ left, right, rails: links.slice(linkStart).map(rail => ({...rail})), decks: panels.slice(panelStart) })
     }
     if (levels.length !== shared.length) failed.push(transition)
   }
   if (!links.length) return { layout, joined, failed, bridges }
+  const openCaps = (member: ScaffoldMember): ScaffoldMember[] => {
+    const cuts = capCuts.get(member.id)
+    if (!cuts?.length) return [member]
+    const axis = cuts[0].axis
+    let intervals = [[Math.min(member.start[axis],member.end[axis]),Math.max(member.start[axis],member.end[axis])]]
+    for (const {low,high} of cuts) intervals = intervals.flatMap(([a,b]) => high<=a || low>=b ? [[a,b]]
+      : [[a,Math.min(b,low)],[Math.max(a,high),b]].filter(([l,r]) => r-l>0.001))
+    return intervals.flatMap(([low,high],i) => {
+      const points = member.connectionPoints.filter(p => p[axis]>=low-0.001 && p[axis]<=high+0.001)
+      // Surplus alone is not a remaining rail. Retain a real supported run only.
+      if (new Set(points.map(p => mm(p[axis]))).size<2) return []
+      const at = (value: number): Vector3Tuple => member.start.map((n,j) => j===axis ? value : n) as Vector3Tuple
+      return [{...member,id:i ? `${member.id}-open-${i}` : member.id,start:at(low),end:at(high),length:roundSite(high-low),connectionPoints:points}]
+    })
+  }
   const joinedIndices = new Set(bridges.flatMap(bridge => [bridge.left, bridge.right]))
   const groupOf = (id: string) => id.split('/')[0]
-  const groups = new Set(members.filter(member => joinedIndices.has(member.pathSegment ?? -1)).map(member => groupOf(member.id)))
+  const groups = new Set(members.filter(member => joinedIndices.has(member.pathSegment ?? -1) || capCuts.has(member.id)).map(member => groupOf(member.id)))
   const affected = (id: string) => groups.has(groupOf(id))
-  const rebuilt = reassembleSiteRuns(layout, [...members.filter(member => affected(member.id) && !remove.has(member.id)), ...links],
+  const rebuilt = reassembleSiteRuns(layout, [...members.filter(member => affected(member.id)).flatMap(openCaps), ...links],
     [...decks.filter(deck => affected(deck.id)), ...panels], settings)
   const combinedMembers = [...layout.members.filter(member => !affected(member.id)), ...rebuilt.members]
   const pipes = [...layout.pipeSegments.filter(pipe => !affected(pipe.memberId)), ...rebuilt.pipeSegments]
