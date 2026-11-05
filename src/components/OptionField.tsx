@@ -1,3 +1,5 @@
+import { SegmentedControl } from './ui'
+
 type Option<T extends string | number> = {
   value: T
   label: string
@@ -15,7 +17,8 @@ type OptionFieldProps<T extends string | number> = {
 /**
  * A parameter that is a CHOICE rather than a number — which side of the drawing the
  * building is on, which 钢笆片 size the site stocks. Same height and edge as the
- * number fields beside it, so the panel reads as one grid.
+ * number fields beside it, and it delegates the actual control to the shared
+ * segmented control so a choice looks the same everywhere in the app.
  *
  * Buttons rather than a `<select>`: a native picker inside a WebView is one more
  * surface the theme cannot reach, and every option is worth showing at once when
@@ -31,19 +34,7 @@ export function OptionField<T extends string | number>({
   return (
     <div className={className}>
       <span>{label}</span>
-      <span className="option-row" role="group" aria-label={label}>
-        {options.map((option) => (
-          <button
-            key={String(option.value)}
-            type="button"
-            className={option.value === value ? 'option-button active' : 'option-button'}
-            aria-pressed={option.value === value}
-            onClick={() => onChange(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </span>
+      <SegmentedControl value={value} options={options} onChange={onChange} ariaLabel={label} />
     </div>
   )
 }

@@ -8,10 +8,10 @@
      shadow and inverts the light source, which destroys the depth model. */
   color-scheme: light;
 
-  /* --- monochrome white + black ------------------------------------------
-     The theme is deliberately colourless. The only chromatic values left in the
-     app are the 3D member colours in ScaffoldViewer.tsx, which are a data
-     encoding (立杆 / 纵向 / 横向) rather than decoration. */
+  /* --- monochrome chrome + data colours -----------------------------------
+     The shell is deliberately colourless. Colour is reserved for data: the 3D
+     member colours in ScaffoldViewer.tsx and the two plan pens below. Neither is
+     decoration, and neither may be used for buttons, tabs or panels. */
   --ink: #14181a;
   --muted: #5c6467;
   --line: #ccd2d4;
@@ -22,6 +22,21 @@
   --accent-soft: #e3e6e7;
   --mark: #2a3033;
   --red: #8a2f2a;
+
+  /* --- plan data encoding -------------------------------------------------
+     Two pens must be distinguishable at a glance, not by line weight alone.
+     房屋笔 = warm neutral; 脚手架笔 = petrol/teal. Selection darkens the hue and
+     adds a soft halo, so a selected scaffold is still not the same black as a
+     selected rectangle. */
+  --plan-house-line: #8a7f70;
+  --plan-house-active: #cbd4d3;
+  --plan-scaffold: #1f7378;
+  --plan-scaffold-strong: #0b4f54;
+  --plan-scaffold-soft: rgba(31, 115, 120, 0.16);
+  --plan-scaffold-softer: rgba(31, 115, 120, 0.09);
+  --plan-scaffold-halo: #9fc6c9;
+  --plan-guide: #5c686b;
+  --plan-dimension: #6f787b;
 
   /* --- neumorphic control plane -------------------------------------------
      "Soft chrome, flat data". These tokens apply to controls, panels and
@@ -44,6 +59,7 @@
   --nm-focus: #000000;
 
   /* Depth scale. blur = 2 x offset, spread 0, equal and opposite offsets. */
+  --nm-e0: -1px -1px 2px var(--nm-light), 1px 1px 2px var(--nm-dark);
   --nm-e1: -2px -2px 4px var(--nm-light), 2px 2px 4px var(--nm-dark);
   --nm-e2: -3px -3px 6px var(--nm-light), 3px 3px 6px var(--nm-dark);
   --nm-e3: -5px -5px 10px var(--nm-light), 5px 5px 10px var(--nm-dark);
@@ -56,12 +72,21 @@
   --nm-r-2: 10px;
   --nm-r-3: 14px;
   --nm-r-4: 20px;
+
+  /* Rhythm shared by the panels, toolbars and component library. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --nm-speed: 140ms;
 }
 
 * { box-sizing: border-box; }
 html { min-width: 320px; background: var(--nm-surface); }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 /* 3px ring at a >=3:1 change of state (WCAG 2.4.11). The previous
    rgba(23,109,115,0.22) ring composited to ~1.38:1 and did not qualify. */

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { Box, Crosshair, Focus, Hand, Magnet, Maximize2, Minimize2, Pencil, Redo2, Square, Trash2, Undo2, ZoomIn, ZoomOut } from 'lucide-react'
 import { blockHasDependents, defaultSectionLayers, GROUND, MIN_SECTION_LENGTH, rectangleFromGuides, reverseSectionGroup, roundSite, siteLength, surfaceElevation, type Footprint, type Site, type SiteBlock, type SiteLayout, type SitePoint, type SiteSection } from '../domain/site'
 import type { ScaffoldParameters } from '../domain/scaffold'
@@ -6,6 +6,8 @@ import { SITE_DEMOS, type SiteDemo } from '../domain/siteDemos'
 import { alignSiteBlock, type AlignmentGuide } from '../domain/siteAlignment'
 import { routeSiteSections, siteWallEdges, snapScaffoldStroke, wallStandOff, type WallEdge } from '../domain/siteRouting'
 import { useCssFullscreen } from '../platform/fullscreen'
+import { Badge, Button, EmptyState, Field, IconButton, Input, SegmentedControl, Select } from './ui'
+import { layoutPlanAnnotations, type PlanDimension, type PlanSectionLabel } from './planAnnotations'
 
 const Viewer = lazy(() => import('./ScaffoldViewer').then(module => ({ default: module.ScaffoldViewer })))
 
@@ -33,27 +35,40 @@ const nextId = (site: Site, prefix: string) => {
   while (taken.has(prefix + i)) i++
   return prefix + i
 }
+/** Neutral warm greys, one per elevation step: the only way plan blocks differ. */
+const BLOCK_TONES = ['#ded9cf', '#d6d2c8', '#e3ded5', '#cfcbc2', '#d9d5cc', '#d4cfc5']
 
-function BlockDimensions({ block, scale }: { block: Footprint; scale: number }) {
-  const { x, z, width, depth } = block
-  return <g className="site-block-dimensions" pointerEvents="none">
-    {(['top', 'bottom', 'left', 'right'] as const).map(side => {
-      const horizontal = side === 'top' || side === 'bottom'
-      const near = side === 'top' || side === 'left'
-      const along = horizontal ? x : z
-      const length = horizontal ? width : depth
-      const edge = horizontal ? (near ? z : z + depth) : (near ? x : x + width)
-      const offset = edge + (near ? -1 : 1) * 14 / scale
-      const mid = along + length / 2
-      return <g key={side}>
-        <path vectorEffect="non-scaling-stroke" d={horizontal ? `M${along} ${edge}V${offset}H${along + length}V${edge}`
-          : `M${edge} ${along}H${offset}V${along + length}H${edge}`} />
-        <text className="site-svg-label" transform={horizontal ? undefined : `rotate(-90 ${offset} ${mid})`}
-          x={horizontal ? mid : offset} y={horizontal ? offset : mid} textAnchor="middle" dominantBaseline="central" fontSize={11 / scale}>
-          {formatMetres(length)} m
-        </text>
-      </g>
-    })}
+function PlanDimensionLine({ dimension, scale }: { dimension: PlanDimension; scale: number }) {
+  const { from, to, normal, offset } = dimension
+  const a = { x: from.x + normal.x * offset, z: from.z + normal.z * offset }
+  const b = { x: to.x + normal.x * offset, z: to.z + normal.z * offset }
+  const tick = 4.5 / scale
+  const labelGap = 10 / scale
+  const horizontal = Math.abs(normal.x) < 0.5
+  const textAt = { x: (a.x + b.x) / 2 + normal.x * labelGap, z: (a.z + b.z) / 2 + normal.z * labelGap }
+  return <g className={dimension.selected ? 'site-dimension is-selected' : 'site-dimension'} data-dimension-for={dimension.blockId} pointerEvents="none">
+    <path className="site-dimension-line" vectorEffect="non-scaling-stroke"
+      d={`M${from.x} ${from.z}L${a.x} ${a.z}M${to.x} ${to.z}L${b.x} ${b.z}M${a.x} ${a.z}L${b.x} ${b.z}`} />
+    <path className="site-dimension-tick" vectorEffect="non-scaling-stroke"
+      d={`M${a.x - (horizontal ? 0 : tick)} ${a.z - (horizontal ? tick : 0)}L${a.x + (horizontal ? 0 : tick)} ${a.z + (horizontal ? tick : 0)}`
+        + `M${b.x - (horizontal ? 0 : tick)} ${b.z - (horizontal ? tick : 0)}L${b.x + (horizontal ? 0 : tick)} ${b.z + (horizontal ? tick : 0)}`} />
+    <text className="site-svg-label site-dimension-label"
+      x={horizontal ? textAt.x : textAt.x} y={horizontal ? textAt.z : textAt.z}
+      transform={horizontal ? undefined : `rotate(-90 ${textAt.x} ${textAt.z})`}
+      fontSize={11 / scale} textAnchor="middle" dominantBaseline="central">{dimension.text}</text>
+  </g>
+}
+
+function PlanSectionAnnotation({ label, selected, scale }: { label: PlanSectionLabel; selected: boolean; scale: number }) {
+  const width = (label.text.length * 6.4 + 12) / scale
+  const height = 16 / scale
+  const x = label.position.x, z = label.position.z
+  return <g className={selected ? 'site-annotation is-selected' : 'site-annotation'} data-label-for={label.id}
+    transform={label.vertical ? `rotate(-90 ${x} ${z})` : undefined}>
+    <rect className="site-annotation-chip" x={x - width / 2} y={z - height / 2} width={width} height={height}
+      rx={4 / scale} vectorEffect="non-scaling-stroke" />
+    <text className="site-annotation-label" data-label-for={label.id} x={x} y={z} fontSize={10 / scale}
+      textAnchor="middle" dominantBaseline="central">{label.text}</text>
   </g>
 }
 
@@ -61,8 +76,9 @@ function EditorNumber({ label, value, onCommit, min = 0.01, max = 1000, integer 
   label: string; value: number; onCommit: (value: number) => void; min?: number; max?: number; integer?: boolean
 }) {
   const [draft, setDraft] = useState<string | null>(null)
-  return <label className="site-field"><span>{label}</span>
-    <input inputMode={integer ? 'numeric' : 'decimal'} value={draft ?? String(value)}
+  const id = useId()
+  return <Field label={label} htmlFor={id}>
+    <Input id={id} inputMode={integer ? 'numeric' : 'decimal'} value={draft ?? String(value)}
       onChange={e => setDraft(e.currentTarget.value)}
       onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
       onBlur={() => {
@@ -70,7 +86,7 @@ function EditorNumber({ label, value, onCommit, min = 0.01, max = 1000, integer 
         if (draft?.trim() && Number.isFinite(n)) onCommit(Math.max(min, Math.min(max, integer ? Math.round(n) : roundSite(n))))
         setDraft(null)
       }} />
-  </label>
+  </Field>
 }
 
 export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset }: Props) {
@@ -85,7 +101,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   const [pick, setPick] = useState(false)
   const [notice, setNotice] = useState('')
   const [demoId, setDemoId] = useState('')
-  const [panelOpen, setPanelOpen] = useState(true)
+  // On a phone the drawing needs the height more than an empty details card.
+  const [panelOpen, setPanelOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 801px)').matches)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [view, setView] = useState<View>({ x: 0, z: 0, scale: 45 })
   const svg = useRef<SVGSVGElement>(null)
@@ -112,6 +129,47 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   const wallEdges = siteWallEdges(layout.blocks)
   const blockLabel = (id: string) => id === GROUND ? '最低地面' : id + ' 顶面'
   const setViewport = useCallback((next: View) => { viewRef.current = next; setView(next) }, [])
+  const badIds = new Set(layout.issues.filter(issue => issue.blocking).flatMap(issue => issue.sectionIds))
+  const badBlocks = new Set(layout.issues.filter(issue => issue.blocking).map(issue => issue.blockId))
+  const surfaces = [{ id: GROUND, top: 0 }, ...layout.blocks]
+  const sortedBlocks = useMemo(() => [...site.blocks].sort((a, b) =>
+    (surfaceElevation(layout.blocks, a.id) ?? 0) - (surfaceElevation(layout.blocks, b.id) ?? 0)), [site.blocks, layout.blocks])
+  const annotations = useMemo(() => layoutPlanAnnotations(
+    sortedBlocks.map(item => ({
+      ...item,
+      ...(moving?.id === item.id ? moving.position : {}),
+      name: `${item.id} · ${formatMetres(surfaceElevation(layout.blocks, item.id))} m`,
+      base: layout.blocks.find(block => block.id === item.id)?.base ?? 0,
+      top: surfaceElevation(layout.blocks, item.id) ?? 0,
+      selected: selected === item.id,
+    })),
+    site.sections.map((line, index) => ({ id: line.id, start: line.start, end: line.end,
+      // Unselected segments show only their number: the length is already on the
+      // block edge they usually follow, and a second copy reads as an overlap.
+      text: selected === line.id ? `第 ${index + 1} 段 · ${formatMetres(siteLength(line))} m` : `第 ${index + 1} 段` })),
+    view.scale,
+  ), [sortedBlocks, site.sections, layout.blocks, selected, view.scale, moving])
+  const dimensionByBlock = useMemo(() => {
+    const map = new Map<string, PlanDimension[]>()
+    for (const dimension of annotations.dimensions) {
+      map.set(dimension.blockId, [...(map.get(dimension.blockId) ?? []), dimension])
+    }
+    return map
+  }, [annotations.dimensions])
+  // A covered block's label would be painted over by the block above it. Keep the
+  // label only where it belongs to a visible surface; a selected block always wins.
+  const blockLabels = sortedBlocks.flatMap(block => {
+    const item = moving?.id === block.id ? { ...block, ...moving.position } : block
+    const isSelected = selected === item.id
+    if (selectedBlock && !isSelected) return []
+    const elevation = surfaceElevation(layout.blocks, item.id) ?? 0
+    if (!isSelected && layout.blocks.some(other => other.id !== item.id && other.top > elevation + 1e-6
+      && other.x < item.x + item.width - 1e-6 && other.x + other.width > item.x + 1e-6
+      && other.z < item.z + item.depth - 1e-6 && other.z + other.depth > item.z + 1e-6)) return []
+    if (item.width * view.scale < 78 || item.depth * view.scale < 24) return []
+    return [{ id: item.id, x: item.x, z: item.z, text: `${item.id} · ${formatMetres(elevation)} m`, isSelected }]
+  })
+
   const bounds = (value: Site) => {
     const points = [...value.blocks.flatMap(b => [{ x: b.x, z: b.z }, { x: b.x + b.width, z: b.z + b.depth }]),
       ...[...value.guides, ...value.sections].flatMap(line => [line.start, line.end])]
@@ -334,6 +392,9 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   }
   const selectedGuides = site.guides.filter(g => guideIds.includes(g.id))
   const outline = rectangleFromGuides(selectedGuides)
+  const selectedLabel = selectedBlock ? `体块 ${selectedBlock.id}`
+    : selectedSection ? `第 ${site.sections.indexOf(selectedSection) + 1} 段`
+      : selectedGuide ? `辅助线 ${selectedGuide.id}` : ''
   const locate = (id: string) => {
     const line = site.sections.find(s => s.id === id)
     const block = site.blocks.find(b => b.id === id)
@@ -341,10 +402,19 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     else if (block) { changeTool('house'); chooseSurface(block.parentId); if (size.width) frame([block, { x: block.x + block.width, z: block.z + block.depth }]) }
     setSelected(id); setPanelOpen(true)
   }
-  const badIds = new Set(layout.issues.filter(issue => issue.blocking).flatMap(issue => issue.sectionIds))
-  const badBlocks = new Set(layout.issues.filter(issue => issue.blocking).map(issue => issue.blockId))
-  const surfaces = [{ id: GROUND, top: 0 }, ...layout.blocks]
-  const options = surfaces.map(item => <option key={item.id} value={item.id}>{blockLabel(item.id)} · {formatMetres(item.top)} m</option>)
+  const surfaceOptions = [
+    ...(surface === undefined ? [{ value: surfaceId, label: `不可用：${surfaceId}` }] : []),
+    ...surfaces.map(item => ({ value: item.id, label: `${blockLabel(item.id)} · ${formatMetres(item.top)} m` })),
+  ]
+  const surfaceSelectOptions = tool === 'scaffold'
+    ? [{ value: GROUND, label: '自动 · 从最低地面起算' }, ...surfaceOptions.filter(option => option.value !== GROUND)]
+    : surfaceOptions
+  const objectOptions = [
+    { value: '', label: '请选择体块或架段' },
+    ...site.blocks.map(block => ({ value: block.id, label: `体块 ${block.id}` })),
+    ...site.sections.map((line, index) => ({ value: line.id, label: `第 ${index + 1} 段 · ${formatMetres(siteLength(line))} m` })),
+    ...site.guides.map(guide => ({ value: guide.id, label: `辅助线 ${guide.id}` })),
+  ]
   const strip = (a: SitePoint, b: SitePoint) => {
     const dx = b.x - a.x, dz = b.z - a.z, len = distance(a, b) || 1
     const x = -dz / len * parameters.width, z = dx / len * parameters.width
@@ -371,19 +441,27 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     if (!demo || !window.confirm('载入验收 Demo 会替换当前画布，请先保存需要保留的项目。继续载入？')) return
     onDemo(demo)
   }
+  const sectionSelectionOptions = selectedSection ? [
+    { value: 'automatic', label: '自动识别落脚面' },
+    ...(surfaceElevation(layout.blocks, selectedSection.surfaceId) === undefined
+      ? [{ value: selectedSection.surfaceId, label: `不可用：${selectedSection.surfaceId}` }] : []),
+    ...surfaces.map(item => ({ value: item.id, label: `${blockLabel(item.id)} · ${formatMetres(item.top)} m` })),
+  ] : []
+
   return <div className={`site-editor${isFullscreen ? ' is-fullscreen' : ''}`}>
     <header className="site-toolbar">
-      <div className="site-tools" role="group" aria-label="绘图模式">
-        <button aria-pressed={tool === 'house'} onClick={() => changeTool('house')}><Square size={16} /> 房屋笔</button>
-        <button aria-pressed={tool === 'scaffold'} onClick={() => changeTool('scaffold')}><Pencil size={16} /> 脚手架笔</button>
-        <button aria-pressed={tool === 'browse'} onClick={() => changeTool('browse')}><Box size={16} /> 浏览</button>
-      </div>
-      <label className="site-surface">落脚面 <select aria-label="落脚面" value={surfaceId} onChange={e => chooseSurface(e.currentTarget.value)}>
-        {surface === undefined && <option value={surfaceId}>不可用：{surfaceId}</option>}
-        {tool === 'scaffold' ? <><option value={GROUND}>自动 · 从最低地面起算</option>{options.slice(1)}</> : options}
-      </select></label>
-      <button className="site-icon" aria-label="在画布选面" aria-pressed={pick} disabled={tool === 'browse'} title="在画布选面" onClick={() => { setPick(!pick); setPan(false) }}><Crosshair size={18} /></button>
-      <button className="site-icon" aria-label={isFullscreen ? '退出全屏绘图' : '全屏绘图'} title="全屏" onClick={toggleFullscreen}>{isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
+      <SegmentedControl<Tool> ariaLabel="绘图模式" value={tool} onChange={changeTool} options={[
+        { value: 'house', label: '房屋笔', icon: <Square size={16} /> },
+        { value: 'scaffold', label: '脚手架笔', icon: <Pencil size={16} /> },
+        { value: 'browse', label: '浏览', icon: <Box size={16} /> },
+      ]} />
+      <label className="site-surface"><span>落脚面</span>
+        <Select aria-label="落脚面" value={surfaceId} onChange={e => chooseSurface(e.currentTarget.value)} options={surfaceSelectOptions} />
+      </label>
+      <IconButton label="在画布选面" icon={<Crosshair size={18} />} toggle active={pick} disabled={tool === 'browse'}
+        onClick={() => { setPick(!pick); setPan(false) }} />
+      <IconButton label={isFullscreen ? '退出全屏绘图' : '全屏绘图'} icon={isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+        onClick={toggleFullscreen} />
     </header>
     <div className="site-editor-body">
       <div className="site-stage">
@@ -391,40 +469,38 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
           <Viewer layout={layout} blocks={layout.blocks} onSelectSurface={chooseSurface} pipeDiameter={parameters.pipeDiameter} />
         </Suspense> : <>
           <div className="site-canvas-tools" role="group" aria-label="画布工具">
-            {tool === 'house' && <div className="site-tools">
-              <button aria-pressed={houseBrush === 'rectangle'} onClick={() => setHouseBrush('rectangle')}>矩形</button>
-              <button aria-pressed={houseBrush === 'guide'} onClick={() => setHouseBrush('guide')}>辅助线</button>
-            </div>}
-            <button title="撤销" aria-label="撤销" disabled={historySize.undo === 0} onClick={() => travel(true)}><Undo2 size={17} /></button>
-            <button title="重做" aria-label="重做" disabled={historySize.redo === 0} onClick={() => travel(false)}><Redo2 size={17} /></button>
-            <button title="网格吸附" aria-label="网格吸附" aria-pressed={snap} onClick={() => setSnap(!snap)}><Magnet size={17} /></button>
-            <button title="平移画布" aria-label="平移画布" aria-pressed={pan} onClick={() => { setPan(!pan); setPick(false) }}><Hand size={17} /></button>
-            <button title="适应图纸" aria-label="适应图纸" onClick={frameAll}><Focus size={17} /></button>
-            <button title="缩小" aria-label="缩小" onClick={() => zoom(0.8, { x: size.width / 2, z: size.height / 2 })}><ZoomOut size={17} /></button>
-            <button title="放大" aria-label="放大" onClick={() => zoom(1.25, { x: size.width / 2, z: size.height / 2 })}><ZoomIn size={17} /></button>
+            {tool === 'house' && <>
+              <SegmentedControl<'rectangle' | 'guide'> ariaLabel="房屋笔类型" value={houseBrush}
+                onChange={setHouseBrush} options={[{ value: 'rectangle', label: '矩形' }, { value: 'guide', label: '辅助线' }]} />
+              <span className="site-tool-divider" aria-hidden />
+            </>}
+            <IconButton size="sm" label="撤销" icon={<Undo2 size={17} />} disabled={historySize.undo === 0} onClick={() => travel(true)} />
+            <IconButton size="sm" label="重做" icon={<Redo2 size={17} />} disabled={historySize.redo === 0} onClick={() => travel(false)} />
+            <span className="site-tool-divider" aria-hidden />
+            <IconButton size="sm" label="网格吸附" icon={<Magnet size={17} />} toggle active={snap} onClick={() => setSnap(!snap)} />
+            <IconButton size="sm" label="平移画布" icon={<Hand size={17} />} toggle active={pan} onClick={() => { setPan(!pan); setPick(false) }} />
+            <span className="site-tool-divider" aria-hidden />
+            <IconButton size="sm" label="适应图纸" icon={<Focus size={17} />} onClick={frameAll} />
+            <IconButton size="sm" label="缩小" icon={<ZoomOut size={17} />} onClick={() => zoom(0.8, { x: size.width / 2, z: size.height / 2 })} />
+            <IconButton size="sm" label="放大" icon={<ZoomIn size={17} />} onClick={() => zoom(1.25, { x: size.width / 2, z: size.height / 2 })} />
           </div>
           <svg ref={svg} className={`site-plan${pan ? ' is-panning' : ''}`} aria-label="选面俯视绘图画布" viewBox={`0 0 ${size.width || 1} ${size.height || 1}`}
             onPointerDown={start} onPointerMove={move} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)}
             onContextMenu={e => e.preventDefault()}>
             <defs><pattern id="site-grid" x={view.x} y={view.z} width={view.scale} height={view.scale} patternUnits="userSpaceOnUse">
-              <path d={`M${view.scale} 0H0V${view.scale}`} fill="none" stroke="#d1d9da" strokeWidth="1" />
+              <path d={`M${view.scale} 0H0V${view.scale}`} fill="none" stroke="#d3d8d9" strokeWidth="1" />
               {view.scale >= 65 && Array.from({ length: 9 }, (_, i) => (i + 1) * view.scale / 10).map(at =>
-                <path key={at} d={`M${at} 0V${view.scale} M0 ${at}H${view.scale}`} fill="none" stroke="#e7eded" strokeWidth="0.6" />)}
+                <path key={at} d={`M${at} 0V${view.scale} M0 ${at}H${view.scale}`} fill="none" stroke="#e5e8e9" strokeWidth="0.6" />)}
             </pattern></defs>
             <rect width="100%" height="100%" fill="url(#site-grid)" />
             <g transform={`translate(${view.x} ${view.z}) scale(${view.scale})`}>
-              {[...site.blocks].sort((a, b) => (surfaceElevation(layout.blocks, a.id) ?? 0) - (surfaceElevation(layout.blocks, b.id) ?? 0)).map(item => {
+              {sortedBlocks.map((item, index) => {
                 const isMoving = moving?.id === item.id
                 const block = isMoving ? { ...item, ...moving.position } : item
                 return <g key={block.id} data-site-object={block.id} data-site-face={block.id}>
                   <rect className={`site-block${surfaceId === block.id ? ' active' : ''}${selected === block.id || isMoving ? ' selected' : ''}${badBlocks.has(block.id) ? ' invalid' : ''}${moveTool && surfaceId !== block.id ? ' movable' : ''}`}
+                    style={{ '--block-tone': BLOCK_TONES[index % BLOCK_TONES.length] } as CSSProperties}
                     x={block.x} y={block.z} width={Math.max(0, block.width)} height={Math.max(0, block.depth)} vectorEffect="non-scaling-stroke" />
-                  {block.width * view.scale >= 85 && block.depth * view.scale >= 25 &&
-                    <text className="site-svg-label" x={block.x + 9 / view.scale} y={block.z + 16 / view.scale}
-                      fontSize={12 / view.scale} pointerEvents="none">
-                      {block.id} · {formatMetres(surfaceElevation(layout.blocks, block.id))} m
-                    </text>}
-                  <BlockDimensions block={block} scale={view.scale} />
                   {moveTool && <rect data-site-move="" className="site-block-move-edge" vectorEffect="non-scaling-stroke"
                     x={block.x} y={block.z} width={Math.max(0, block.width)} height={Math.max(0, block.depth)} />}
                 </g>
@@ -439,19 +515,12 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                 points={strip({ x: dimension.start[0], z: dimension.start[2] }, { x: dimension.end[0], z: dimension.end[2] })} />)}
               {!draft && selectedLinks.map(({ before, after }) => <polygon key={before.id} className="site-strip bridge"
                 pointerEvents="none" vectorEffect="non-scaling-stroke" points={strip(before.end, after.start)} />)}
-              {site.sections.map((line, index) => {
-                const mid = midpoint(line.start, line.end)
-                const vertical = Math.abs(line.end.z - line.start.z) > Math.abs(line.end.x - line.start.x)
-                const edge = layout.spans?.some(span => span.sourceId === line.id && span.wall)
-                  ? snapScaffoldStroke(line.start, line.end, wallEdges, 0.001).edge : undefined
-                const x = mid.x + (vertical ? (edge ? -edge.outward * 20 : 9) / view.scale : 0)
-                const y = mid.z + (vertical ? 4 : edge ? -edge.outward * 22 : -9) / view.scale
+              {site.sections.map((line) => {
                 return <g key={line.id} data-site-object={line.id} className={line.surfaceId === surfaceId ? '' : 'site-off-plane'}>
+                  {selected === line.id && <line className="site-section-halo" x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke" />}
                   <line x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke" className="site-hit" />
                   <line x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke"
                     className={`site-section${selected === line.id ? ' selected' : ''}${badIds.has(line.id) ? ' invalid' : ''}`} />
-                  <text className="site-svg-label" x={x} y={y} fontSize={12 / view.scale}
-                    textAnchor={vertical ? edge?.outward === 1 ? 'end' : 'start' : 'middle'} pointerEvents="none">第 {index + 1} 段 · {formatMetres(siteLength(line))} m</text>
                   {selected === line.id && tool === 'scaffold' && !pick && (['start', 'end'] as const).map(endpoint =>
                     <circle key={endpoint} data-endpoint={endpoint} cx={line[endpoint].x} cy={line[endpoint].z} r={7 / view.scale}
                       vectorEffect="non-scaling-stroke" className="site-endpoint" />)}
@@ -471,14 +540,26 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                       : (draft.kind === 'section' || draft.kind === 'end') && <polygon points={draftStrip(draft.start, draft.end, draft.edge)} className="site-strip" vectorEffect="non-scaling-stroke" />}
                     {preview?.transitions.map(({ before, after }) => <polygon key={before.id} points={strip(before.end, after.start)}
                       className="site-strip bridge" vectorEffect="non-scaling-stroke" />)}
-                    <line x1={draft.start.x} y1={draft.start.z} x2={draft.end.x} y2={draft.end.z} className="site-guide selected" vectorEffect="non-scaling-stroke" />
+                    <line x1={draft.start.x} y1={draft.start.z} x2={draft.end.x} y2={draft.end.z}
+                      className={draft.kind === 'guide' ? 'site-guide selected' : 'site-section-draft'} vectorEffect="non-scaling-stroke" />
                   </>}
               </g>}
+              {/* All annotations are rendered last: labels never disappear under a
+                  later, larger rectangle. The tier is pointer-transparent. */}
+              <g className="site-annotations" pointerEvents="none">
+                {sortedBlocks.flatMap(block => (dimensionByBlock.get(block.id) ?? []).map(dimension =>
+                  <PlanDimensionLine key={dimension.key} dimension={dimension} scale={view.scale} />))}
+                {annotations.sectionLabels.map(label =>
+                  <PlanSectionAnnotation key={label.id} label={label} selected={selected === label.id} scale={view.scale} />)}
+                {blockLabels.map(label => <text key={label.id} className={label.isSelected ? 'site-block-label is-selected' : 'site-block-label'}
+                  data-block-label={label.id} x={label.x + 9 / view.scale} y={label.z + 16 / view.scale}
+                  fontSize={12 / view.scale} pointerEvents="none">{label.text}</text>)}
+              </g>
             </g>
           </svg>
           <div className="site-canvas-status"><strong>{blockLabel(surfaceId)} · {formatMetres(surface)} m</strong>
             <span>周长 {formatMetres(layout.perimeter)} m</span>
-            <span>{pick ? '点选一个顶面；点空白选择地面' : pan ? '拖动画布' : moveTool ? '空白处画矩形 · 拖体块或边框移动'
+            <span className="status-hint">{pick ? '点选一个顶面；点空白选择地面' : pan ? '拖动画布' : moveTool ? '空白处画矩形 · 拖体块或边框移动'
               : tool === 'scaffold' && surfaceId === GROUND ? preview?.errors[0]?.message
                 ?? (preview && preview.spans.length > 1 ? `沿途识别 ${preview.spans.length} 段 · 松手后测算`
                   : draft && 'edge' in draft && draft.edge ? '已贴墙 · 外排在离墙一侧' : '沿墙拖一笔 · 自动识别沿途落脚面')
@@ -486,16 +567,14 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
         </>}
       </div>
       <aside className={`site-details${panelOpen ? ' open' : ''}`} aria-label="对象与测算">
-        <button className="site-panel-toggle" aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>对象与测算 <span>{panelOpen ? '收起' : '展开'}</span></button>
+        <button className="site-panel-toggle" aria-expanded={panelOpen} onClick={() => setPanelOpen(!panelOpen)}>对象与测算 <span>{panelOpen ? '收起' : selectedLabel || '展开'}</span></button>
         {panelOpen && <div className="site-details-content">
-          <label className="site-field">选择对象<select aria-label="选择对象" value={selected ?? ''} onChange={e => select(e.currentTarget.value || undefined)}>
-            <option value="">请选择体块或架段</option>
-            {site.blocks.map(block => <option key={block.id} value={block.id}>体块 {block.id}</option>)}
-            {site.sections.map((line, index) => <option key={line.id} value={line.id}>第 {index + 1} 段 · {formatMetres(siteLength(line))} m</option>)}
-            {site.guides.map(guide => <option key={guide.id} value={guide.id}>辅助线 {guide.id}</option>)}
-          </select></label>
+          <Field label="选择对象">
+            <Select aria-label="选择对象" value={selected ?? ''} onChange={e => select(e.currentTarget.value || undefined)} options={objectOptions} />
+          </Field>
+          {!selected && <EmptyState title="未选择对象" description="点选一个体块或架段，也可以直接从上方列表选择。选中体块后可在其顶面继续绘制。" />}
           {selectedBlock && <section key={selectedBlock.id} className="site-object">
-            <strong>体块 {selectedBlock.id}</strong>
+            <div className="ui-row"><strong>体块 {selectedBlock.id}</strong><Badge>{formatMetres(layout.blocks.find(b => b.id === selected)?.top)} m</Badge></div>
             <EditorNumber label="长度 (m)" value={selectedBlock.width} onCommit={width => updateBlock(selectedBlock.id, { width })} />
             <EditorNumber label="宽度 (m)" value={selectedBlock.depth} onCommit={depth => updateBlock(selectedBlock.id, { depth })} />
             <EditorNumber label="高度 (m)" value={selectedBlock.height} onCommit={height => updateBlock(selectedBlock.id, { height })} />
@@ -504,23 +583,22 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               <EditorNumber label="平面 Z (m)" value={selectedBlock.z} min={-1000} onCommit={z => updateBlock(selectedBlock.id, { z })} />
             </details>
             <p>底面 {formatMetres(layout.blocks.find(b => b.id === selected)?.base)} m · 顶面 {formatMetres(surfaceElevation(layout.blocks, selectedBlock.id))} m</p>
-            <button className="site-action" onClick={() => chooseSurface(selectedBlock.id)}>在此顶面绘制</button>
+            <Button size="sm" variant="ghost" onClick={() => chooseSurface(selectedBlock.id)}>在此顶面绘制</Button>
           </section>}
           {selectedSection && <section key={selectedSection.id} className="site-object">
-            <strong>第 {site.sections.indexOf(selectedSection) + 1} 段</strong>
-            <label className="site-field">架段落脚面<select aria-label="架段落脚面" value={selectedSection.automatic ? 'automatic' : selectedSection.surfaceId} onChange={e => {
-              const automatic = e.currentTarget.value === 'automatic'
-              const next = automatic ? GROUND : e.currentTarget.value
-              const base = surfaceElevation(layout.blocks, next) ?? 0
-              const followGlobal = !automatic && (selectedSection.automatic || selectedSection.followGlobal)
-              const layers = automatic ? parameters.layerCount : followGlobal
-                ? defaultSectionLayers(base, parameters.liftHeight, parameters.layerCount).layers : selectedSection.layers
-              updateSection(selectedSection.id, { surfaceId: next, automatic: automatic ? true : undefined,
-                followGlobal: followGlobal ? true : undefined, layers }); chooseSurface(next)
-            }}>
-              <option value="automatic">自动识别落脚面</option>
-              {surfaceElevation(layout.blocks, selectedSection.surfaceId) === undefined && <option value={selectedSection.surfaceId}>不可用：{selectedSection.surfaceId}</option>}
-              {options}</select></label>
+            <div className="ui-row"><strong>第 {site.sections.indexOf(selectedSection) + 1} 段</strong><Badge>{formatMetres(siteLength(selectedSection))} m</Badge></div>
+            <Field label="架段落脚面">
+              <Select aria-label="架段落脚面" value={selectedSection.automatic ? 'automatic' : selectedSection.surfaceId} onChange={e => {
+                const automatic = e.currentTarget.value === 'automatic'
+                const next = automatic ? GROUND : e.currentTarget.value
+                const base = surfaceElevation(layout.blocks, next) ?? 0
+                const followGlobal = !automatic && (selectedSection.automatic || selectedSection.followGlobal)
+                const layers = automatic ? parameters.layerCount : followGlobal
+                  ? defaultSectionLayers(base, parameters.liftHeight, parameters.layerCount).layers : selectedSection.layers
+                updateSection(selectedSection.id, { surfaceId: next, automatic: automatic ? true : undefined,
+                  followGlobal: followGlobal ? true : undefined, layers }); chooseSurface(next)
+              }} options={sectionSelectionOptions} />
+            </Field>
             <EditorNumber label="段长 (m)" min={MIN_SECTION_LENGTH} value={siteLength(selectedSection)} onCommit={n => updateSection(selectedSection.id, { end: pointAlong(selectedSection.start, selectedSection.end, n) })} />
             {selectedSection.automatic ? <p>跟随全局目标 · 第 {parameters.layerCount} 层</p> : <>
               <label><input type="checkbox" checked={selectedSection.followGlobal ?? false} onChange={event => updateSection(selectedSection.id, {
@@ -545,11 +623,11 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               <dt>顶层标高</dt><dd>{formatMetres(selectedSummary.top)} m</dd>
             </dl>}
             {selectedSpans.some(span => span.wall) ? <p>内排中心距墙 {formatMetres(wallStandOff(parameters))} m，外排位于离墙一侧。</p>
-              : <button className="site-action" onClick={() => commit(reverseSectionGroup(site, selectedSection.id))}>连通架段反向布置</button>}
+              : <Button size="sm" variant="ghost" onClick={() => commit(reverseSectionGroup(site, selectedSection.id))}>连通架段反向布置</Button>}
           </section>}
           {selectedGuide && <p>已选辅助线 {guideIds.length} 条。逐条点选四条矩形边。</p>}
-          {outline && <button className="site-action" onClick={() => addBlock(outline, selectedGuides[0].surfaceId, guideIds)}>把四条边转为体块</button>}
-          {selected && <button className="site-action" onClick={deleteSelected}><Trash2 size={15} /> 删除选中对象</button>}
+          {outline && <Button size="sm" variant="ghost" onClick={() => addBlock(outline, selectedGuides[0].surfaceId, guideIds)}>把四条边转为体块</Button>}
+          {selected && <Button size="sm" variant="ghost" icon={<Trash2 size={15} />} onClick={deleteSelected}>删除选中对象</Button>}
           {notice && <p className="site-notice" role="status">{notice}</p>}
           {layout.issues.length > 0 && <div className="site-issues">
             <strong>需要检查的位置</strong>
@@ -557,14 +635,12 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               onClick={() => locate(issue.sectionIds[0] ?? issue.blockId ?? '')}>{issue.message} <span>定位</span></button>)}
           </div>}
           <details className="site-demos"><summary>验收 Demo</summary>
-            <select aria-label="验收 Demo" value={demoId} onChange={e => setDemoId(e.currentTarget.value)}>
-              <option value="">选择固定测试图纸</option>
-              {SITE_DEMOS.map(demo => <option key={demo.id} value={demo.id}>{demo.title}</option>)}
-            </select>
+            <Select aria-label="验收 Demo" value={demoId} onChange={e => setDemoId(e.currentTarget.value)}
+              options={[{ value: '', label: '选择固定测试图纸' }, ...SITE_DEMOS.map(demo => ({ value: demo.id, label: demo.title }))]} />
             <p>{SITE_DEMOS.find(demo => demo.id === demoId)?.check}</p>
-            <button className="site-action" disabled={!demoId} onClick={showDemo}>载入 Demo</button>
+            <Button size="sm" variant="ghost" disabled={!demoId} onClick={showDemo}>载入 Demo</Button>
           </details>
-          <button className="site-action" onClick={() => { if (window.confirm('恢复默认示例将替换当前画布，继续？')) onReset() }}>恢复默认示例</button>
+          <Button size="sm" variant="ghost" onClick={() => { if (window.confirm('恢复默认示例将替换当前画布，继续？')) onReset() }}>恢复默认示例</Button>
         </div>}
       </aside>
     </div>

@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { Cable, ChevronDown, ChevronUp, Download, FileSpreadsheet, Frame, Printer, RectangleHorizontal, X, type LucideIcon } from 'lucide-react'
 import type { ConnectorType, MaterialAdjustments, PendingMaterial, ScaffoldLayout } from '../domain/scaffold'
 import { CONNECTOR_LABELS, COUPLER_PACK_SIZE, MATERIAL_KEYS, materialAdjustmentStep, materialQuantity, stockMaterialRows } from '../domain/scaffold'
+import { Button, SectionHeading } from './ui'
 
 /** One glyph per 待定材料, keyed by the domain id so the two cannot drift. */
 const PENDING_ICONS: Record<PendingMaterial['id'], LucideIcon> = {
@@ -82,13 +83,20 @@ function QuantityControl({
           className="qty-step"
           type="button"
           title={pack ? `减少1${pack.unit}（${pack.size}${unit}）` : '减少'}
+          aria-label={pack ? `减少1${pack.unit}` : '减少数量'}
           disabled={quantity <= 0}
           onClick={() => nudge(-1)}
         >
           <ChevronDown size={14} />
         </button>
         <strong className={unknown ? 'qty-value unknown' : 'qty-value'}>{unknown ? '--' : quantity}</strong>
-        <button className="qty-step" type="button" title={pack ? `增加1${pack.unit}（${pack.size}${unit}）` : '增加'} onClick={() => nudge(1)}>
+        <button
+          className="qty-step"
+          type="button"
+          title={pack ? `增加1${pack.unit}（${pack.size}${unit}）` : '增加'}
+          aria-label={pack ? `增加1${pack.unit}` : '增加数量'}
+          onClick={() => nudge(1)}
+        >
           <ChevronUp size={14} />
         </button>
       </span>
@@ -179,10 +187,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
 
       <div className="material-columns">
         <section className="material-section">
-          <div className="section-title">
-            <div><span className="field-caption">PIPE INVENTORY</span><h2>标准钢管</h2></div>
-            <strong>{pipeCount} 根</strong>
-          </div>
+          <SectionHeading title="标准钢管" caption="PIPE INVENTORY" action={<strong>{pipeCount} 根</strong>} />
           <div className="stock-list" style={{ '--stock-rows': stockRows.length } as CSSProperties}>
             {stockRows.map(({ length, calculated }) => (
               <div className="stock-row" key={length}>
@@ -201,7 +206,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
         </section>
 
         <section className="material-section">
-          <div className="section-title"><div><span className="field-caption">CONNECTORS & STEEL</span><h2>扣件与型钢</h2></div></div>
+          <SectionHeading title="扣件与型钢" caption="CONNECTORS & STEEL" />
           <div className="connector-list">
             {connectorEntries.map(([type, quantity]) => (
               <div key={type}>
@@ -250,9 +255,7 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
       </div>
 
       <section className="material-section pending-section">
-        <div className="section-title">
-          <div><span className="field-caption">NOT ESTIMATED</span><h2>待定材料</h2></div>
-        </div>
+        <SectionHeading title="待定材料" caption="NOT ESTIMATED" />
         <div className="connector-list pending-list">
           {materials.pendingMaterials.map((material) => (
             <div key={material.id}>
@@ -275,8 +278,9 @@ export function MaterialView({ layout, adjustments, onAdjust, onResetAdjustment 
       </section>
 
       <div className="export-actions">
-        <button className="secondary-button" type="button" onClick={() => { void printMaterials() }}><Printer size={17} /> 打印 / PDF</button>
-        <button className="primary-button export-button" type="button" onClick={() => { void exportCsv() }}><FileSpreadsheet size={18} /> 导出 Excel CSV <Download size={16} /></button>
+        <Button variant="secondary" icon={<Printer size={17} />} onClick={() => { void printMaterials() }}>打印 / PDF</Button>
+        <Button variant="primary" className="export-button" icon={<FileSpreadsheet size={18} />}
+          trailing={<Download size={16} />} onClick={() => { void exportCsv() }}>导出 Excel CSV</Button>
       </div>
     </div>
   )

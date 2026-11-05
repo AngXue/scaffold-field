@@ -75,6 +75,7 @@ export function NumberField({
           className="number-step"
           type="button"
           title={`减小${label}`}
+          aria-label={`减小${label}`}
           disabled={current <= min}
           onClick={() => nudge(-1)}
         >
@@ -101,6 +102,7 @@ export function NumberField({
           className="number-step"
           type="button"
           title={`增大${label}`}
+          aria-label={`增大${label}`}
           disabled={max !== undefined && current >= max}
           onClick={() => nudge(1)}
         >

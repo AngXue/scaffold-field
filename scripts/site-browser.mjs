@@ -21,12 +21,22 @@ const plan = page => page.getByRole('button', { name: /三维绘图/ })
 const model = page => page.getByRole('button', { name: /三维检查/ })
 const materials = page => page.getByRole('button', { name: /材料结果/ })
 const pick = page => page.getByLabel('选择对象')
+const setObjectPanel = async (page, open) => {
+  const button = page.locator('.site-panel-toggle')
+  const expanded = (await button.getAttribute('aria-expanded')) === 'true'
+  if (expanded !== open) await button.click()
+}
 const load = async (page, id) => {
   await plan(page).click()
+  // The object panel starts collapsed on a phone, so the demo picker is not in
+  // the DOM until it is opened.
+  await setObjectPanel(page, true)
   const accordion = page.locator('details.site-demos')
   if ((await accordion.getAttribute('open')) === null) await accordion.locator('summary').click()
   await page.getByLabel('验收 Demo', { exact: true }).selectOption(id)
   await page.getByRole('button', { name: '载入 Demo' }).click()
+  // Loading a demo remounts the editor, which restores the phone's collapsed default.
+  await setObjectPanel(page, true)
 }
 const inside = (page, text) => page.getByText(text, { exact: true }).filter({ visible: true }).first().waitFor()
 const setNumber = async (page, label, value) => {
@@ -103,7 +113,7 @@ try {
   await inside(page, '3.76 m · 全局第 2 层')
   assert.equal(await page.getByLabel('落脚面', { exact: true }).inputValue(), 'B2')
   const verticalSection = page.locator('[data-site-object="S2"]')
-  assert.notEqual(await verticalSection.locator('text').getAttribute('x'), await verticalSection.locator('line.site-section').getAttribute('x1'))
+  assert.notEqual(await page.locator('text[data-label-for="S2"]').getAttribute('x'), await verticalSection.locator('line.site-section').getAttribute('x1'))
   await page.screenshot({ path: resolve(output, 'desktop-drawing.png') })
   await page.getByRole('button', { name: '浏览', exact: true }).click()
   await page.locator('[data-testid="scaffold-canvas"] canvas').waitFor()
@@ -199,7 +209,7 @@ try {
   await load(page, 'corridor')
   const corridor = page.locator('[data-site-object="B2"]')
   const corridorRect = corridor.locator('rect.site-block')
-  assert.deepEqual(await corridor.locator('.site-block-dimensions text').allTextContents(), ['4.00 m', '4.00 m', '5.00 m', '5.00 m'])
+  assert.deepEqual(await page.locator('[data-dimension-for="B2"] .site-dimension-label').allTextContents(), ['4.00 m', '5.00 m'])
   await pick(page).selectOption('S2')
   await inside(page, '自动分为 3 段')
   await inside(page, '同层接通：3.76 / 5.64 / 7.52 / 9.40 m')
@@ -343,11 +353,16 @@ try {
     await load(tablet, 'corridor')
     await pick(tablet).selectOption('S2')
     await tablet.getByRole('button', { name: '删除选中对象' }).click()
+    // Below 800px the object panel overlays the bottom of the canvas, so close it
+    // while the touch gesture reaches the lower end of the wall.
+    if (viewport.width <= 800) await setObjectPanel(tablet, false)
     const upper = await point(tablet, 0.06, 9.92), lower = await point(tablet, 0.06, 0.08)
     await touch('touchStart', [{ ...upper, id: 1 }])
     await touch('touchMove', [{ ...lower, id: 1 }])
     await touch('touchEnd', [])
+    if (viewport.width <= 800) await setObjectPanel(tablet, true)
     await inside(tablet, '自动分为 3 段')
+    if (viewport.width <= 800) await setObjectPanel(tablet, false)
     await tablet.getByRole('button', { name: '房屋笔' }).click()
     const start = await point(tablet, -2, 5), end = await point(tablet, -3, 5)
     await touch('touchStart', [{ ...start, id: 1 }])

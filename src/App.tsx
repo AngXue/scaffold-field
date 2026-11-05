@@ -12,12 +12,14 @@ import {
   Settings2,
   Trash2,
   TriangleAlert,
+  X,
 } from 'lucide-react'
 import './App.css'
 import { MaterialView } from './components/MaterialView'
 import { NumberField } from './components/NumberField'
 import { OptionField } from './components/OptionField'
 import { SiteEditor } from './components/SiteEditor'
+import { Badge, Button, EmptyState, IconButton, SectionHeading } from './components/ui'
 import { measureDrawing, type PlanSegment } from './domain/plan'
 import { calculateSite, EMPTY_SITE, legacySiteDrawing, legacySnapshot, readSite, siteFromSnapshot, siteWithTargetLayers, type Site } from './domain/site'
 import type { SiteDemo } from './domain/siteDemos'
@@ -239,13 +241,14 @@ function App() {
     }
   }
 
+  const warnings = layout.warnings.length + layout.issues.filter(issue => issue.blocking).length
+
   return (
     <div className="app-shell">
       {/* One bar: brand, the workflow tabs and the project actions used to be a
           68px topbar plus a 56px tab strip. The project name was dropped with it. */}
       <header className="topbar">
         <div className="brand-block">
-
           <div className="brand-mark"><Layers3 size={24} strokeWidth={1.8} /></div>
           <div className="brand-text"><strong>架算</strong><span>SCAFFOLD FIELD</span></div>
         </div>
@@ -255,29 +258,33 @@ function App() {
             const Icon = tab.icon
             return (
               <div className="workflow-step-wrap" key={key}>
-                <button className={activeTab === key ? 'workflow-step active' : 'workflow-step'} type="button" onClick={() => setActiveTab(key)}>
+                <button className={activeTab === key ? 'workflow-step active' : 'workflow-step'} type="button"
+                  aria-current={activeTab === key ? 'step' : undefined} onClick={() => setActiveTab(key)}>
                   <span>{index + 1}</span><Icon size={18} /> {tab.label}
                 </button>
-                {index < 2 && <ChevronRight className="workflow-arrow" size={17} />}
+                {index < 2 && <ChevronRight className="workflow-arrow" size={17} aria-hidden />}
               </div>
             )
           })}
         </nav>
 
         <div className="topbar-actions">
-          <button className="icon-button settings-toggle" type="button" title="脚手架参数" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(open => !open)}><Settings2 size={19} /></button>
+          <IconButton className="settings-toggle" label="脚手架参数" icon={<Settings2 size={19} />}
+            toggle active={settingsOpen} onClick={() => setSettingsOpen(open => !open)} />
           <span className={saved ? 'save-state saved' : 'save-state'}>{saved ? '已保存到本机' : '有未保存更改'}</span>
-          <button className="secondary-button" type="button" onClick={saveProject}><Save size={17} /> 保存</button>
-          <button className="icon-button history-toggle" type="button" onClick={() => setHistoryOpen((open) => !open)} title="历史记录">
-            <History size={19} />
-            {history.length > 0 && <span className="history-badge">{history.length}</span>}
-          </button>
-          <button className="icon-button" type="button" onClick={saveAsDefaultDemo} title="把当前图纸与参数设为默认示例"><BookmarkPlus size={19} /></button>
+          <Button size="sm" icon={<Save size={17} />} onClick={saveProject}>保存</Button>
+          <span className="topbar-action-group">
+            <IconButton className="history-toggle" label="历史记录" icon={<History size={19} />} onClick={() => setHistoryOpen((open) => !open)} />
+            {history.length > 0 && <span className="history-badge">{history.length > 99 ? '99+' : history.length}</span>}
+          </span>
+          <IconButton label="把当前图纸与参数设为默认示例" icon={<BookmarkPlus size={19} />} onClick={saveAsDefaultDemo} />
           <details className="site-export-menu">
-            <summary className="icon-button" aria-label="导出项目数据" title="导出项目数据"><Download size={19} /></summary>
-            <div><button className="site-action" type="button" onClick={() => { void exportProject() }}>导出场景 JSON 0.7</button>
-              <button className="site-action" type="button" disabled={!legacy || !layout.canExportMaterials} onClick={() => { void exportProject(true) }}>导出 OA 兼容 JSON 0.6</button>
-              {!legacy && <small>有体块、辅助线或分段层数时须使用 0.7。</small>}
+            <summary className="ui-icon-button" aria-label="导出项目数据" title="导出项目数据"><Download size={19} /></summary>
+            <div className="ui-menu">
+              <button className="ui-menu__item" type="button" onClick={() => { void exportProject() }}>导出场景 JSON 0.7</button>
+              <button className="ui-menu__item" type="button" disabled={!legacy || !layout.canExportMaterials}
+                onClick={() => { void exportProject(true) }}>导出 OA 兼容 JSON 0.6</button>
+              {!legacy && <small className="ui-menu__note">有体块、辅助线或分段层数时须使用 0.7。</small>}
             </div>
           </details>
         </div>
@@ -285,13 +292,17 @@ function App() {
           <>
             <button className="history-backdrop" type="button" aria-label="关闭历史记录" onClick={() => setHistoryOpen(false)} />
             <section className="history-panel" aria-label="历史记录">
-              <header>
-                <strong>历史记录</strong>
-                <span className="history-count">{history.length} / {HISTORY_LIMIT}</span>
-                <button className="secondary-button" type="button" onClick={saveToHistory}>存入当前</button>
+              <header className="history-panel__head">
+                <div>
+                  <span className="field-caption">LOCAL HISTORY</span>
+                  <strong>历史记录</strong>
+                </div>
+                <Badge>{history.length} / {HISTORY_LIMIT}</Badge>
+                <Button size="sm" variant="ghost" onClick={saveToHistory}>存入当前</Button>
+                <IconButton size="xs" label="关闭历史记录" icon={<X size={15} />} onClick={() => setHistoryOpen(false)} />
               </header>
               {history.length === 0 ? (
-                <p className="history-empty">还没有记录。点「存入当前」，或顶栏「保存」，就会把现在的图纸与参数存成一条。</p>
+                <EmptyState title="还没有记录" description="点「存入当前」，或顶栏「保存」，就会把现在的图纸与参数存成一条。" />
               ) : (
                 <ul className="history-list">
                   {history.map((record) => (
@@ -300,8 +311,8 @@ function App() {
                         <strong>{record.label}</strong>
                         <span>{formatHistoryTime(record.savedAt)}</span>
                       </div>
-                      <button className="secondary-button" type="button" onClick={() => applyHistoryRecord(record)}>使用</button>
-                      <button className="icon-button" type="button" title="删除这条记录" onClick={() => deleteHistoryRecord(record.id)}><Trash2 size={16} /></button>
+                      <Button size="sm" variant="ghost" onClick={() => applyHistoryRecord(record)}>使用</Button>
+                      <IconButton size="xs" label="删除这条记录" icon={<Trash2 size={15} />} onClick={() => deleteHistoryRecord(record.id)} />
                     </li>
                   ))}
                 </ul>
@@ -330,18 +341,24 @@ function App() {
               onResetAdjustment={resetMaterial}
             />
           ) : <section className="site-blocked" role="status">
-            <TriangleAlert size={25} /><h2>整图材料清单暂不可用</h2>
+            <div className="site-blocked__icon"><TriangleAlert size={25} /></div>
+            <h2>整图材料清单暂不可用</h2>
             <p>修正以下问题后即可查看、打印和导出；场景草图仍可保存。</p>
             <ul>{layout.issues.filter(issue => issue.blocking).map((issue, i) => <li key={i}>{issue.message}</li>)}</ul>
-            <button className="secondary-button" onClick={() => setActiveTab('plan')}>返回绘图定位</button>
+            <Button variant="secondary" onClick={() => setActiveTab('plan')}>返回绘图定位</Button>
           </section>)}
         </section>
 
         {settingsOpen && <button className="settings-backdrop" aria-label="关闭参数" onClick={() => setSettingsOpen(false)} />}
-        <aside className={`inspector${settingsOpen ? ' is-open' : ''}`}>
-          <div className="inspector-heading"><Settings2 size={18} /><strong>脚手架参数</strong><span>住宅模板</span></div>
+        <aside className={`inspector${settingsOpen ? ' is-open' : ''}`} aria-label="脚手架参数">
+          <div className="inspector-heading">
+            <Settings2 size={18} />
+            <strong>脚手架参数</strong>
+            <Badge>住宅模板</Badge>
+            <IconButton className="inspector-close" size="xs" label="关闭参数" icon={<X size={16} />} onClick={() => setSettingsOpen(false)} />
+          </div>
           <div className="parameter-section">
-            <h2>几何参数</h2>
+            <SectionHeading title="几何参数" caption="GEOMETRY" />
             {/* The four that carry most of the estimate stay in the open; the rest
                 are refinements a user only reaches for deliberately. */}
             <div className="parameter-grid">
@@ -388,12 +405,17 @@ function App() {
                   onChange={chooseDeckPanelWidth}
                 />
               </div>
-              <p className="stock-spec-note">库存钢管规格：{settings.stockLengths.join(' / ')} m</p>
+              <p className="stock-spec-note">库存钢管规格：{settings.stockLengths.map((length) => length + ' m').join(' / ')}</p>
             </details>
           </div>
 
           <div className="live-summary">
-            <div className="summary-title"><span>{layout.canExportMaterials ? '实时估算' : '草图预览 · 不可出量'}</span><small>{layout.canExportMaterials ? layout.pipeSegments.length + ' 根标准管' : '待复核'}</small></div>
+            <div className="summary-title">
+              <span>{layout.canExportMaterials ? '实时估算' : '草图预览 · 不可出量'}</span>
+              <Badge tone={layout.canExportMaterials ? 'neutral' : 'warn'}>
+                {layout.canExportMaterials ? layout.pipeSegments.length + ' 根标准管' : '待复核'}
+              </Badge>
+            </div>
             <div className="summary-grid">
               <div><span>立杆</span><strong>{counts.post}</strong></div>
               <div><span>水平杆</span><strong>{counts.longitudinal}</strong></div>
@@ -407,13 +429,19 @@ function App() {
             <div className="utilization-track"><i style={{ width: `${layout.materials.utilization}%` }} /></div>
           </div>
 
-          {layout.warnings.length > 0 && (
-            <div className="warning-box"><TriangleAlert size={18} /><span>{layout.warnings[0].message}</span></div>
+          {warnings > 0 && (
+            <div className="warning-box" role="status">
+              <TriangleAlert size={18} />
+              <div>
+                <strong>{warnings} 项需要检查</strong>
+                <span>{layout.warnings[0]?.message ?? layout.issues.find(issue => issue.blocking)?.message}</span>
+              </div>
+            </div>
           )}
 
-          <button className="primary-button" type="button" onClick={() => setActiveTab('model')}>
-            <Box size={19} /> 计算并生成 3D <ChevronRight size={18} />
-          </button>
+          <Button variant="primary" size="lg" block icon={<Box size={19} />} trailing={<ChevronRight size={18} />} onClick={() => setActiveTab('model')}>
+            计算并生成 3D
+          </Button>
           <p className="scope-note">结果用于现场材料估算，不替代结构安全验算。</p>
         </aside>
       </main>

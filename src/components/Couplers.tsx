@@ -6,6 +6,7 @@ import type { ConnectorType, ScaffoldConnector } from '../domain/scaffold'
 
 const TYPES: ConnectorType[] = ['cross', 'butt', 'swivel']
 const SELECTED = '#ffb02e'
+const PICK_PART = { pick: 'part' } as const
 
 /** Hollow low-poly clamp bands with a flat hinge/bolt ear; no textures or assets. */
 function fittingGeometry(type: ConnectorType) {
@@ -56,6 +57,39 @@ function fittingMatrix(connector: ScaffoldConnector) {
   return new THREE.Matrix4().makeBasis(x, y, z).setPosition(...connector.position)
 }
 
+
+/**
+ * Connectors are only a few centimetres across. A sphere-shaped invisible target
+ * at each fitting makes the joint easy to hit on glass; it is slightly larger than
+ * the tube pick proxies, so a click on the fitting itself wins over its tube.
+ */
+function ConnectorPickProxies({ connectors, onSelect }: {
+  connectors: ScaffoldConnector[]
+  onSelect: (id: string) => void
+}) {
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const geometry = useMemo(() => new THREE.SphereGeometry(0.062, 8, 6), [])
+  useEffect(() => () => geometry.dispose(), [geometry])
+  useLayoutEffect(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    connectors.forEach((connector, index) => {
+      mesh.setMatrixAt(index, new THREE.Matrix4().makeTranslation(...connector.position))
+    })
+    mesh.instanceMatrix.needsUpdate = true
+    mesh.computeBoundingSphere()
+  }, [connectors])
+  if (connectors.length === 0) return null
+  return <instancedMesh key={connectors.length} ref={ref} args={[geometry, undefined, connectors.length]}
+    userData={PICK_PART} onClick={(event: ThreeEvent<MouseEvent>) => {
+      if (event.instanceId === undefined) return
+      event.stopPropagation()
+      onSelect(connectors[event.instanceId].id)
+    }}>
+    <meshBasicMaterial transparent opacity={0} colorWrite={false} depthWrite={false} />
+  </instancedMesh>
+}
+
 function FittingBatch({ connectors, geometry, selectedId, onSelect }: {
   connectors: ScaffoldConnector[]
   geometry: THREE.BufferGeometry
@@ -100,5 +134,8 @@ export function Couplers({ connectors, selectedId, onSelect }: {
   const geometries = useMemo(() => Object.fromEntries(TYPES.map((type) => [type, fittingGeometry(type)])) as Record<ConnectorType, THREE.BufferGeometry>, [])
   const groups = useMemo(() => TYPES.map((type) => ({ type, items: connectors.filter((connector) => connector.type === type) })), [connectors])
   useEffect(() => () => Object.values(geometries).forEach((geometry) => geometry.dispose()), [geometries])
-  return <>{groups.filter(({ items }) => items.length > 0).map(({ type, items }) => <FittingBatch key={type} connectors={items} geometry={geometries[type]} selectedId={selectedId} onSelect={onSelect} />)}</>
+  return <>
+    <ConnectorPickProxies connectors={connectors} onSelect={onSelect} />
+    {groups.filter(({ items }) => items.length > 0).map(({ type, items }) => <FittingBatch key={type} connectors={items} geometry={geometries[type]} selectedId={selectedId} onSelect={onSelect} />)}
+  </>
 }
