@@ -1,4 +1,6 @@
 import { scaffoldTransverseLength, type ScaffoldParameters } from './scaffold.ts'
+import { footprintCells, footprintContains, footprintOutline } from './siteFootprints.ts'
+import { signedArea } from './polygons.ts'
 import { GROUND, MIN_SECTION_LENGTH, roundSite, getSectionLevels, type ResolvedBlock, type SitePoint, type SiteSection } from './site.ts'
 
 type Axis = 'x' | 'z'
@@ -9,12 +11,16 @@ const EPS = 0.001
 const other = (axis: Axis): Axis => axis === 'x' ? 'z' : 'x'
 
 export function siteWallEdges(blocks: ResolvedBlock[]) {
-  return blocks.flatMap((b): WallEdge[] => [
-    { axis: 'x', at: b.x, low: b.z, high: b.z + b.depth, outward: -1 },
-    { axis: 'x', at: b.x + b.width, low: b.z, high: b.z + b.depth, outward: 1 },
-    { axis: 'z', at: b.z, low: b.x, high: b.x + b.width, outward: -1 },
-    { axis: 'z', at: b.z + b.depth, low: b.x, high: b.x + b.width, outward: 1 },
-  ])
+  return blocks.flatMap(block => {
+    const points = footprintOutline(block)
+    const orientation = Math.sign(signedArea(points.map(p => [p.x, p.z])))
+    return points.map((a, i): WallEdge => {
+      const b = points[(i + 1) % points.length], vertical = a.x === b.x
+      const axis = vertical ? 'x' : 'z', along = other(axis)
+      return { axis, at: a[axis], low: Math.min(a[along], b[along]), high: Math.max(a[along], b[along]),
+        outward: (vertical ? Math.sign(b.z - a.z) : -Math.sign(b.x - a.x)) * orientation as -1 | 1 }
+    })
+  })
 }
 
 export function snapScaffoldStroke(start: SitePoint, end: SitePoint, edges: WallEdge[], tolerance: number) {
@@ -71,11 +77,13 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
     const run = (b: ResolvedBlock) => [b[along], b[along] + (along === 'x' ? b.width : b.depth)]
     const candidates = blocks.filter(b => b[cross] <= outsideLow + EPS
       && b[cross] + (cross === 'x' ? b.width : b.depth) >= outsideHigh - EPS && run(b)[0] < high && run(b)[1] > low)
-    const cuts = [...new Set([low, high, ...candidates.flatMap(run).filter(at => at > low + EPS && at < high - EPS).map(roundSite)])].sort((a, b) => a - b)
+    const cuts = [...new Set([low, high, ...candidates.flatMap(block => footprintCells(block).flatMap(cell => [cell[along], cell[along] + (along === 'x' ? cell.width : cell.depth)])).filter(at => at > low + EPS && at < high - EPS).map(roundSite)])].sort((a, b) => a - b)
     const intervals: Array<{ low: number; high: number; block?: ResolvedBlock }> = []
     for (let i = 1; i < cuts.length; i++) {
       const a = cuts[i - 1], b = cuts[i], middle = (a + b) / 2
-      const block = candidates.filter(item => run(item)[0] < middle && middle < run(item)[1]).sort((p, q) => q.top - p.top)[0]
+      const support = along === 'x' ? { x: a, z: outsideLow, width: b - a, depth: outsideHigh - outsideLow }
+        : { x: outsideLow, z: a, width: outsideHigh - outsideLow, depth: b - a }
+      const block = candidates.filter(item => run(item)[0] < middle && middle < run(item)[1] && footprintContains(item, support)).sort((p, q) => q.top - p.top)[0]
       const previous = intervals.at(-1)
       if (previous && previous.block?.id === block?.id) previous.high = b
       else intervals.push({ low: a, high: b, block })

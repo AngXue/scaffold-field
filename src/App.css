@@ -1062,3 +1062,5 @@ body.has-fullscreen { overflow: hidden; }
   .stock-row { min-height: 30px; }
   .materials-view, .material-section, .material-kpis { background: #fff !important; }
 }
+
+.site-outline-cancel { position: absolute; right: 12px; bottom: 48px; z-index: 2; }

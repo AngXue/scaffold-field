@@ -1,5 +1,6 @@
 import { DEFAULT_PARAMETERS, type ScaffoldParameters } from './scaffold.ts'
 import { EMPTY_SITE, GROUND, type Site, type SiteBlock, type SiteSection } from './site.ts'
+import { footprintFromOutline } from './siteFootprints.ts'
 
 const section = (id: string, surfaceId: string, layers: number, x: number, z: number, endX: number, endZ: number): SiteSection =>
   ({ id, surfaceId, layers, start: { x, z }, end: { x: endX, z: endZ } })
@@ -12,14 +13,22 @@ const stacked: SiteBlock[] = [{ ...roof, height: 3 }, { ...roof, id: 'B2', paren
 const scene = (blocks: SiteBlock[], sections: SiteSection[]): Site => ({ ...EMPTY_SITE, blocks, sections })
 
 export type SiteDemo = { id: string; title: string; site: Site; parameters: ScaffoldParameters; check: string }
+// Fixed 1.3 inputs keep the published hand calculations reproducible.
+const REFERENCE_PARAMETERS = { ...DEFAULT_PARAMETERS, width: 0.9, deckSupportRailCount: 2, deckPanelWidth: 0.95, deckPanelLength: 1.2 }
 const demo = (id: string, title: string, site: Site, check: string, parameters: Partial<ScaffoldParameters> = {}): SiteDemo =>
-  ({ id, title, site, check, parameters: { ...DEFAULT_PARAMETERS, ...parameters } })
+  ({ id, title, site, check, parameters: { ...REFERENCE_PARAMETERS, ...parameters } })
 
 export const SITE_DEMOS = [
+  demo('outline', 'L 形轮廓房屋', scene([{ ...footprintFromOutline([
+    { x: 0, z: 0 }, { x: 6, z: 0 }, { x: 6, z: 2 }, { x: 2, z: 2 }, { x: 2, z: 6 }, { x: 0, z: 6 },
+  ])!, id: 'B1', parentId: GROUND, height: 3.5 }], [
+    { ...section('S1', GROUND, 5, 6, 0, 0, 0), automatic: true },
+    { ...section('S2', GROUND, 5, 0, 0, 0, 6), automatic: true },
+  ]), '六条水平垂直边围成 L 形，高 3.50 m，右后方缺口为空。可在顶面画轮廓叠放，并沿任一外墙绘制脚手架。', DEFAULT_PARAMETERS),
   demo('corridor', '左侧居中走廊 · 前左相连', scene([corridorHouse, corridor], [
     { ...section('S1', GROUND, 5, 8, 0, 0, 0), automatic: true },
     { ...section('S2', GROUND, 5, 0, 0, 0, 10), automatic: true },
-  ]), '主屋 8 × 10 × 10 m，左侧贴墙居中走廊高 3.50 m。全局目标 5 层，左侧实际为 5 / 4 / 5 层。走廊顶 2 对立柱，内排距墙 0.30 m，1.88 m 层在走廊处断开，3.76 m 起接通。'),
+  ]), '主屋 8 × 10 × 10 m，左侧贴墙居中走廊高 3.50 m。全局目标 5 层，左侧实际为 5 / 4 / 5 层。走廊顶 2 对立柱，内排距墙 0.30 m，1.88 m 层在走廊处断开，3.76 m 起接通。', DEFAULT_PARAMETERS),
   demo('roof', '屋顶单跨手算', scene([roof], [section('S1', 'B1', 1, 1, 1, 2.8, 1)]),
     '首层 3.76 m、距顶面 0.26 m。立杆 4、底座 2、钢笆 2、十字扣 28；钢管 33.60 m。'),
   demo('aligned', '正面与花园齐顶', scene([house, garden], [

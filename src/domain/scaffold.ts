@@ -118,7 +118,7 @@ export const SPLICE_STAGGER = 0.5
  * chosen width less 0.05 m, so the panel spans the two rows with a little margin.
  */
 export const DECK_PANEL_SIZES = { lengths: [1, 1.2], widths: [0.75, 0.8, 0.95] } as const
-export const DECK_PANEL = { width: 0.95, length: 1.2 } as const
+export const DECK_PANEL = { width: 0.75, length: 1 } as const
 /** 排距 when a 钢笆片 width is chosen: the panel width less this. */
 export const DECK_PANEL_ROW_GAP = 0.05
 /**
@@ -335,12 +335,10 @@ export type ScaffoldLayout = {
 export const DEFAULT_PARAMETERS: ScaffoldParameters = {
   // 5 作业层 → 理论搭设高度 0.3 + 1.88 × 5 = 9.7 m.
   layerCount: 5,
-  // 排距 (the post-row spacing the 横向杆 spans). It is deliberately narrower than
-  // the 1.2 m site tube used for the transverse members: that tube is what
-  // overhangs the two 立杆, so no `tubeEndExtension` is added to it. It also follows
-  // the chosen 钢笆片 width: 0.95 - 0.05.
-  width: 0.9,
-  deckSupportRailCount: 2,
+  // Default row spacing and panel width are both 0.75 m. The three support
+  // rows include the two post rows and one intermediate deck-support rail.
+  width: 0.75,
+  deckSupportRailCount: 3,
   postSpacing: 1.8,
   // The 步距 is a site constant; `layerCount` is what sets the height.
   liftHeight: 1.88,
@@ -918,6 +916,7 @@ export function calculateScaffold(
   parameters: ScaffoldParameters,
   localLifts?: readonly number[],
   deckLayerOffset = 0,
+  segmentLayerCounts?: readonly number[],
 ): ScaffoldLayout {
   const legacyParameters = parameters as ScaffoldParameters & { rowCount?: number; height?: number }
   parameters = {
@@ -1004,8 +1003,11 @@ export function calculateScaffold(
    * return, whose two posts both stand on the outside of the scaffold even when one
    * of them belongs to the inner row (nothing is against a wall at an end).
    */
-  const postHeightAt = (row: number, atOpenEnd: boolean) =>
-    rowCarriesRails(row) || atOpenEnd ? railedHeight : theoreticalHeight
+  const layersAt = (index: number) => Math.max(1, Math.round(segmentLayerCounts?.[index] ?? layerCount))
+  const theoreticalAt = (index: number) => round(TOP_POST_EXTENSION + liftElevation(layersAt(index)))
+  const railedAt = (index: number) => round(theoreticalAt(index) + parameters.liftHeight + TOP_POST_EXTENSION)
+  const postHeightAt = (row: number, atOpenEnd: boolean, segmentIndex: number) =>
+    rowCarriesRails(row) || atOpenEnd ? railedAt(segmentIndex) : theoreticalAt(segmentIndex)
   /** The shortest post of a row: what that row's side rails must be able to tie to. */
   const rowTopEdge = (row: number) =>
     assembledLength(
@@ -1415,7 +1417,7 @@ export function calculateScaffold(
   // corner when the offset row is the railed 外排 — instead of two posts a bay apart
   // with the frame open between them.
   for (const mitre of mitrePosts) {
-    const height = postHeightAt(1, false)
+    const height = Math.max(postHeightAt(1, false, mitre.pathSegment), postHeightAt(1, false, nextSegment(mitre.pathSegment)))
     const key = pointKey(mitre.point)
     if (!postByPoint.has(key)) {
       const member = addMember(
@@ -1460,6 +1462,12 @@ export function calculateScaffold(
   }
 
   segmentOrder.forEach((segmentIndex) => {
+    const layerCount = layersAt(segmentIndex)
+    const theoreticalHeight = theoreticalAt(segmentIndex)
+    const railedHeight = railedAt(segmentIndex)
+    const rowTopEdge = (row: number) => assembledLength(rowCarriesRails(row) ? railedHeight : theoreticalHeight,
+      postStocks(parameters), parameters.spliceOverlap)
+    const endTopEdge = assembledLength(railedHeight, postStocks(parameters), parameters.spliceOverlap)
     const start2d = physical[segmentIndex]
     const end2d = physical[segmentIndex + 1]
     const segmentLength = Math.hypot(end2d[0] - start2d[0], end2d[1] - start2d[1])
@@ -1498,6 +1506,10 @@ export function calculateScaffold(
     const endStations: number[] = []
     if (!pathIsClosed && segmentIndex === 0) endStations.push(0)
     if (!pathIsClosed && segmentIndex === physical.length - 2) endStations.push(bayCount)
+    const neighbourLayers = new Map<number, number>()
+    if (pathIsClosed || segmentIndex > 0) neighbourLayers.set(0, layersAt(previousSegment(segmentIndex)))
+    if (pathIsClosed || segmentIndex < physical.length - 2) neighbourLayers.set(bayCount, layersAt(nextSegment(segmentIndex)))
+    for (const [station, count] of neighbourLayers) if (count < layerCount) endStations.push(station)
 
     for (let station = 0; station <= bayCount; station += 1) {
       const atOpenEnd = endStations.includes(station)
@@ -1524,7 +1536,7 @@ export function calculateScaffold(
           || stations[station] > offsetPostLimits[segmentIndex].end + 0.001
           || stations[station] < offsetPostLimits[segmentIndex].start - 0.001)) continue
         const key = pointKey(point)
-        const post = postHeightAt(row, atOpenEnd)
+        const post = postHeightAt(row, atOpenEnd, segmentIndex)
         const parity = (row + stationOffsets[segmentIndex] + station) % 2
         const existingPost = postByPoint.get(key)
         if (existingPost) {
@@ -1751,6 +1763,7 @@ export function calculateScaffold(
         // checked against that height rather than against the shorter inner row.
         for (const { elevation: railElevation } of railsWithin(endTopEdge, railsAboveEnd, guardedThisLift)) {
           for (const station of endStations) {
+            if (layer <= (neighbourLayers.get(station) ?? 0)) continue
             const outerPoint = postRows[0][station]
             const innerPoint = postRows[1][station]
             const start: Vector3Tuple = [outerPoint[0], railElevation, outerPoint[2]]
@@ -1848,7 +1861,8 @@ export function calculateScaffold(
   if (cornerDecks.length > 0) {
     const deckInterval = Math.max(1, Math.round(parameters.deckLiftInterval))
     for (const corner of cornerDecks) {
-      for (let layer = 1; layer <= layerCount; layer += 1) {
+      const sharedLayers = Math.min(layersAt(corner.pathSegment), layersAt(nextSegment(corner.pathSegment)))
+      for (let layer = 1; layer <= sharedLayers; layer += 1) {
         if ((layer + deckLayerOffset) % deckInterval !== 0) continue
         const deckElevation = round(liftElevation(layer) + DECK_SURFACE_OFFSET)
         const corners = corner.points.map(
@@ -1931,7 +1945,16 @@ export function calculateScaffold(
       ] as Vector3Tuple,
     }]
   })
-  resolveDeckCoverage(decks, physical, pathIsClosed)
+  if (segmentLayerCounts) {
+    const layers = new Set(decks.map(deck => deck.layer))
+    const covered: DeckPanel[] = []
+    for (const layer of layers) {
+      const panels = decks.filter(deck => deck.layer === layer)
+      resolveDeckCoverage(panels, physical, pathIsClosed)
+      covered.push(...panels)
+    }
+    decks.splice(0, decks.length, ...covered)
+  } else resolveDeckCoverage(decks, physical, pathIsClosed)
   return finishLayout(members, decks, baseChannels, warnings, parameters, postSequences, pathDimensions, {
     theoretical: theoreticalHeight,
     inner: round(rowTopEdge(innerRow)),
@@ -2096,13 +2119,15 @@ export function countMembers(layout: ScaffoldLayout) {
  * No synthetic segment is inserted between disconnected components. Branches
  * remain editable but are flagged because their fabrication detail is unspecified.
  */
-export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0): ScaffoldLayout {
+export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
+  segmentLayerCounts?: readonly number[]): ScaffoldLayout {
   const paths = drawingPaths(drawing)
   if (!paths.length) return calculateScaffold([], [], parameters)
   const origin = drawing.points[0]
   // A normal connected outline needs exactly one domain calculation on mobile.
   if (paths.length === 1) {
-    const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset)
+    const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
+      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]))
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     result.members.forEach(m => {
@@ -2126,7 +2151,8 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   const postSequences = new Map<string, number[]>()
   let postHeights: MaterialResult['postHeights'] | undefined
   paths.forEach((path, component) => {
-    const layout = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset)
+    const layout = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
+      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]))
     postHeights ??= layout.materials.postHeights
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER
     const dz = (path.points[0].y - origin.y) / PIXELS_PER_METER

@@ -27,7 +27,7 @@ const snapshot = (overrides: Partial<HistorySnapshot> = {}): HistorySnapshot => 
 
 describe('history', () => {
   it('labels a record with what the site recognises', () => {
-    expect(historyLabel(snapshot())).toBe('7.20 + 4.80 m · 5 层 · 排距 0.90')
+    expect(historyLabel(snapshot())).toBe('7.20 + 4.80 m · 5 层 · 排距 0.75')
     expect(historyLabel(snapshot({
       lengths: [7.1, 4.3],
       parameters: { ...DEFAULT_PARAMETERS, layerCount: 6, width: 0.9 },
@@ -96,7 +96,7 @@ describe('history', () => {
     expect(legacy).toHaveLength(1)
     expect(legacy[0].parameters.layerCount).toBe(DEFAULT_PARAMETERS.layerCount)
     expect(legacy[0].adjustments).toEqual({})
-    expect(legacy[0].label).toBe('7.20 + 4.80 m · 5 层 · 排距 0.90')
+    expect(legacy[0].label).toBe('7.20 + 4.80 m · 5 层 · 排距 0.75')
   })
 
   it('shows a short timestamp for a list row', () => {
@@ -116,5 +116,5 @@ it('restores explicit disconnected edges and an intentionally blank saved drawin
   expect(sameSnapshot(records[0], snapshot({ points, lengths: [2, 2] }))).toBe(false)
   const blank = snapshot({ points: [], segments: [], lengths: [] })
   expect(parseHistory(serialiseHistory(addHistoryRecord([], blank)))[0].points).toEqual([])
-  expect(historyLabel(blank)).toBe('空白图纸 · 5 层 · 排距 0.90')
+  expect(historyLabel(blank)).toBe('空白图纸 · 5 层 · 排距 0.75')
 })

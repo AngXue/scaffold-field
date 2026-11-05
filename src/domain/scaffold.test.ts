@@ -27,16 +27,42 @@ import {
   type ScaffoldLayout,
 } from './scaffold'
 
+// Historical geometry regressions use their original explicit construction inputs.
+const REFERENCE_PARAMETERS = { ...DEFAULT_PARAMETERS, width: 0.9, deckSupportRailCount: 2, deckPanelWidth: 0.95, deckPanelLength: 1.2 }
+const REFERENCE_DECK_PANEL = { width: 0.95, length: 1.2 }
+
+it('uses the new defaults through the normal scaffold entry point', () => {
+  expect(DEFAULT_PARAMETERS).toMatchObject({ width: 0.75, deckSupportRailCount: 3, deckPanelWidth: 0.75, deckPanelLength: 1 })
+  expect(DECK_PANEL).toEqual({ width: 0.75, length: 1 })
+  const layout = calculateScaffold([{ id: 'A', x: 0, y: 0 }, { id: 'B', x: 90, y: 0 }], [1.8], { ...DEFAULT_PARAMETERS, layerCount: 1 })
+  expect(countMembers(layout)).toEqual({ post: 4, longitudinal: 5, transverse: 4, guardrail: 6 })
+  expect(layout.materials).toMatchObject({ deckCount: 2, deckArea: 1.35, connectorSummary: { cross: 30, butt: 0 } })
+  expect(layout.members.filter(m => m.type === 'longitudinal' && m.layer === 1).map(m => m.start[2]).sort()).toEqual([0, 0.375, 0.75])
+  expect(layout.members.filter(m => m.type === 'longitudinal' && m.layer === 0)).toHaveLength(2)
+})
+
+it('keeps shared corners and full upper coverage when adjacent faces have different lift counts', () => {
+  const drawing = readDrawing([{ id: 'A', x: 0, y: 0 }, { id: 'B', x: 180, y: 0 }, { id: 'C', x: 180, y: 180 }])
+  const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS, undefined, 0, [3, 5])
+  expect(layout.members.filter(m => m.pathSegment === 0 && (m.layer ?? 0) > 3)).toHaveLength(0)
+  expect(layout.decks.filter(d => d.layer > 3).reduce((sum, d) => sum + d.area, 0)).toBeCloseTo(5.4, 6)
+  expect(layout.materials.deckArea).toBe(19.913)
+  const postLocations = layout.members.filter(m => m.type === 'post').map(m => m.start.join(','))
+  expect(new Set(postLocations).size).toBe(postLocations.length)
+  expect(layout.members.some(m => m.type === 'guardrail' && m.pathSegment === 1 && m.layer === 4
+    && m.start[2] === m.end[2] && m.start[2] === 0)).toBe(true)
+})
+
 it('closes a deck bay between end stations with no double coverage', () => {
   const panels = deckBetweenStations([[0, 3.76, 0], [0, 3.76, 0.9]], [[0.45, 3.76, 0], [0.45, 3.76, 0.9]],
-    2, 0, 'gap', DEFAULT_PARAMETERS)
+    2, 0, 'gap', REFERENCE_PARAMETERS)
   expect(panels).toHaveLength(1)
   expect(panels[0]).toMatchObject({ id: 'gap-1', layer: 2, area: 0.405,
     corners: [[0, 3.815, 0], [0.45, 3.815, 0], [0.45, 3.815, 0.9], [0, 3.815, 0.9]] })
 })
 
 /** Tube centreline offset used when checking a rail's 上皮. */
-const HALF_PIPE = DEFAULT_PARAMETERS.pipeDiameter / 2
+const HALF_PIPE = REFERENCE_PARAMETERS.pipeDiameter / 2
 
 const points = [
   { id: 'P1', x: 0, y: 0 },
@@ -50,7 +76,7 @@ describe('calculateScaffold', () => {
     const rows = stockMaterialRows(summary, {})
     expect(rows.map(row => row.length)).toEqual(['6m', '1.2m', '5m', '4.5m', '4m', '3.5m', '3m', '2.4m', '2m', '0.8m'])
     expect(rows.find(row => row.length === '4m')).toEqual({ length: '4m', calculated: 0, quantity: 0 })
-    expect(stockMaterialRows({}, {})).toHaveLength(DEFAULT_PARAMETERS.stockLengths.length)
+    expect(stockMaterialRows({}, {})).toHaveLength(REFERENCE_PARAMETERS.stockLengths.length)
     expect(summary).toEqual({ '6m': 12, '1.2m': 4 })
   })
 
@@ -91,13 +117,13 @@ describe('calculateScaffold', () => {
   const orthogonal = (id: string, overrides = {}) => {
     const shape = SHAPES.find(shape => shape.id === id)!
     const input = planInput(shape)
-    return calculateScaffold(input.points, input.lengths, { ...DEFAULT_PARAMETERS, ...overrides })
+    return calculateScaffold(input.points, input.lengths, { ...REFERENCE_PARAMETERS, ...overrides })
   }
 
   it('shares short-return corner posts using the neighbouring extended run', () => {
     const shape = SHAPES.find(s => s.id === 'user-short-returns')!
     const input = planInput(shape)
-    const parameters = { ...DEFAULT_PARAMETERS, swapInnerOuter: true, deckSupportRailCount: 3 }
+    const parameters = { ...REFERENCE_PARAMETERS, swapInnerOuter: true, deckSupportRailCount: 3 }
     const layout = calculateScaffold(input.points, input.lengths, parameters)
     const posts = layout.members.filter(m => m.type === 'post')
     expect(posts).toHaveLength(45)
@@ -172,7 +198,7 @@ describe('calculateScaffold', () => {
         const rotated = [...vertices.slice(index), ...vertices.slice(0, index)]
         const changed = { ...shape, points: [...rotated, rotated[0]] }
         const input = planInput(changed)
-        expect(canonical(changed, calculateScaffold(input.points, input.lengths, DEFAULT_PARAMETERS)), `${id}:${index}`).toEqual(expected)
+        expect(canonical(changed, calculateScaffold(input.points, input.lengths, REFERENCE_PARAMETERS)), `${id}:${index}`).toEqual(expected)
       }
     }
   })
@@ -182,7 +208,7 @@ describe('calculateScaffold', () => {
       const layout = orthogonal(id)
       expect(layout.warnings.some(w => w.id === 'short-corner-0')).toBe(true)
       expect(layout.members.some(m => m.cornerJunctions?.includes(0))).toBe(false)
-      expect(inspect(SHAPES.find(s => s.id === id)!, layout, DEFAULT_PARAMETERS)).toEqual([])
+      expect(inspect(SHAPES.find(s => s.id === id)!, layout, REFERENCE_PARAMETERS)).toEqual([])
     }
   })
 
@@ -207,9 +233,9 @@ describe('calculateScaffold', () => {
     expect(Object.values(layout.materials.stockSummary).reduce((sum, count) => sum + count, 0)).toBe(keys.length)
     const short: Shape = { id: 'shared-corner-run', name: '共用横纵杆', kind: 'boundary', points: [[0, 0], [0.9, 0], [0.9, 0.5]] }
     const input = planInput(short)
-    const mixed = calculateScaffold(input.points, input.lengths, DEFAULT_PARAMETERS)
+    const mixed = calculateScaffold(input.points, input.lengths, REFERENCE_PARAMETERS)
     expect(mixed.members.some(m => m.roles?.includes('longitudinal') && m.roles.includes('transverse'))).toBe(true)
-    expect(inspect(short, mixed, DEFAULT_PARAMETERS)).toEqual([])
+    expect(inspect(short, mixed, REFERENCE_PARAMETERS)).toEqual([])
   })
 
   it('warns about self crossings and backtracking without fabricating a new junction rule', () => {
@@ -234,7 +260,7 @@ describe('calculateScaffold', () => {
 
   it('passes all 636 orthogonal geometry cases, including opposing post splices', () => {
     for (const shape of [...SHAPES, ...generatedShapes()]) for (const config of CONFIGURATIONS) {
-      const input = planInput(shape), parameters = { ...DEFAULT_PARAMETERS, ...config.parameters }
+      const input = planInput(shape), parameters = { ...REFERENCE_PARAMETERS, ...config.parameters }
       const layout = calculateScaffold(input.points, input.lengths, parameters)
       expect(inspect(shape, layout, parameters), `${shape.id}/${config.id}`).toEqual([])
       expect(layout.warnings.some(w => w.id.startsWith('splice-stagger-')), `${shape.id}/${config.id}`).toBe(false)
@@ -242,7 +268,7 @@ describe('calculateScaffold', () => {
   })
 
   it('shares the measured path perimeter and segment numbers between both views', () => {
-    const layout = calculateScaffold(points, [7.1, 4.3], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [7.1, 4.3], REFERENCE_PARAMETERS)
     expect(layout.perimeter).toBe(11.4)
     expect(layout.pathDimensions.map(({ index, length }) => [index, length])).toEqual([[0, 7.1], [1, 4.3]])
     expect(layout.pathDimensions[0].start).toEqual([0, 0, 0])
@@ -250,20 +276,20 @@ describe('calculateScaffold', () => {
     expect(layout.pathDimensions[1].end).toEqual([7.1, 0, 4.3])
     // Neither corner extensions nor surplus stock change the tape measurement.
     expect(layout.materials.actualLength).toBeGreaterThan(layout.perimeter)
-    expect(calculateScaffold(points, [7.1, 4.3], { ...DEFAULT_PARAMETERS, tubeEndExtension: 0.4 }).perimeter).toBe(11.4)
+    expect(calculateScaffold(points, [7.1, 4.3], { ...REFERENCE_PARAMETERS, tubeEndExtension: 0.4 }).perimeter).toBe(11.4)
   })
 
   it('does not close an open perimeter and counts an explicitly closed path once', () => {
-    expect(calculateScaffold(points, [3, 4], DEFAULT_PARAMETERS).perimeter).toBe(7)
+    expect(calculateScaffold(points, [3, 4], REFERENCE_PARAMETERS).perimeter).toBe(7)
     const closed = [points[0], { id: 'P2', x: 150, y: 0 }, { id: 'P3', x: 150, y: 200 }, { ...points[0], id: 'P4' }]
-    expect(calculateScaffold(closed, [3, 4, 5], DEFAULT_PARAMETERS).perimeter).toBe(12)
-    expect(calculateScaffold([], [], DEFAULT_PARAMETERS).perimeter).toBe(0)
-    expect(calculateScaffold(points.slice(0, 1), [], DEFAULT_PARAMETERS).pathDimensions).toEqual([])
+    expect(calculateScaffold(closed, [3, 4, 5], REFERENCE_PARAMETERS).perimeter).toBe(12)
+    expect(calculateScaffold([], [], REFERENCE_PARAMETERS).perimeter).toBe(0)
+    expect(calculateScaffold(points.slice(0, 1), [], REFERENCE_PARAMETERS).pathDimensions).toEqual([])
   })
 
   it('places ground labels outside the railed row, including when the inner side swaps', () => {
-    const normal = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
-    const swapped = calculateScaffold(points, [3.6, 3.6], { ...DEFAULT_PARAMETERS, swapInnerOuter: true })
+    const normal = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
+    const swapped = calculateScaffold(points, [3.6, 3.6], { ...REFERENCE_PARAMETERS, swapInnerOuter: true })
     expect(normal.pathDimensions[0].labelPosition).toEqual([1.8, 0.015, -1.2])
     expect(normal.pathDimensions[1].labelPosition).toEqual([4.8, 0.015, 1.8])
     expect(swapped.pathDimensions[0].labelPosition).toEqual([1.8, 0.015, 2.1])
@@ -271,7 +297,7 @@ describe('calculateScaffold', () => {
   })
 
   it('counts the two main-node ties, intermediate supports and end rails independently', () => {
-    const parameters = { ...DEFAULT_PARAMETERS, layerCount: 1, sweepBarHeight: 0 }
+    const parameters = { ...REFERENCE_PARAMETERS, layerCount: 1, sweepBarHeight: 0 }
     const plain = calculateScaffold(points.slice(0, 2), [3.6], parameters)
     // 3 stations × 2 rows × 2 main-node ties = 12; two rail courses each
     // have 3 side-post ties + 4 end-return ties = 14.
@@ -283,18 +309,18 @@ describe('calculateScaffold', () => {
   })
 
   it('removes phantom corner ties and only ties fill-in rails where a transverse exists', () => {
-    const ordinary = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
-    const supports = calculateScaffold(points, [3.6, 3.6], { ...DEFAULT_PARAMETERS, deckSupportRailCount: 4 })
+    const ordinary = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
+    const supports = calculateScaffold(points, [3.6, 3.6], { ...REFERENCE_PARAMETERS, deckSupportRailCount: 4 })
     // 192 formerly included 12 ties to removed corner posts. Four real
     // transverse stations × two intermediate supports × five decked lifts = 40.
     expect(ordinary.materials.connectorSummary.cross).toBe(180)
     expect(supports.materials.connectorSummary.cross).toBe(180 + 40)
-    const outside = calculateScaffold([points[0], points[1], { ...points[2], y: -200 }], [7.2, 4.8], DEFAULT_PARAMETERS)
+    const outside = calculateScaffold([points[0], points[1], { ...points[2], y: -200 }], [7.2, 4.8], REFERENCE_PARAMETERS)
     expect(outside.materials.connectorSummary.cross).toBe(294)
   })
 
   it('keeps a real unique member pair and perpendicular axes for each cross coupler', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], { ...DEFAULT_PARAMETERS, deckSupportRailCount: 4 })
+    const layout = calculateScaffold(points, [3.6, 3.6], { ...REFERENCE_PARAMETERS, deckSupportRailCount: 4 })
     const crosses = layout.connectors.filter((connector) => connector.type === 'cross')
     const keys = crosses.map((connector) => [connector.memberId, connector.connectedMemberId].sort().join(':'))
     expect(new Set(keys).size).toBe(keys.length)
@@ -306,7 +332,7 @@ describe('calculateScaffold', () => {
   })
 
   it('counts one sleeve per physical pipe joint and gives it the tube axis', () => {
-    const layout = calculateScaffold(points, [7.1, 4.3], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [7.1, 4.3], REFERENCE_PARAMETERS)
     for (const plan of layout.materials.assemblyPlans) {
       const joints = layout.connectors.filter((connector) => connector.type === 'butt' && connector.memberId === plan.memberId)
       expect(joints).toHaveLength(plan.segmentIds.length - 1)
@@ -318,7 +344,7 @@ describe('calculateScaffold', () => {
 
   it('ties rails carried by surplus stock above a short post’s theoretical top', () => {
     const layout = calculateScaffold(points.slice(0, 2), [3.6], {
-      ...DEFAULT_PARAMETERS, layerCount: 1, liftHeight: 0.4, guardrailRailCount: 2,
+      ...REFERENCE_PARAMETERS, layerCount: 1, liftHeight: 0.4, guardrailRailCount: 2,
     })
     const highRail = layout.members.find((member) => member.type === 'guardrail' && member.start[1] > 1.4)!
     expect(highRail).toBeDefined()
@@ -326,7 +352,7 @@ describe('calculateScaffold', () => {
   })
 
   it('deduplicates the outer post shared by an L-shaped corner', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
     const outerCornerPosts = layout.members.filter(
       (member) => member.type === 'post' && member.start[0] === 3.6 && member.start[2] === 0,
     )
@@ -339,7 +365,7 @@ describe('calculateScaffold', () => {
   })
 
   it('drops the offset row\'s post on either side of a corner', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
     const postAt = (x: number, z: number) => layout.members.filter(
       (member) => member.type === 'post' && member.start[0] === x && member.start[2] === z,
     )
@@ -358,11 +384,11 @@ describe('calculateScaffold', () => {
     // The 纵向水平杆 are untouched: both rows still run to their own end points on
     // every lift, plus the 扫地杆 layer.
     expect(layout.members.filter((member) => member.type === 'longitudinal').length)
-      .toBe(2 * 2 * (DEFAULT_PARAMETERS.layerCount + 1))
+      .toBe(2 * 2 * (REFERENCE_PARAMETERS.layerCount + 1))
   })
 
   it('staggers the butt joints of neighbouring posts', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const rowPosts = layout.members
       .filter((member) => member.type === 'post' && member.start[2] === 0)
       .sort((a, b) => a.start[0] - b.start[0])
@@ -399,9 +425,9 @@ describe('calculateScaffold', () => {
 
   it('follows the chosen 钢笆片 size, whose width the 排距 follows too', () => {
     // A 4.8 m run at 2.4 m bays, so the panel length actually changes the count.
-    const longPanel = calculateScaffold(points.slice(0, 2), [4.8], { ...DEFAULT_PARAMETERS, postSpacing: 2.4 })
+    const longPanel = calculateScaffold(points.slice(0, 2), [4.8], { ...REFERENCE_PARAMETERS, postSpacing: 2.4 })
     const shortPanel = calculateScaffold(points.slice(0, 2), [4.8], {
-      ...DEFAULT_PARAMETERS,
+      ...REFERENCE_PARAMETERS,
       postSpacing: 2.4,
       deckPanelLength: 1,
     })
@@ -422,16 +448,16 @@ describe('calculateScaffold', () => {
     expect(deckPanelCount(2, 1)).toBe(3)
     // The 排距 the UI writes when a width is chosen: the panel width less 0.05 m.
     expect(DECK_PANEL_ROW_GAP).toBe(0.05)
-    expect(Number((DEFAULT_PARAMETERS.deckPanelWidth - DECK_PANEL_ROW_GAP).toFixed(2)))
-      .toBe(DEFAULT_PARAMETERS.width)
+    expect(Number((REFERENCE_PARAMETERS.deckPanelWidth - DECK_PANEL_ROW_GAP).toFixed(2)))
+      .toBe(REFERENCE_PARAMETERS.width)
     // A narrower panel means a wider 排距 takes two pieces across instead of one.
     const wideRow = calculateScaffold(points.slice(0, 2), [3.6], {
-      ...DEFAULT_PARAMETERS,
+      ...REFERENCE_PARAMETERS,
       width: 0.85,
       deckPanelWidth: 0.95,
     })
     const wideRowNarrowPanel = calculateScaffold(points.slice(0, 2), [3.6], {
-      ...DEFAULT_PARAMETERS,
+      ...REFERENCE_PARAMETERS,
       width: 0.85,
       deckPanelWidth: 0.8,
     })
@@ -440,7 +466,7 @@ describe('calculateScaffold', () => {
   })
 
   it('derives material totals from the generated members', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [5.8], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [5.8], REFERENCE_PARAMETERS)
     const memberLength = layout.members.reduce((sum, member) => sum + member.length, 0)
 
     expect(layout.materials.theoreticalLength).toBeCloseTo(memberLength, 2)
@@ -449,9 +475,9 @@ describe('calculateScaffold', () => {
   })
 
   it('adds a third deck support rail without adding posts', () => {
-    const parameters = { ...DEFAULT_PARAMETERS, deckSupportRailCount: 3 }
+    const parameters = { ...REFERENCE_PARAMETERS, deckSupportRailCount: 3 }
     const layout = calculateScaffold(points.slice(0, 2), [3.6], parameters)
-    const twoRailLayout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const twoRailLayout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const liftTransverse = layout.members.find((member) => member.type === 'transverse' && member.layer === 1)
     const sweepTransverse = layout.members.find(
       (member) => member.type === 'transverse' && member.layer === SWEEP_BAR_LAYER,
@@ -468,48 +494,48 @@ describe('calculateScaffold', () => {
     // The 横向杆 spans the 排距 only; the bought tube is what overhangs it.
     expect(liftTransverse?.length).toBeCloseTo(parameters.width, 3)
     // 2 bays per decked lift, each covered by whole 0.95 × 1.2 m 钢笆片.
-    const panelsPerBay = Math.ceil(1.8 / DECK_PANEL.length)
+    const panelsPerBay = Math.ceil(1.8 / REFERENCE_DECK_PANEL.length)
     expect(layout.decks).toHaveLength(2 * panelsPerBay * deckedLifts)
     expect(layout.materials.deckCount).toBe(layout.decks.length)
   })
 
   it('buys the 1.2 m site tube for the 横向杆 and lets it overhang the 排距', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const transverse = layout.members.find((member) => member.type === 'transverse')!
     const segments = layout.pipeSegments.filter((segment) => segment.memberId === transverse.id)
 
     // The confirmed field 排距 is narrower than the tube the site buys for the
     // 横向杆, so NO 管端外伸 is added to the member itself.
-    expect(DEFAULT_PARAMETERS.width).toBe(0.9)
-    expect(transverse.length).toBeCloseTo(DEFAULT_PARAMETERS.width, 3)
-    expect(transverse.length).not.toBeCloseTo(DEFAULT_PARAMETERS.width + DEFAULT_PARAMETERS.tubeEndExtension * 2, 3)
+    expect(REFERENCE_PARAMETERS.width).toBe(0.9)
+    expect(transverse.length).toBeCloseTo(REFERENCE_PARAMETERS.width, 3)
+    expect(transverse.length).not.toBeCloseTo(REFERENCE_PARAMETERS.width + REFERENCE_PARAMETERS.tubeEndExtension * 2, 3)
     // The path runs along +x, so the transverse direction is +z: one 1.2 m stock
     // tube, centred on the post pair, overhanging each 立杆 by half the surplus.
     expect(segments).toHaveLength(1)
     expect(segments[0].stockLength).toBe(1.2)
-    expect(segments[0].start[2]).toBeCloseTo(-(1.2 - DEFAULT_PARAMETERS.width) / 2, 3)
-    expect(segments[0].end[2]).toBeCloseTo(DEFAULT_PARAMETERS.width + (1.2 - DEFAULT_PARAMETERS.width) / 2, 3)
+    expect(segments[0].start[2]).toBeCloseTo(-(1.2 - REFERENCE_PARAMETERS.width) / 2, 3)
+    expect(segments[0].end[2]).toBeCloseTo(REFERENCE_PARAMETERS.width + (1.2 - REFERENCE_PARAMETERS.width) / 2, 3)
   })
 
   it('covers a bay with whole 0.95 × 1.2 m 钢笆片 and keeps the covered area geometric', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const deckedLifts = new Set(layout.decks.map((deck) => deck.layer)).size
 
     // The 0.95 m side spans the 0.9 m 排距, the 1.2 m side runs along the bay, so a
     // 1.8 m bay takes two whole pieces.
-    expect(DECK_PANEL.width).toBe(0.95)
-    expect(DECK_PANEL.length).toBe(1.2)
+    expect(REFERENCE_DECK_PANEL.width).toBe(0.95)
+    expect(REFERENCE_DECK_PANEL.length).toBe(1.2)
     expect(layout.materials.deckCount).toBe(deckedLifts * 2 * 2)
     // 覆盖面积 stays the area actually covered, which the cut piece at the end of a
     // bay cannot exceed — the pieces bought cover more than the scaffold does.
-    expect(layout.materials.deckArea).toBeCloseTo(deckedLifts * 2 * 1.8 * DEFAULT_PARAMETERS.width, 3)
+    expect(layout.materials.deckArea).toBeCloseTo(deckedLifts * 2 * 1.8 * REFERENCE_PARAMETERS.width, 3)
     expect(layout.materials.deckArea).toBeLessThan(
-      layout.materials.deckCount * DECK_PANEL.width * DECK_PANEL.length,
+      layout.materials.deckCount * REFERENCE_DECK_PANEL.width * REFERENCE_DECK_PANEL.length,
     )
   })
 
   it('splits tall posts into overlapping standard stock pipes', () => {
-    const parameters = { ...DEFAULT_PARAMETERS, layerCount: 7 }
+    const parameters = { ...REFERENCE_PARAMETERS, layerCount: 7 }
     const layout = calculateScaffold(points.slice(0, 2), [3.6], parameters)
     const innerPost = layout.members.find((member) => member.type === 'post' && member.end[1] > 13)!
     const segments = layout.pipeSegments.filter((segment) => segment.memberId === innerPost.id)
@@ -534,27 +560,27 @@ describe('calculateScaffold', () => {
   })
 
   it('treats a long longitudinal run as one assembly of stock pipes', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [7.2], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [7.2], REFERENCE_PARAMETERS)
     const longitudinal = layout.members.find((member) => member.type === 'longitudinal')!
     const segments = layout.pipeSegments.filter((segment) => segment.memberId === longitudinal.id)
 
-    expect(longitudinal.length).toBeGreaterThan(Math.max(...DEFAULT_PARAMETERS.stockLengths))
+    expect(longitudinal.length).toBeGreaterThan(Math.max(...REFERENCE_PARAMETERS.stockLengths))
     expect(segments.length).toBeGreaterThan(1)
     // Butt joints: each tube starts exactly where the previous one ends.
-    expect(DEFAULT_PARAMETERS.spliceOverlap).toBe(0)
+    expect(REFERENCE_PARAMETERS.spliceOverlap).toBe(0)
     expect(segments[1].start).toEqual(segments[0].end)
     expect(segments.every((segment) => segment.overlapWithPrevious === 0)).toBe(true)
   })
 
   it('uses the confirmed field stock lengths', () => {
-    expect([...DEFAULT_PARAMETERS.stockLengths].sort((a, b) => a - b)).toEqual([0.8, 1.2, 2, 2.4, 3, 3.5, 4, 4.5, 5, 6])
+    expect([...REFERENCE_PARAMETERS.stockLengths].sort((a, b) => a - b)).toEqual([0.8, 1.2, 2, 2.4, 3, 3.5, 4, 4.5, 5, 6])
     // Every confirmed length must stay usable, which means the butt-joint
     // engagement has to be shorter than the shortest stock.
-    expect(DEFAULT_PARAMETERS.spliceOverlap).toBeLessThan(Math.min(...DEFAULT_PARAMETERS.stockLengths))
+    expect(REFERENCE_PARAMETERS.spliceOverlap).toBeLessThan(Math.min(...REFERENCE_PARAMETERS.stockLengths))
   })
 
   it('adds a 扫地杆 layer with horizontal members but no deck and no support rails', () => {
-    const parameters = { ...DEFAULT_PARAMETERS, deckSupportRailCount: 3 }
+    const parameters = { ...REFERENCE_PARAMETERS, deckSupportRailCount: 3 }
     const layout = calculateScaffold(points.slice(0, 2), [3.6], parameters)
     const sweepLongitudinal = layout.members.filter(
       (member) => member.layer === SWEEP_BAR_LAYER && member.type === 'longitudinal',
@@ -577,7 +603,7 @@ describe('calculateScaffold', () => {
   })
 
   it('only carries deck support rails on lifts that actually have a deck', () => {
-    const parameters = { ...DEFAULT_PARAMETERS, deckSupportRailCount: 3, deckLiftInterval: 2 }
+    const parameters = { ...REFERENCE_PARAMETERS, deckSupportRailCount: 3, deckLiftInterval: 2 }
     const layout = calculateScaffold(points.slice(0, 2), [3.6], parameters)
     const transverseAt = (layer: number) =>
       layout.members.find((member) => member.type === 'transverse' && member.layer === layer)
@@ -589,7 +615,7 @@ describe('calculateScaffold', () => {
   })
 
   it('lays one 槽钢 under each pair of posts, aligned with the 1.2 m 横向杆', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const channels = layout.baseChannels
     const transverse = layout.members.find((member) => member.type === 'transverse')!
     const transverseTube = layout.pipeSegments.find((segment) => segment.memberId === transverse.id)!
@@ -610,12 +636,12 @@ describe('calculateScaffold', () => {
     for (const channel of channels) {
       expect(channel.start[0]).toBeCloseTo(channel.end[0], 6)
       expect(Math.abs(channel.end[2] - channel.start[2])).toBeCloseTo(transverseTube.stockLength, 3)
-      expect(channel.start[2]).toBeCloseTo(-(1.2 - DEFAULT_PARAMETERS.width) / 2, 3)
+      expect(channel.start[2]).toBeCloseTo(-(1.2 - REFERENCE_PARAMETERS.width) / 2, 3)
     }
   })
 
   it('does not duplicate a 槽钢 when two path segments share a corner', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
     const keys = layout.baseChannels.map((channel) =>
       [channel.start.join(':'), channel.end.join(':')].sort().join('|'))
 
@@ -623,7 +649,7 @@ describe('calculateScaffold', () => {
   })
 
   it('excludes wall ties and leaves braces pending outside the layout', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
 
     expect(layout.members.every((member) =>
       ['post', 'longitudinal', 'transverse', 'guardrail'].includes(member.type))).toBe(true)
@@ -633,7 +659,7 @@ describe('calculateScaffold', () => {
   })
 
   it('puts 作业层 k at k × 步距 and derives the 搭设高度 from the count', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const elevations = [...new Set(layout.members
       .filter((member) => member.type === 'longitudinal' && member.layer !== undefined)
       .map((member) => member.start[1]))].sort((a, b) => a - b)
@@ -643,18 +669,18 @@ describe('calculateScaffold', () => {
     expect(elevations).toEqual([0.2, 1.88, 3.76, 5.64, 7.52, 9.4])
     const liftGaps = elevations.slice(2).map((y, index) => Number((y - elevations[index + 1]).toFixed(3)))
     expect(liftGaps).toEqual([1.88, 1.88, 1.88, 1.88])
-    expect(DEFAULT_PARAMETERS.layerCount).toBe(5)
+    expect(REFERENCE_PARAMETERS.layerCount).toBe(5)
     expect(TOP_POST_EXTENSION).toBe(0.3)
     expect(layout.materials.postHeights.theoretical).toBeCloseTo(0.3 + 1.88 * 5, 3)
   })
 
   it('takes the 作业层 count as the input and grows in whole 步距', () => {
     const layoutAt = (layerCount: number) =>
-      calculateScaffold(points.slice(0, 2), [3.6], { ...DEFAULT_PARAMETERS, layerCount })
+      calculateScaffold(points.slice(0, 2), [3.6], { ...REFERENCE_PARAMETERS, layerCount })
     const liftsAt = (layerCount: number) =>
       Math.max(...layoutAt(layerCount).members.map((member) => member.layer ?? 0))
 
-    expect(DEFAULT_PARAMETERS.liftHeight).toBe(1.88)
+    expect(REFERENCE_PARAMETERS.liftHeight).toBe(1.88)
     expect(liftsAt(1)).toBe(1)
     expect(liftsAt(4)).toBe(4)
     expect(liftsAt(5)).toBe(5)
@@ -665,7 +691,7 @@ describe('calculateScaffold', () => {
   })
 
   it('builds the railed row one 步距 taller so the top rail has a post to tie to', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const topRail = layout.members.find(
       (member) => member.type === 'guardrail' && member.layer === 5 && member.length > 2,
     )!
@@ -684,7 +710,7 @@ describe('calculateScaffold', () => {
     // grown to suit it: that rail is dropped and reported, while the 中栏杆 that does
     // fit stays on the railed row.
     const layout = calculateScaffold(points.slice(0, 2), [3.6], {
-      ...DEFAULT_PARAMETERS,
+      ...REFERENCE_PARAMETERS,
       liftHeight: 0.4,
       guardrailRailCount: 2,
     })
@@ -709,7 +735,7 @@ describe('calculateScaffold', () => {
       for (const swapInnerOuter of [false, true]) {
         for (const layerCount of [1, 3, 5, 8]) {
           const layout = calculateScaffold(points.slice(0, 2), [3.6], {
-            ...DEFAULT_PARAMETERS,
+            ...REFERENCE_PARAMETERS,
             layerCount,
             guardrailRailCount,
             swapInnerOuter,
@@ -729,18 +755,18 @@ describe('calculateScaffold', () => {
   })
 
   it('puts a single rail 居中 in the 步距 instead of at the 1.2 m edge', () => {
-    const one = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const one = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const layerOne = one.members.find((member) => member.type === 'longitudinal' && member.layer === 1)!
     const railsAt = (layout: ScaffoldLayout) => layout.members
       .filter((member) => member.type === 'guardrail' && member.layer === 1 && member.length > 2)
       .map((rail) => Number((rail.start[1] - layerOne.start[1]).toFixed(3)))
 
     // 1.88 / 2 above the 作业层 — the site's single-rail position, not the 上栏杆.
-    expect(DEFAULT_PARAMETERS.guardrailRailCount).toBe(1)
+    expect(REFERENCE_PARAMETERS.guardrailRailCount).toBe(1)
     expect(railsAt(one)).toEqual([0.94])
 
     // It follows the 步距 rather than a fixed number.
-    const wide = calculateScaffold(points.slice(0, 2), [3.6], { ...DEFAULT_PARAMETERS, liftHeight: 2 })
+    const wide = calculateScaffold(points.slice(0, 2), [3.6], { ...REFERENCE_PARAMETERS, liftHeight: 2 })
     const wideLayer = wide.members.find((member) => member.type === 'longitudinal' && member.layer === 1)!
     const wideRail = wide.members.find(
       (member) => member.type === 'guardrail' && member.layer === 1 && member.length > 2,
@@ -750,15 +776,15 @@ describe('calculateScaffold', () => {
   })
 
   it('lays one 居中 rail per guarded side by default and both rails when asked', () => {
-    const one = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
-    const two = calculateScaffold(points.slice(0, 2), [3.6], { ...DEFAULT_PARAMETERS, guardrailRailCount: 2 })
+    const one = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
+    const two = calculateScaffold(points.slice(0, 2), [3.6], { ...REFERENCE_PARAMETERS, guardrailRailCount: 2 })
     const sideRuns = (layout: ScaffoldLayout) =>
-      layout.members.filter((member) => member.type === 'guardrail' && member.length > DEFAULT_PARAMETERS.width + 1)
+      layout.members.filter((member) => member.type === 'guardrail' && member.length > REFERENCE_PARAMETERS.width + 1)
     const deckedLifts = new Set(one.decks.map((deck) => deck.layer)).size
 
     // A site that only builds one rail per side is the common case, and that rail
     // sits 居中 in the 步距; §7.3.12(2)(4) 上栏杆 + 中栏杆 are opt-in.
-    expect(DEFAULT_PARAMETERS.guardrailRailCount).toBe(1)
+    expect(REFERENCE_PARAMETERS.guardrailRailCount).toBe(1)
     expect(one.materials.guardrail.railCount).toBe(1)
     expect(two.materials.guardrail.railCount).toBe(2)
     // …plus the 架顶栏杆 the top 作业层 carries on top of its set, which is what makes
@@ -773,7 +799,7 @@ describe('calculateScaffold', () => {
   })
 
   it('puts the top rail 1.2 m above the 作业层 and the mid rail centred below it', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], { ...DEFAULT_PARAMETERS, guardrailRailCount: 2 })
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], { ...REFERENCE_PARAMETERS, guardrailRailCount: 2 })
     const layer = layout.members.find((member) => member.type === 'longitudinal' && member.layer === 1)!
     const heights = layout.members
       .filter((member) => member.type === 'guardrail' && member.layer === 1 && member.length > 2)
@@ -788,7 +814,7 @@ describe('calculateScaffold', () => {
   it('gives the top lift one more rail course than the lifts below', () => {
     // The railed row is built a whole 步距 above the top 作业层, and that extra step
     // carries the 架顶栏杆: the top lift therefore has one more course than the rest.
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const railLayers = [...new Set(layout.members
       .filter((member) => member.type === 'guardrail' && member.length > 2)
       .map((member) => member.layer as number))]
@@ -800,14 +826,14 @@ describe('calculateScaffold', () => {
 
     expect(coursesPerLift).toEqual([1, 1, 1, 1, 2])
     // It sits one 步距 above the top 作业层, TOP_POST_EXTENSION below the railed top.
-    expect(Number((layout.materials.postHeights.theoretical + DEFAULT_PARAMETERS.liftHeight).toFixed(2)))
+    expect(Number((layout.materials.postHeights.theoretical + REFERENCE_PARAMETERS.liftHeight).toFixed(2)))
       .toBe(11.58)
     expect(layout.materials.postHeights.outer).toBe(12)
   })
 
   it('caps a deckless top lift with the 架顶栏杆', () => {
     // Decks land on layer 3 only, so layers 4 and 5 have no 作业层 of their own.
-    const parameters = { ...DEFAULT_PARAMETERS, layerCount: 5, deckLiftInterval: 3 }
+    const parameters = { ...REFERENCE_PARAMETERS, layerCount: 5, deckLiftInterval: 3 }
     const layout = calculateScaffold(points.slice(0, 2), [3.6], parameters)
     const topRails = layout.members.filter(
       (member) => member.type === 'guardrail' && member.layer === 5 && member.length > 2,
@@ -824,7 +850,7 @@ describe('calculateScaffold', () => {
   })
 
   it('returns the rails across an open end, but not a closed one', () => {
-    const open = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const open = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const closed = calculateScaffold(
       [points[0], points[1], { id: 'P3', x: 0, y: 0 }],
       [3.6, 3.6],
@@ -837,7 +863,7 @@ describe('calculateScaffold', () => {
   })
 
   it('ties each rail to every post it crosses with one 十字扣', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const rail = layout.members.find((member) => member.type === 'guardrail' && member.length > 2)!
 
     // A 3.6 m run at 1.8 m bays has 3 posts. The physical rule is one coupler per
@@ -849,16 +875,16 @@ describe('calculateScaffold', () => {
   })
 
   it('puts the rails on the 外排 and follows the side the user says the building is on', () => {
-    const pathSide = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const pathSide = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const offsetSide = calculateScaffold(points.slice(0, 2), [3.6], {
-      ...DEFAULT_PARAMETERS,
+      ...REFERENCE_PARAMETERS,
       swapInnerOuter: true,
     })
     // The path runs along +x, so the offset row is the one at z = 排距. Side runs are
     // long; an end return spans the width.
     const rowOf = (layout: ScaffoldLayout, z: number) =>
       layout.members.filter((member) =>
-        member.type === 'guardrail' && member.length > DEFAULT_PARAMETERS.width + 1
+        member.type === 'guardrail' && member.length > REFERENCE_PARAMETERS.width + 1
         && member.start[2] === z)
 
     // §7.3.12(1) mandates the 外立杆 and the inner row is a gap to the building, so
@@ -875,7 +901,7 @@ describe('calculateScaffold', () => {
   })
 
   it('builds an open end\'s two posts to the railed height so the top return closes', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const innerHeights = layout.members
       .filter((member) => member.type === 'post' && member.start[2] > 0.5)
       .map((member) => member.end[1])
@@ -900,7 +926,7 @@ describe('calculateScaffold', () => {
     // member, so two coincident tubes must not both be emitted. The mid rail still
     // fits, which is why it survives.
     const tight = calculateScaffold(points.slice(0, 2), [3.6], {
-      ...DEFAULT_PARAMETERS,
+      ...REFERENCE_PARAMETERS,
       liftHeight: 1.2,
       guardrailRailCount: 2,
     })
@@ -916,7 +942,7 @@ describe('calculateScaffold', () => {
   })
 
   it('lists the site materials outside the calculation with an unknown quantity', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     const pending = layout.materials.pendingMaterials
 
     expect(pending.map((material) => material.id)).toEqual(['brace', 'bindingWire', 'padPlate', 'formwork'])
@@ -930,16 +956,16 @@ describe('calculateScaffold', () => {
   it('keeps the sweep bar inside the 200 mm the standard allows, and flags it if raised', () => {
     // JGJ 130-2011 §6.3.2 caps the longitudinal sweep bar at 200 mm above the tube
     // bottom, so the default sits exactly on the limit and stays quiet.
-    expect(DEFAULT_PARAMETERS.sweepBarHeight).toBe(0.2)
-    const compliant = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
+    expect(REFERENCE_PARAMETERS.sweepBarHeight).toBe(0.2)
+    const compliant = calculateScaffold(points.slice(0, 2), [3.6], REFERENCE_PARAMETERS)
     expect(compliant.warnings.find((item) => item.id === 'sweep-bar-height')).toBeUndefined()
 
-    const raised = calculateScaffold(points.slice(0, 2), [3.6], { ...DEFAULT_PARAMETERS, sweepBarHeight: 0.3 })
+    const raised = calculateScaffold(points.slice(0, 2), [3.6], { ...REFERENCE_PARAMETERS, sweepBarHeight: 0.3 })
     expect(raised.warnings.find((item) => item.id === 'sweep-bar-height')?.message).toContain('200 mm')
   })
 
   it('flags a lap joint, which needs 旋转扣件 rather than 对接扣件', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], { ...DEFAULT_PARAMETERS, spliceOverlap: 1 })
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], { ...REFERENCE_PARAMETERS, spliceOverlap: 1 })
 
     expect(layout.warnings.find((item) => item.id === 'lap-not-modelled')).toBeDefined()
     // Still unknown, because laps are not modelled — flagged rather than faked.
@@ -947,8 +973,8 @@ describe('calculateScaffold', () => {
   })
 
   it('does not generate transverse members on shared path corners', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
-    const corner = [3.6, DEFAULT_PARAMETERS.liftHeight, 0]
+    const layout = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
+    const corner = [3.6, REFERENCE_PARAMETERS.liftHeight, 0]
     const cornerTransverse = layout.members.filter((member) =>
       member.type === 'transverse' && member.connectionPoints.some((point) =>
         point.every((value, index) => value === corner[index])))
@@ -957,7 +983,7 @@ describe('calculateScaffold', () => {
   })
 
   it('ties both rows to the corner\'s mitre post', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
     const mitrePost = layout.members.find(
       (member) => member.type === 'post' && member.start[0] === 2.7 && member.start[2] === 0.9,
     )!
@@ -972,7 +998,7 @@ describe('calculateScaffold', () => {
     expect(mitrePost.end[1]).toBe(9.7)
     // Two runs reach the mitre post at every level — the two offset rows — and the
     // 扫地杆 layer crosses it too, so `layerCount + 1` levels of two ties each.
-    expect(ties).toHaveLength((DEFAULT_PARAMETERS.layerCount + 1) * 2)
+    expect(ties).toHaveLength((REFERENCE_PARAMETERS.layerCount + 1) * 2)
     // …and its own base beam, like every other post.
     expect(layout.baseChannels.filter((channel) =>
       Math.hypot((channel.start[0] + channel.end[0]) / 2 - 2.7, (channel.start[2] + channel.end[2]) / 2 - 0.9) < 0.001))
@@ -989,7 +1015,7 @@ describe('calculateScaffold', () => {
       { id: 'P1', x: 0, y: 0 },
       { id: 'P2', x: 7.1 * 50, y: 0 },
       { id: 'P3', x: 7.1 * 50, y: -4.3 * 50 },
-    ], [7.1, 4.3], DEFAULT_PARAMETERS)
+    ], [7.1, 4.3], REFERENCE_PARAMETERS)
     const offsetRunPoints = layout.members
       .filter((member) => member.type === 'longitudinal' && member.layer === 1)
       .flatMap((member) => member.connectionPoints)
@@ -1013,7 +1039,7 @@ describe('calculateScaffold', () => {
       { id: 'P1', x: 0, y: 0 },
       { id: 'P2', x: 7.1 * 50, y: 0 },
       { id: 'P3', x: 7.1 * 50, y: -4.3 * 50 },
-    ], [7.1, 4.3], { ...DEFAULT_PARAMETERS, swapInnerOuter: true })
+    ], [7.1, 4.3], { ...REFERENCE_PARAMETERS, swapInnerOuter: true })
     const railPoints = swapped.members
       .filter((member) => member.type === 'guardrail')
       .flatMap((member) => member.connectionPoints)
@@ -1028,7 +1054,7 @@ describe('calculateScaffold', () => {
       (corner) => corner[0] === 8 && corner[2] === 0.9,
     ))
 
-    expect(cornerPieces).toHaveLength(DEFAULT_PARAMETERS.layerCount)
+    expect(cornerPieces).toHaveLength(REFERENCE_PARAMETERS.layerCount)
     expect(cornerPieces.every((piece) => piece.area === 0.81)).toBe(true)
     expect(layout.materials.deckCount).toBe(75)
   })
@@ -1040,7 +1066,7 @@ describe('calculateScaffold', () => {
       { id: 'P1', x: 0, y: 0 },
       { id: 'P2', x: 7.1 * 50, y: 0 },
       { id: 'P3', x: 7.1 * 50, y: -4.3 * 50 },
-    ], [7.1, 4.3], { ...DEFAULT_PARAMETERS, deckSupportRailCount: 3, swapInnerOuter: true })
+    ], [7.1, 4.3], { ...REFERENCE_PARAMETERS, deckSupportRailCount: 3, swapInnerOuter: true })
     const plan = (id: string) => layout.materials.assemblyPlans.find((entry) => entry.memberId === id)!
     const postAt = (x: number, z: number) => layout.members.find(
       (member) => member.type === 'post'
@@ -1111,9 +1137,9 @@ describe('calculateScaffold', () => {
     ]
 
     for (const [shape, lengths] of shapes) {
-      const layout = calculateScaffold(shape, lengths, DEFAULT_PARAMETERS)
+      const layout = calculateScaffold(shape, lengths, REFERENCE_PARAMETERS)
       const posts = layout.members.filter((member) => member.type === 'post')
-      const reach = DEFAULT_PARAMETERS.postSpacing + DEFAULT_PARAMETERS.width + 0.001
+      const reach = REFERENCE_PARAMETERS.postSpacing + REFERENCE_PARAMETERS.width + 0.001
       const hanging = layout.members
         .filter((member) => member.type === 'longitudinal')
         .flatMap((member) => [member.start, member.end])
@@ -1125,14 +1151,14 @@ describe('calculateScaffold', () => {
   })
 
   it('keeps rendered connector positions unique', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
     const positions = layout.connectors.map((connector) => connector.position.join(':'))
 
     expect(new Set(positions).size).toBe(positions.length)
   })
 
   it('does not emit physically identical pipe segments', () => {
-    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points, [3.6, 3.6], REFERENCE_PARAMETERS)
     const segmentKeys = layout.pipeSegments.map((segment) =>
       [segment.start.join(':'), segment.end.join(':')].sort().join('|'))
 
@@ -1140,12 +1166,12 @@ describe('calculateScaffold', () => {
   })
 
   it('accepts legacy parameter objects without newly added fields', () => {
-    const legacy = { ...DEFAULT_PARAMETERS, rowCount: 3 } as Partial<typeof DEFAULT_PARAMETERS> & { rowCount: number }
+    const legacy = { ...REFERENCE_PARAMETERS, rowCount: 3 } as Partial<typeof REFERENCE_PARAMETERS> & { rowCount: number }
     delete legacy.deckSupportRailCount
     delete legacy.tubeEndExtension
     delete legacy.guardrailRailCount
 
-    const layout = calculateScaffold(points.slice(0, 2), [3.6], legacy as typeof DEFAULT_PARAMETERS)
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], legacy as typeof REFERENCE_PARAMETERS)
     expect(countMembers(layout).post).toBe(6)
     // 3 rails per decked lift, plus the 2 normal rows carried by the 扫地杆 layer.
     const deckedLifts = new Set(layout.decks.map((deck) => deck.layer)).size
@@ -1159,11 +1185,11 @@ describe('calculateScaffold', () => {
 describe('drawing graph and expanded stock inventory', () => {
   it('uses 5 m and 3.5 m for horizontal runs while excluding 5 m from all post assemblies', () => {
     for (const run of [4.8, 3.3]) {
-      const layout = calculateScaffold([{ id: 'a', x: 0, y: 0 }, { id: 'b', x: run * 50, y: 0 }], [run], DEFAULT_PARAMETERS)
+      const layout = calculateScaffold([{ id: 'a', x: 0, y: 0 }, { id: 'b', x: run * 50, y: 0 }], [run], REFERENCE_PARAMETERS)
       expect(layout.pipeSegments.some(pipe => pipe.type === 'longitudinal' && pipe.stockLength === run + 0.2)).toBe(true)
     }
     for (let layerCount = 1; layerCount <= 12; layerCount++) {
-      const layout = calculateScaffold(points, [4, 4], { ...DEFAULT_PARAMETERS, layerCount })
+      const layout = calculateScaffold(points, [4, 4], { ...REFERENCE_PARAMETERS, layerCount })
       const posts = layout.pipeSegments.filter(pipe => pipe.type === 'post')
       expect(posts.length).toBeGreaterThan(0)
       expect(posts.every(pipe => pipe.stockLength !== 5)).toBe(true)
@@ -1173,8 +1199,8 @@ describe('drawing graph and expanded stock inventory', () => {
   })
 
   it('keeps the established single-path calculation after migration to explicit edges', () => {
-    const old = calculateScaffold(points, [4, 4], DEFAULT_PARAMETERS)
-    const graph = calculateScaffoldPlan(readDrawing(points), DEFAULT_PARAMETERS)
+    const old = calculateScaffold(points, [4, 4], REFERENCE_PARAMETERS)
+    const graph = calculateScaffoldPlan(readDrawing(points), REFERENCE_PARAMETERS)
     expect(graph.materials).toEqual({ ...old.materials, assemblyPlans: graph.materials.assemblyPlans })
     expect(graph.pathDimensions).toEqual(old.pathDimensions)
     expect(graph.members.map(m => [m.type, m.start, m.end])).toEqual(old.members.map(m => [m.type, m.start, m.end]))
@@ -1183,9 +1209,9 @@ describe('drawing graph and expanded stock inventory', () => {
   it('places independent scaffolds at their drawn coordinates with no purchased bridge tubes', () => {
     let drawing = addPlanSegment(EMPTY_DRAWING, { x: 0, y: 0 }, { x: 200, y: 0 })
     drawing = addPlanSegment(drawing, { x: 600, y: 400 }, { x: 750, y: 400 })
-    const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
-    const first = calculateScaffold(drawing.points.slice(0, 2), [4], DEFAULT_PARAMETERS)
-    const second = calculateScaffold(drawing.points.slice(2), [3], DEFAULT_PARAMETERS)
+    const layout = calculateScaffoldPlan(drawing, REFERENCE_PARAMETERS)
+    const first = calculateScaffold(drawing.points.slice(0, 2), [4], REFERENCE_PARAMETERS)
+    const second = calculateScaffold(drawing.points.slice(2), [3], REFERENCE_PARAMETERS)
     expect(layout.perimeter).toBe(7)
     expect(layout.pathDimensions.map(d => d.length)).toEqual([4, 3])
     expect(layout.pathDimensions[1].start).toEqual([12, 0, 8])
@@ -1199,7 +1225,7 @@ describe('drawing graph and expanded stock inventory', () => {
   it('preserves the drawn edge numbers when connected strokes were drawn out of order', () => {
     let drawing = addPlanSegment(EMPTY_DRAWING, { x: 200, y: 0 }, { x: 200, y: 150 })
     drawing = addPlanSegment(drawing, { x: 0, y: 0 }, { x: 200, y: 0 })
-    const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+    const layout = calculateScaffoldPlan(drawing, REFERENCE_PARAMETERS)
     expect(layout.pathDimensions.map(d => [d.index, d.length])).toEqual([[0, 3], [1, 4]])
     expect(layout.perimeter).toBe(7)
     expect(layout.warnings.some(w => w.id === 'branch-junction')).toBe(false)
@@ -1208,7 +1234,7 @@ describe('drawing graph and expanded stock inventory', () => {
   it('merges shared branch posts and explicitly flags unspecified junction details', () => {
     let drawing = addPlanSegment(EMPTY_DRAWING, { x: 0, y: 0 }, { x: 400, y: 0 })
     drawing = addPlanSegment(drawing, { x: 200, y: 0 }, { x: 200, y: 200 })
-    const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+    const layout = calculateScaffoldPlan(drawing, REFERENCE_PARAMETERS)
     expect(layout.perimeter).toBe(12)
     const posts = layout.members.filter(m => m.type === 'post')
     expect(new Set(posts.map(p => p.start.join(','))).size).toBe(posts.length)
@@ -1217,7 +1243,7 @@ describe('drawing graph and expanded stock inventory', () => {
   })
 
   it('accepts an empty canvas without generating any purchased materials', () => {
-    const layout = calculateScaffoldPlan(EMPTY_DRAWING, DEFAULT_PARAMETERS)
+    const layout = calculateScaffoldPlan(EMPTY_DRAWING, REFERENCE_PARAMETERS)
     expect(layout.members).toEqual([])
     expect(layout.perimeter).toBe(0)
     expect(layout.materials.actualLength).toBe(0)
@@ -1229,7 +1255,7 @@ describe('drawing graph and expanded stock inventory', () => {
 it('clips overlapping independent deck bands once and warns about their intersection', () => {
   let drawing = addPlanSegment(EMPTY_DRAWING, { x: 0, y: 0 }, { x: 200, y: 0 })
   drawing = addPlanSegment(drawing, { x: 0, y: 20 }, { x: 200, y: 20 })
-  const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+  const layout = calculateScaffoldPlan(drawing, REFERENCE_PARAMETERS)
   expect(layout.materials.deckArea).toBeCloseTo(4 * 1.3 * 5, 2)
   expect(layout.warnings.some(w => w.id === 'overlapping-components')).toBe(true)
   for (const layer of new Set(layout.decks.map(d => d.layer))) {
@@ -1240,7 +1266,7 @@ it('clips overlapping independent deck bands once and warns about their intersec
 })
 
 it('never falls back to 5 m uprights when a saved inventory has no permitted post size', () => {
-  const layout = calculateScaffold(points.slice(0, 2), [4], { ...DEFAULT_PARAMETERS, stockLengths: [5] })
+  const layout = calculateScaffold(points.slice(0, 2), [4], { ...REFERENCE_PARAMETERS, stockLengths: [5] })
   expect(layout.pipeSegments.filter(p => p.type === 'post').every(p => p.stockLength !== 5)).toBe(true)
   expect(layout.warnings.some(w => w.id === 'post-stock-unavailable')).toBe(true)
 })
@@ -1248,7 +1274,7 @@ it('never falls back to 5 m uprights when a saved inventory has no permitted pos
 it('reassembles a merged branch run instead of keeping one short leg stock sequence', () => {
   let drawing = addPlanSegment(EMPTY_DRAWING, { x: 0, y: 0 }, { x: 400, y: 0 })
   drawing = addPlanSegment(drawing, { x: 200, y: 0 }, { x: 200, y: 200 })
-  const layout = calculateScaffoldPlan(drawing, DEFAULT_PARAMETERS)
+  const layout = calculateScaffoldPlan(drawing, REFERENCE_PARAMETERS)
   expect(layout.members.some(m => m.type === 'longitudinal' && m.length > 8)).toBe(true)
   for (const plan of layout.materials.assemblyPlans) {
     expect(plan.effectiveLength, `assembly ${plan.memberId}`).toBeGreaterThanOrEqual(plan.requiredLength - 0.001)

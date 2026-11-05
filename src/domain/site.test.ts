@@ -11,6 +11,25 @@ const run = (id: string) => calculateSite(demo(id).site, demo(id).parameters)
 const posts = (layout: ReturnType<typeof run>) => layout.members.filter(m => m.type === 'post')
 
 describe('分段测算的独立手算验收', () => {
+  it('自动识别落脚面的一面可独立设层，存档及历史保留独立设置', () => {
+    const { site, parameters } = demo('corridor')
+    const independent: Site = { ...site, sections: site.sections.map(s => s.id === 'S2' ? { ...s, layers: 3, followGlobal: false } : s) }
+    const result = calculateSite(independent, { ...parameters, layerCount: 6 })
+    expect(result.canExportMaterials).toBe(true)
+    expect(result.sections.map(s => [s.levels.length, s.top])).toEqual([[6, 11.28], [3, 5.64], [2, 5.64], [3, 5.64]])
+    expect(result.members.filter(m => m.cornerJunctions?.length)).toHaveLength(1)
+    expect(result.members.filter(m => m.type === 'post')).toHaveLength(28)
+    expect(result.joinedLifts?.map(join => join.levels)).toEqual([[3.76, 5.64], [3.76, 5.64]])
+    const restored = readSite(JSON.parse(JSON.stringify(independent)))!
+    expect(restored.sections[1]).toMatchObject({ automatic: true, followGlobal: false, layers: 3 })
+    const snapshot = { ...legacySnapshot(restored), scene: restored, parameters, adjustments: {} }
+    const record = parseHistory(serialiseHistory(addHistoryRecord([], snapshot)))[0]
+    expect(record.scene?.sections[1].followGlobal).toBe(false)
+    expect(calculateSite(siteFromSnapshot(record), parameters).sections[2].top).toBe(5.64)
+    const following = { ...restored, sections: restored.sections.map(s => ({ ...s, followGlobal: true })) }
+    expect(calculateSite(following, parameters).sections.map(s => s.top)).toEqual([9.4, 9.4, 9.4, 9.4])
+  })
+
   it('居中走廊：前左共角，左侧三段 5 / 4 / 5 层，四段齐顶', () => {
     const { site } = demo('corridor')
     const [house, corridor] = site.blocks
@@ -25,25 +44,25 @@ describe('分段测算的独立手算验收', () => {
     expect(layout.sections.map(s => [s.base, s.levels[0], s.levels.length, s.top])).toEqual([
       [0, 1.88, 5, 9.4], [0, 1.88, 5, 9.4], [3.5, 3.76, 4, 9.4], [0, 1.88, 5, 9.4],
     ])
-    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.2, 0, -1.2]])
+    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.05, 0, -1.05]])
     expect(layout.perimeter).toBe(18)
     expect(layout.spans?.filter(span => span.sourceId === 'S2').map(span => span.line.surfaceId)).toEqual([GROUND, 'B2', GROUND])
     expect(layout.joinedLifts?.map(join => join.levels)).toEqual(Array(2).fill([3.76, 5.64, 7.52, 9.4]))
     const spansAt = (level: number) => layout.members.filter(m => m.type === 'longitudinal' && m.start[1] === level
       && m.start[0] === m.end[0] && m.start[2] < 2.5 && m.end[2] > 7.5)
     expect(spansAt(1.88)).toHaveLength(0)
-    for (const level of [3.76, 5.64, 7.52, 9.4]) expect(spansAt(level)).toHaveLength(2)
+    for (const level of [3.76, 5.64, 7.52, 9.4]) expect(spansAt(level)).toHaveLength(3)
     expect(layout.decks.filter(deck => deck.id.startsWith('transition'))).toHaveLength(16)
     const roofPosts = posts(layout).filter(post => post.start[1] === 3.5)
     expect(roofPosts.map(post => post.start.map(roundSite)).sort()).toEqual([
-      [-0.3, 3.5, 4.1], [-0.3, 3.5, 5.9], [-1.2, 3.5, 4.1], [-1.2, 3.5, 5.9],
+      [-0.3, 3.5, 4.1], [-0.3, 3.5, 5.9], [-1.05, 3.5, 4.1], [-1.05, 3.5, 5.9],
     ])
     expect(layout.baseChannels.filter(channel => channel.start[1] === 3.5)).toHaveLength(2)
-    expect(layout.materials).toMatchObject({ channelSteel: { count: 14 }, deckCount: 109 })
+    expect(layout.materials).toMatchObject({ channelSteel: { count: 14 }, deckCount: 119 })
     const lowerGuards = layout.members.filter(m => m.type === 'guardrail' && m.start[1] === 2.82)
     expect(lowerGuards.some(m => m.start[2] === m.end[2] && [2.3, 7.7].includes(roundSite(m.start[2])))).toBe(false)
     expect(lowerGuards.some(m => m.start[2] === 10 && m.end[2] === 10)).toBe(true)
-    expect(lowerGuards.some(m => m.start[0] === -1.2 && m.end[0] === -1.2 && m.start[2] < 2.3 && roundSite(m.end[2]) >= 2.3)).toBe(true)
+    expect(lowerGuards.some(m => m.start[0] === -1.05 && m.end[0] === -1.05 && m.start[2] < 2.3 && roundSite(m.end[2]) >= 2.3)).toBe(true)
     expect(layout.canExportMaterials).toBe(true)
   })
 
@@ -52,7 +71,7 @@ describe('分段测算的独立手算验收', () => {
     const sections = [...site.sections].reverse().map(s => ({ ...s, start: s.end, end: s.start }))
     const layout = calculateSite({ ...site, sections }, parameters)
     expect(layout.issues).toEqual([])
-    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.2, 0, -1.2]])
+    expect(posts(layout).filter(post => post.cornerJunctions?.length).map(post => post.start)).toEqual([[-1.05, 0, -1.05]])
     expect(layout.materials.stockSummary).toEqual(run('corridor').materials.stockSummary)
   })
 
@@ -65,8 +84,8 @@ describe('分段测算的独立手算验收', () => {
   })
 
   it.each([
-    [{ x: 0, z: 0 }, { x: 8, z: 0 }, 2, -1.2], [{ x: 0, z: 10 }, { x: 8, z: 10 }, 2, 11.2],
-    [{ x: 0, z: 0 }, { x: 0, z: 10 }, 0, -1.2], [{ x: 8, z: 0 }, { x: 8, z: 10 }, 0, 9.2],
+    [{ x: 0, z: 0 }, { x: 8, z: 0 }, 2, -1.05], [{ x: 0, z: 10 }, { x: 8, z: 10 }, 2, 11.05],
+    [{ x: 0, z: 0 }, { x: 0, z: 10 }, 0, -1.05], [{ x: 8, z: 0 }, { x: 8, z: 10 }, 0, 9.05],
   ] as const)('房屋任一边的外排都在墙外', (start, end, axis, outer) => {
     const { site, parameters } = demo('corridor')
     const layout = calculateSite({ ...site, blocks: site.blocks.slice(0, 1),

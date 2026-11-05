@@ -7,6 +7,7 @@ import { Box, Eye, Focus, Maximize2, Minimize2, Rotate3D, ScanEye, X } from 'luc
 import type { DeckPanel, MemberType, PipeSegment, ScaffoldLayout } from '../domain/scaffold'
 import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, CONNECTOR_LABELS, SWEEP_BAR_LAYER } from '../domain/scaffold'
 import type { ResolvedBlock } from '../domain/site'
+import { footprintOutline } from '../domain/siteFootprints'
 import { useCssFullscreen } from '../platform/fullscreen'
 import { SceneDimensions } from './SceneDimensions'
 import { Couplers } from './Couplers'
@@ -356,6 +357,14 @@ function BlockBox({ block, tone, selected, labelY, onSelect, onSelectSurface }: 
   onSelectSurface?: (id: string) => void
 }) {
   const height = Math.max(0.01, block.height)
+  const geometry = useMemo(() => {
+    if (!block.outline) return new THREE.BoxGeometry(block.width, height, block.depth)
+      .translate(block.width / 2, height / 2, block.depth / 2)
+    const shape = new THREE.Shape(footprintOutline(block).map(p => new THREE.Vector2(p.x - block.x, -(p.z - block.z))))
+    shape.closePath()
+    return new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false }).rotateX(-Math.PI / 2)
+  }, [block, height])
+  useEffect(() => () => geometry.dispose(), [geometry])
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation()
     onSelect()
@@ -367,10 +376,9 @@ function BlockBox({ block, tone, selected, labelY, onSelect, onSelectSurface }: 
     <group>
       <mesh
         name={block.id}
-        position={[block.x + block.width / 2, block.base + height / 2, block.z + block.depth / 2]}
+        position={[block.x, block.base, block.z]} geometry={geometry}
         onClick={handleClick}
       >
-        <boxGeometry args={[block.width, height, block.depth]} />
         <meshStandardMaterial
           color={tone}
           roughness={0.92}

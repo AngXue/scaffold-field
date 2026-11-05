@@ -6,7 +6,7 @@ import {
 } from './scaffold'
 import { measureDrawing, measurePath, readDrawing, type PlanSegment } from './plan'
 import { restoreParameters } from './project'
-import { readSite, type Site } from './site'
+import { readSite, siteWithTargetLayers, type Site } from './site'
 
 /** How many records the history keeps; the oldest one is dropped beyond this. */
 export const HISTORY_LIMIT = 100
@@ -41,7 +41,7 @@ export function historyLabel(snapshot: HistorySnapshot): string {
   const layers = Math.max(1, Math.round(snapshot.parameters?.layerCount ?? DEFAULT_PARAMETERS.layerCount))
   const width = Number(snapshot.parameters?.width ?? DEFAULT_PARAMETERS.width)
   if (snapshot.scene) {
-    const counts = snapshot.scene.sections.map(s => s.layers)
+    const counts = siteWithTargetLayers(snapshot.scene, snapshot.parameters).sections.map(s => s.layers)
     const range = counts.length ? Math.min(...counts) === Math.max(...counts)
       ? `${counts[0]} 层` : `${Math.min(...counts)}–${Math.max(...counts)} 层` : '无架段'
     return `${snapshot.scene.blocks.length} 个体块 · ${counts.length} 段 · ${range}`
