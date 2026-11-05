@@ -5,13 +5,13 @@ import { GROUND, MIN_SECTION_LENGTH, roundSite, getSectionLevels, type ResolvedB
 
 type Axis = 'x' | 'z'
 export type WallEdge = { axis: Axis; at: number; low: number; high: number; outward: -1 | 1 }
-export type RoutedSpan = { sourceId: string; line: SiteSection; wall: boolean }
+export type RoutedSpan = { sourceId: string; line: SiteSection; wall: boolean; wallClearance?: number }
 export type SiteTransition = { before: SiteSection; after: SiteSection; boundary: number }
 const EPS = 0.001
 const other = (axis: Axis): Axis => axis === 'x' ? 'z' : 'x'
 
 export function siteWallEdges(blocks: ResolvedBlock[]) {
-  return blocks.flatMap(block => {
+  const edges = blocks.flatMap(block => {
     const points = footprintOutline(block)
     const orientation = Math.sign(signedArea(points.map(p => [p.x, p.z])))
     return points.map((a, i): WallEdge => {
@@ -21,6 +21,14 @@ export function siteWallEdges(blocks: ResolvedBlock[]) {
         outward: (vertical ? Math.sign(b.z - a.z) : -Math.sign(b.x - a.x)) * orientation as -1 | 1 }
     })
   })
+  // Collinear vertices belong to one wall (a partial outline can add extra vertices).
+  const merged: WallEdge[] = []
+  for (const edge of edges.sort((a, b) => a.low - b.low)) {
+    const existing = merged.find(e => e.axis === edge.axis && e.at === edge.at && e.outward === edge.outward && edge.low <= e.high + EPS)
+    if (existing) existing.high = Math.max(existing.high, edge.high)
+    else merged.push({ ...edge })
+  }
+  return merged
 }
 
 export function snapScaffoldStroke(start: SitePoint, end: SitePoint, edges: WallEdge[], tolerance: number) {
@@ -45,6 +53,27 @@ export function wallStandOff(settings: ScaffoldParameters) {
 export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock[], settings: ScaffoldParameters) {
   const edges = siteWallEdges(blocks)
   const walls = sections.map(s => s.automatic && s.surfaceId === GROUND ? snapScaffoldStroke(s.start, s.end, edges, EPS).edge : undefined)
+  const clearances = sections.map(() => wallStandOff(settings))
+  const sharedEnds = new Map<number, { high: number; low: number }>()
+  walls.forEach((wall, i) => {
+    if (!wall) return
+    walls.forEach((other, j) => {
+      if (!other || i === j || wall.axis !== other.axis || wall.outward === other.outward || (sections[j].layers < sections[i].layers || sections[j].layers === sections[i].layers && j > i)) return
+      const gap = (other.at - wall.at) * wall.outward
+      const overlap = Math.min(wall.high, other.high) - Math.max(wall.low, other.low)
+      const clearance = wallStandOff(settings)
+      if (overlap <= EPS || gap < settings.width + 2 * clearance - EPS || gap >= 2 * settings.width + 2 * clearance - EPS) return
+      // A lower end meets the higher frame's existing pair of posts. The lower
+      // face stands a little farther from its wall instead of duplicating rows.
+      const along = other.axis === 'x' ? 'z' : 'x'
+      const a = Math.min(sections[i].start[along], sections[i].end[along])
+      const b = Math.max(sections[i].start[along], sections[i].end[along])
+      if (a < other.low - clearance && b <= other.high + EPS || b > other.high + clearance && a >= other.low - EPS) {
+        clearances[i] = roundSite(gap - clearance - settings.width)
+        sharedEnds.set(i, { low: other.low - clearance, high: other.high + clearance })
+      }
+    })
+  })
   const spans: RoutedSpan[] = [], transitions: SiteTransition[] = []
   const errors: Array<{ id: string; message: string }> = []
   const takenIds = new Set(sections.map(section => section.id))
@@ -55,18 +84,30 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
     const wall = walls[index]
     const cross = source.start.x === source.end.x ? 'x' : 'z', along = other(cross)
     let { start, end } = source
-    const clearance = wallStandOff(settings)
+    if (wall) {
+      const snapEnd = (p: SitePoint) => ({ ...p, [along]: Math.abs(p[along] - wall.low) <= 0.101 ? wall.low
+        : Math.abs(p[along] - wall.high) <= 0.101 ? wall.high : p[along] })
+      start = snapEnd(start); end = snapEnd(end)
+    }
+    const clearance = clearances[index]
     if (wall) {
       const shift = (point: SitePoint) => {
-        const adjacent = walls.find((candidate, i) => candidate && candidate.axis === along
+        const adjacentIndex = walls.findIndex((candidate, i) => candidate && candidate.axis === along
           && Math.abs(candidate.at - point[along]) < EPS && Math.abs(point[cross] - wall.at) < EPS
-          && [sections[i].start, sections[i].end].some(p => Math.hypot(p.x - point.x, p.z - point.z) < EPS))
+          && point[cross] >= Math.min(sections[i].start[cross], sections[i].end[cross]) - EPS
+          && point[cross] <= Math.max(sections[i].start[cross], sections[i].end[cross]) + EPS)
         return { ...point, [cross]: roundSite(wall.at + wall.outward * clearance),
-          [along]: roundSite(point[along] + (adjacent?.outward ?? 0) * clearance) }
+          [along]: roundSite(point[along] + (walls[adjacentIndex]?.outward ?? 0) * (clearances[adjacentIndex] ?? clearance)) }
       }
       start = shift(start); end = shift(end)
       const sign = cross === 'x' ? -wall.outward : wall.outward
       if (Math.sign(end[along] - start[along]) !== sign) [start, end] = [end, start]
+    }
+    const shared = sharedEnds.get(index)
+    if (shared) {
+      const low = Math.min(start[along], end[along]), high = Math.max(start[along], end[along])
+      const trim = (p: SitePoint) => ({ ...p, [along]: low < shared.low ? Math.min(p[along], shared.low) : high > shared.high ? Math.max(p[along], shared.high) : p[along] })
+      start = trim(start); end = trim(end)
     }
     const sign = Math.sign(end[along] - start[along])
     if (!sign) { spans.push({ sourceId: source.id, line: source, wall: false }); return }
@@ -90,12 +131,14 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
     }
     const setback = (here: number, there: number) => Math.max(here < there ? 0.30 : 0.15,
       settings.tubeEndExtension + settings.pipeDiameter + (here < there ? 0.1 : 0))
+    const boundarySetback = (at: number, base: number, next: number) => Math.max(setback(base, next),
+      ...(base < next ? walls.flatMap((edge, i) => edge?.axis === along && Math.abs(edge.at - at) < EPS ? [clearances[i]] : []) : []))
     const placements = intervals.map((interval, i) => {
       const base = interval.block?.top ?? 0
       const limits = interval.block && run(interval.block)
-      const a = interval.low + (i ? setback(base, intervals[i - 1].block?.top ?? 0)
+      const a = interval.low + (i ? boundarySetback(interval.low, base, intervals[i - 1].block?.top ?? 0)
         : limits ? Math.max(0, limits[0] + 0.15 - interval.low) : 0)
-      const b = interval.high - (i + 1 < intervals.length ? setback(base, intervals[i + 1].block?.top ?? 0)
+      const b = interval.high - (i + 1 < intervals.length ? boundarySetback(interval.high, base, intervals[i + 1].block?.top ?? 0)
         : limits ? Math.max(0, interval.high - limits[1] + 0.15) : 0)
       return { a: roundSite(a), b: roundSite(b), base }
     })
@@ -138,7 +181,7 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
     if (sign < 0) parts.reverse()
     parts.forEach((line, i) => {
       if (!line) return
-      spans.push({ sourceId: source.id, line, wall: !!wall })
+      spans.push({ sourceId: source.id, line, wall: !!wall, ...(wall && { wallClearance: clearances[index] }) })
       const before = parts[i - 1]
       if (before) {
         const boundary = sign > 0 ? intervals[i].low : intervals[intervals.length - i - 1].high

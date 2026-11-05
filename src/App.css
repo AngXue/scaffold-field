@@ -1064,3 +1064,5 @@ body.has-fullscreen { overflow: hidden; }
 }
 
 .site-outline-cancel { position: absolute; right: 12px; bottom: 48px; z-index: 2; }
+
+.site-borrow-close { position: absolute; right: 12px; bottom: 92px; z-index: 2; }

@@ -4,6 +4,7 @@ import { blockHasDependents, defaultSectionLayers, GROUND, MIN_SECTION_LENGTH, r
 import type { ScaffoldParameters } from '../domain/scaffold'
 import { SITE_DEMOS, type SiteDemo } from '../domain/siteDemos'
 import { alignSiteBlock, type AlignmentGuide } from '../domain/siteAlignment'
+import { closeAlongHouse, scaffoldAroundHouses, splitSectionRange } from '../domain/siteEditing'
 import { footprintFromOutline, footprintOutline, reshapeFootprint } from '../domain/siteFootprints'
 import { routeSiteSections, siteWallEdges, snapScaffoldStroke, wallStandOff, type WallEdge } from '../domain/siteRouting'
 import { useCssFullscreen } from '../platform/fullscreen'
@@ -14,7 +15,7 @@ const Viewer = lazy(() => import('./ScaffoldViewer').then(module => ({ default: 
 
 type Tool = 'house' | 'scaffold' | 'browse'
 type View = { x: number; z: number; scale: number }
-type Draft = { start: SitePoint; end: SitePoint; kind: 'rectangle' | 'outline' | 'section' | 'end'; edge?: WallEdge }
+type Draft = { start: SitePoint; end: SitePoint; kind: 'rectangle' | 'outline' | 'section' | 'end' | 'split'; edge?: WallEdge }
   | { kind: 'move-block'; id: string; position: SitePoint; guides: AlignmentGuide[] }
 type Gesture = { startScreen: SitePoint; start: SitePoint; view: View; target?: string; surface?: string; endpoint?: 'start' | 'end'; block?: SiteBlock; kind: 'pan' | 'draw' | 'pick' }
 type Props = { site: Site; layout: SiteLayout; parameters: ScaffoldParameters; onChange: (site: Site) => void; onDemo: (demo: SiteDemo) => void; onReset: () => void }
@@ -110,6 +111,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   const [selected, setSelected] = useState<string>()
   const [houseOutline, setHouseOutline] = useState<SitePoint[]>([])
   const [draft, setDraft] = useState<Draft>()
+  const [splitMode, setSplitMode] = useState(false)
+  const [groupScope, setGroupScope] = useState(false)
   const [snap, setSnap] = useState(true)
   const [pan, setPan] = useState(false)
   const [pick, setPick] = useState(false)
@@ -140,6 +143,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     ? sectionTargetLayer(selectedSection, parameters, layout.blocks)
     : selectedSummary?.levels.length ?? selectedSection?.layers ?? 1
   const selectedJoins = layout.joinedLifts?.filter(join => selectedSpans.some(span => span.line.id === join.before)) ?? []
+  const borrowedOutline = closeAlongHouse(houseOutline, site.blocks.filter(b => b.parentId === surfaceId))
   const selectedGuide = site.guides.find(guide => guide.id === selected)
   const moving = draft?.kind === 'move-block' ? draft : undefined
   const outlineMode = tool === 'house' && houseBrush === 'outline'
@@ -156,27 +160,20 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   const sortedBlocks = useMemo(() => [...site.blocks].sort((a, b) =>
     (surfaceElevation(layout.blocks, a.id) ?? 0) - (surfaceElevation(layout.blocks, b.id) ?? 0)), [site.blocks, layout.blocks])
   const annotations = useMemo(() => layoutPlanAnnotations(
-    sortedBlocks.map(item => ({
+    [...sortedBlocks, ...(draft?.kind === 'rectangle' ? [{ ...rectOf(draft.start, draft.end), id: 'rectangle-preview', parentId: surfaceId, height: 3 }] : [])].map(item => ({
       ...item,
-      ...(moving?.id === item.id ? moving.position : {}),
+      ...(moving?.id === item.id ? reshapeFootprint(item, moving.position) : {}),
       name: `${item.id} · ${formatMetres(surfaceElevation(layout.blocks, item.id))} m`,
       base: layout.blocks.find(block => block.id === item.id)?.base ?? 0,
       top: surfaceElevation(layout.blocks, item.id) ?? 0,
-      selected: selected === item.id,
+      selected: moving ? moving.id === item.id : draft?.kind === 'rectangle' ? item.id === 'rectangle-preview' : selected === item.id,
     })),
     site.sections.map((line, index) => ({ id: line.id, start: line.start, end: line.end,
       // Unselected segments show only their number: the length is already on the
       // block edge they usually follow, and a second copy reads as an overlap.
       text: selected === line.id ? `第 ${index + 1} 段 · ${formatMetres(siteLength(line))} m` : `第 ${index + 1} 段` })),
     view.scale,
-  ), [sortedBlocks, site.sections, layout.blocks, selected, view.scale, moving])
-  const dimensionByBlock = useMemo(() => {
-    const map = new Map<string, PlanDimension[]>()
-    for (const dimension of annotations.dimensions) {
-      map.set(dimension.blockId, [...(map.get(dimension.blockId) ?? []), dimension])
-    }
-    return map
-  }, [annotations.dimensions])
+  ), [sortedBlocks, site.sections, layout.blocks, selected, view.scale, moving, draft, surfaceId])
   // A covered block's label would be painted over by the block above it. Keep the
   // label only where it belongs to a visible surface; a selected block always wins.
   const blockLabels = sortedBlocks.flatMap(block => {
@@ -253,7 +250,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
   }
   const changeTool = (value: Tool) => {
     if (value !== 'browse') lastPen.current = value
-    setTool(value); setDraft(undefined); setHouseOutline([]); setPan(false); setPick(false)
+    setTool(value); setSplitMode(false); setDraft(undefined); setHouseOutline([]); setPan(false); setPick(false)
   }
   const chooseSurface = (id: string) => {
     setSurfaceId(id); setPick(false); setDraft(undefined); setHouseOutline([])
@@ -261,7 +258,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     setNotice('')
   }
   const select = (id: string | undefined) => {
-    setSelected(id); setNotice('')
+    setSelected(id); setNotice(''); setSplitMode(false); setGroupScope(false)
     const section = site.sections.find(line => line.id === id)
     if (section) chooseSurface(section.surfaceId)
 
@@ -321,6 +318,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
       }
       return { start, end: straight(start, target) }
     }
+    if (splitMode && selectedSection) return { start: g.start, end, kind: 'split' }
     if (g.endpoint && selectedSection) {
       const other = selectedSection[g.endpoint === 'start' ? 'end' : 'start']
       const resized = selectedSection.automatic ? wallDraft(other, end) : { start: other, end: straight(other, end) }
@@ -364,6 +362,11 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     if (g.kind === 'pan') return
     const p = screen(e)
     const draw = makeDraft(g, p)
+    if (draw.kind === 'split' && selectedSection) {
+      const result = splitSectionRange(site, selectedSection, draw.start, draw.end)
+      if (!result.selected) { setNotice('所选范围及剩余段须至少为 0.10 m。'); return }
+      commit(result.site); setSelected(result.selected); setSplitMode(false); setGroupScope(false); return
+    }
     if (outlineMode && draw.kind === 'outline') {
       if (surface === undefined) { setNotice('请先选择有效的落脚面。'); return }
       const points = houseOutline.length ? houseOutline : [draw.start]
@@ -416,7 +419,9 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     setSelected(id); setNotice('')
   }
   function updateSection(id: string, update: Partial<SiteSection>) {
-    commit({ ...site, sections: site.sections.map(section => section.id === id ? { ...section, ...update } : section) })
+    const groupId = groupScope && site.sections.find(s => s.id === id)?.groupId
+    const appliesToGroup = groupId && ('layers' in update || 'followGlobal' in update)
+    commit({ ...site, sections: site.sections.map(section => section.id === id || appliesToGroup && section.groupId === groupId ? { ...section, ...update } : section) })
   }
   const updateBlock = (id: string, update: Partial<SiteBlock>) =>
     commit({ ...site, blocks: site.blocks.map(block => block.id === id ? { ...reshapeFootprint(block, update), id: block.id, parentId: block.parentId, height: update.height ?? block.height } : block) })
@@ -513,6 +518,11 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                 onChange={value => { setHouseBrush(value); setHouseOutline([]); setDraft(undefined) }} options={[{ value: 'rectangle', label: '矩形' }, { value: 'outline', label: '轮廓' }]} />
               <span className="site-tool-divider" aria-hidden />
             </>}
+            {tool === 'scaffold' && site.blocks.length > 0 && <Button size="sm" variant="ghost" onClick={() => {
+              const next = scaffoldAroundHouses(site, parameters.layerCount)
+              if (JSON.stringify(next.sections) === JSON.stringify(site.sections)) { setNotice('外墙围架已存在。'); return }
+              commit(next); setSelected(next.sections.at(-1)!.id); setGroupScope(true)
+            }}>沿外墙围一圈</Button>}
             <IconButton size="sm" label="撤销" icon={<Undo2 size={17} />} disabled={historySize.undo === 0 && houseOutline.length === 0} onClick={() => travel(true)} />
             <IconButton size="sm" label="重做" icon={<Redo2 size={17} />} disabled={historySize.redo === 0} onClick={() => travel(false)} />
             <span className="site-tool-divider" aria-hidden />
@@ -523,6 +533,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
             <IconButton size="sm" label="缩小" icon={<ZoomOut size={17} />} onClick={() => zoom(0.8, { x: size.width / 2, z: size.height / 2 })} />
             <IconButton size="sm" label="放大" icon={<ZoomIn size={17} />} onClick={() => zoom(1.25, { x: size.width / 2, z: size.height / 2 })} />
           </div>
+          {borrowedOutline && <Button className="site-borrow-close" size="sm" onClick={() => { addBlock(borrowedOutline); setHouseOutline([]); setDraft(undefined) }}>借墙闭合</Button>}
           {houseOutline.length > 0 && <Button className="site-outline-cancel" size="sm" variant="ghost" onClick={() => { setHouseOutline([]); setDraft(undefined) }}>取消轮廓</Button>}
           <svg ref={svg} className={`site-plan${pan ? ' is-panning' : ''}`} aria-label="选面俯视绘图画布" viewBox={`0 0 ${size.width || 1} ${size.height || 1}`}
             onPointerDown={start} onPointerMove={move} onPointerUp={e => finish(e)} onPointerCancel={e => finish(e, true)}
@@ -560,11 +571,12 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               {!draft && selectedLinks.map(({ before, after }) => <polygon key={before.id} className="site-strip bridge"
                 pointerEvents="none" vectorEffect="non-scaling-stroke" points={strip(before.end, after.start)} />)}
               {site.sections.map((line) => {
+                const highlighted = selected === line.id || groupScope && selectedSection?.groupId && line.groupId === selectedSection.groupId
                 return <g key={line.id} data-site-object={line.id} className={line.surfaceId === surfaceId ? '' : 'site-off-plane'}>
-                  {selected === line.id && <line className="site-section-halo" x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke" />}
+                  {highlighted && <line className="site-section-halo" x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke" />}
                   <line x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke" className="site-hit" />
                   <line x1={line.start.x} y1={line.start.z} x2={line.end.x} y2={line.end.z} vectorEffect="non-scaling-stroke"
-                    className={`site-section${selected === line.id ? ' selected' : ''}${badIds.has(line.id) ? ' invalid' : ''}`} />
+                    className={`site-section${highlighted ? ' selected' : ''}${badIds.has(line.id) ? ' invalid' : ''}`} />
                   {selected === line.id && tool === 'scaffold' && !pick && (['start', 'end'] as const).map(endpoint =>
                     <circle key={endpoint} data-endpoint={endpoint} cx={line[endpoint].x} cy={line[endpoint].z} r={7 / view.scale}
                       vectorEffect="non-scaling-stroke" className="site-endpoint" />)}
@@ -596,8 +608,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               {/* All annotations are rendered last: labels never disappear under a
                   later, larger rectangle. The tier is pointer-transparent. */}
               <g className="site-annotations" pointerEvents="none">
-                {sortedBlocks.flatMap(block => (dimensionByBlock.get(block.id) ?? []).map(dimension =>
-                  <PlanDimensionLine key={dimension.key} dimension={dimension} scale={view.scale} />))}
+                {annotations.dimensions.map(dimension =>
+                  <PlanDimensionLine key={dimension.key} dimension={dimension} scale={view.scale} />)}
                 {annotations.sectionLabels.map(label =>
                   <PlanSectionAnnotation key={label.id} label={label} selected={selected === label.id} scale={view.scale} />)}
                 {blockLabels.map(label => <text key={label.id} className={label.isSelected ? 'site-block-label is-selected' : 'site-block-label'}
@@ -656,12 +668,16 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
                   followGlobal: automatic ? selectedFollowsGlobal : selectedFollowsGlobal ? true : undefined, layers }); chooseSurface(next)
               }} options={sectionSelectionOptions} />
             </Field>
+            {selectedSection.groupId && <SegmentedControl<'group' | 'section'> ariaLabel="编辑范围" value={groupScope ? 'group' : 'section'}
+              onChange={value => setGroupScope(value === 'group')} options={[{value:'group',label:'整组'},{value:'section',label:'单段'}]} />}
+            <div className="ui-row"><Button size="sm" variant="ghost" onClick={() => { updateSection(selectedSection.id, {groupId:undefined}); setGroupScope(false) }}>独立该段</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setSplitMode(!splitMode); setGroupScope(false); setNotice('沿选中架段拖出需要独立设置的范围。') }}>{splitMode ? '取消划分' : '划分选段'}</Button></div>
             <EditorNumber label="段长 (m)" min={MIN_SECTION_LENGTH} value={siteLength(selectedSection)} onCommit={n => updateSection(selectedSection.id, { end: pointAlong(selectedSection.start, selectedSection.end, n) })} />
             <label><input type="checkbox" checked={selectedFollowsGlobal} onChange={event => updateSection(selectedSection.id, {
               followGlobal: selectedSection.automatic ? event.currentTarget.checked : event.currentTarget.checked ? true : undefined,
               layers: selectedLayerCount,
             })} /> 跟随全局目标层数</label>
-            <EditorNumber label={selectedSection.automatic ? '本面目标层数' : '作业层数'} value={selectedLayerCount}
+            <EditorNumber label={groupScope && selectedSection.groupId ? '整组目标层数' : selectedSection.automatic ? '本面目标层数' : '作业层数'} value={selectedLayerCount}
               min={1} max={20} integer onCommit={layers => updateSection(selectedSection.id, {
                 layers, followGlobal: selectedSection.automatic ? false : undefined,
               })} />
@@ -681,7 +697,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
               <dt>首层距地</dt><dd>{formatMetres(selectedSummary.firstClearance)} m</dd>
               <dt>顶层标高</dt><dd>{formatMetres(selectedSummary.top)} m</dd>
             </dl>}
-            {selectedSpans.some(span => span.wall) ? <p>内排中心距墙 {formatMetres(wallStandOff(parameters))} m，外排位于离墙一侧。</p>
+            {selectedSpans.some(span => span.wall) ? <p>内排中心距墙 {formatMetres(selectedSpans.find(span => span.wall)?.wallClearance ?? wallStandOff(parameters))} m，外排位于离墙一侧。</p>
               : <Button size="sm" variant="ghost" onClick={() => commit(reverseSectionGroup(site, selectedSection.id))}>连通架段反向布置</Button>}
           </section>}
           {selectedGuide && <p>旧图辅助线，可删除选中对象移除。</p>}

@@ -249,7 +249,7 @@ try {
   await load(page, 'corridor')
   const corridor = page.locator('[data-site-object="B2"]')
   const corridorRect = corridor.locator('rect.site-block')
-  assert.deepEqual(await page.locator('[data-dimension-for="B2"] .site-dimension-label').allTextContents(), ['4.00 m', '5.00 m'])
+  assert.deepEqual(await page.locator('[data-dimension-for="B2"] .site-dimension-label').allTextContents(), ['4.00 m', '4.00 m', '5.00 m'])
   await pick(page).selectOption('S2')
   await inside(page, '自动分为 3 段')
   await inside(page, '同层接通：3.76 / 5.64 / 7.52 / 9.40 m')

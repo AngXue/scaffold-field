@@ -2,7 +2,8 @@ import { measureDrawing, normalizeDrawing, PIXELS_PER_METER, readDrawing, type P
 import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, calculateMaterials, calculateScaffold, calculateScaffoldPlan, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
 import { footprintCells, footprintContains, footprintContainsPoint, footprintCoversPolygon, footprintFromOutline, footprintSupportsSegment, footprintsOverlap } from './siteFootprints.ts'
-import { routeSiteSections, type RoutedSpan } from './siteRouting.ts'
+import { fitStockBesideWalls, guardFacesWall } from './siteWallFit.ts'
+import { routeSiteSections, wallStandOff, type RoutedSpan } from './siteRouting.ts'
 import { connectSiteTransitions, fitTransitionStock, isWallEndGuard, type JoinedLift, type TransitionEnd } from './siteTransitions.ts'
 
 /** Horizontal site coordinates and vertical heights are all measured in metres. */
@@ -10,7 +11,7 @@ export type SitePoint = { x: number; z: number }
 export type Footprint = { x: number; z: number; width: number; depth: number; outline?: SitePoint[] }
 export type SiteBlock = Footprint & { id: string; parentId: string; height: number }
 export type SiteLine = { id: string; surfaceId: string; start: SitePoint; end: SitePoint }
-export type SiteSection = SiteLine & { layers: number; automatic?: boolean; followGlobal?: boolean }
+export type SiteSection = SiteLine & { layers: number; automatic?: boolean; followGlobal?: boolean; groupId?: string }
 export type Site = { blocks: SiteBlock[]; guides: SiteLine[]; sections: SiteSection[] }
 export type ResolvedBlock = SiteBlock & { base: number; top: number }
 export type SiteIssue = { code: string; blocking: boolean; message: string; sectionIds: string[]; blockId?: string }
@@ -186,6 +187,7 @@ export function readSite(value: unknown): Site | undefined {
     const line = readLine(value), fields = object(value), layers = fields?.layers
     return line && number(layers) ? { ...line, layers: sectionLayerCount(layers),
       ...(fields?.automatic === true && { automatic: true }),
+      ...(id(fields?.groupId) && { groupId: fields!.groupId as string }),
       ...(typeof fields?.followGlobal === 'boolean' && { followGlobal: fields.followGlobal }) } : undefined
   })
   const all = [...blocks, ...guides, ...sections]
@@ -230,10 +232,12 @@ function pipeEntersBlock(a: Vector3Tuple, b: Vector3Tuple, block: ResolvedBlock,
   const vertical = Math.abs(a[0] - b[0]) < EPS && Math.abs(a[2] - b[2]) < EPS
   // Uprights have flat ends: bearing on the top is permitted, penetration is not.
   if (vertical && Math.min(a[1], b[1]) >= block.top - EPS) return false
-  const verticalRadius = vertical ? 0 : radius
+  const delta = a.map((value, i) => Math.abs(value - b[i]))
+  const axis = delta.indexOf(Math.max(...delta))
+  const padding = (i: number) => i === axis ? 0 : radius
   return footprintCells(block).some(cell => entersBox(a, b, {
-    min: [cell.x - radius + EPS, block.base - verticalRadius + EPS, cell.z - radius + EPS],
-    max: [cell.x + cell.width + radius - EPS, block.top + verticalRadius - EPS, cell.z + cell.depth + radius - EPS],
+    min: [cell.x - padding(0) + EPS, block.base - padding(1) + EPS, cell.z - padding(2) + EPS],
+    max: [cell.x + cell.width + padding(0) - EPS, block.top + padding(1) - EPS, cell.z + cell.depth + padding(2) - EPS],
   }))
 }
 
@@ -249,7 +253,14 @@ function meetOnPlan(a: SiteSection, b: SiteSection) {
   return on(a.start, b) || on(a.end, b) || on(b.start, a) || on(b.end, a)
 }
 
-function componentGroups(sections: SiteSection[], wallIds = new Set<string>()) {
+function footingStations(s: SiteSection, width: number) {
+  const length = siteLength(s), dx = -(s.end.z-s.start.z)/length*width, dz = (s.end.x-s.start.x)/length*width
+  return [s.start,s.end].map(p=>[p,{x:p.x+dx,z:p.z+dz}])
+}
+function sharedFootingPair(a: SiteSection, b: SiteSection, width: number) {
+  return footingStations(a,width).some(pair=>footingStations(b,width).some(other=>pair.every(p=>other.some(q=>Math.hypot(p.x-q.x,p.z-q.z)<EPS))))
+}
+function componentGroups(sections: SiteSection[], wallIds = new Set<string>(), width = 0) {
   const groups: SiteSection[][] = []
   const indices = new Map(sections.map((section, i) => [section.id, i]))
   const remaining = new Set(sections)
@@ -258,7 +269,7 @@ function componentGroups(sections: SiteSection[], wallIds = new Set<string>()) {
     const group = [first]
     for (const current of group) for (const candidate of remaining) {
       if (candidate.surfaceId === current.surfaceId && (candidate.layers === current.layers || candidate.automatic && current.automatic)
-        && wallIds.has(candidate.id) === wallIds.has(current.id) && meetOnPlan(current, candidate)) {
+        && wallIds.has(candidate.id) === wallIds.has(current.id) && (meetOnPlan(current, candidate) || width > 0 && wallIds.has(current.id) && sharedFootingPair(current, candidate, width))) {
         group.push(candidate); remaining.delete(candidate)
       }
     }
@@ -328,7 +339,7 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     }
   }
   const eligible = new Set(summaries.filter(summary => summary.length >= minimumLength).map(summary => summary.id))
-  const groups = componentGroups(site.sections.filter(s => eligible.has(s.id)), wallIds)
+  const groups = componentGroups(site.sections.filter(s => eligible.has(s.id)), wallIds, settings.width)
   const groupBySection = new Map(groups.flatMap((group, i) => group.map(s => [s.id, i] as const)))
   for (let i = 0; i < site.sections.length; i++) for (let j = i + 1; j < site.sections.length; j++) {
     const a = site.sections[i], b = site.sections[j]
@@ -362,7 +373,7 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     const deckLayerOffset = group.some(s => s.automatic) ? summary.firstLayer - 1 : 0
     const variedLayers = group.some(line => line.layers !== section.layers)
       ? drawing.segments.map((_, index) => group.find(line => line.id === owner(index))!.layers) : undefined
-    const part = calculateScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers)
+    const part = calculateScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall)
     measuredLength += part.perimeter
     const prefix = `R${groupIndex + 1}/`
     const elements: ElementBounds[] = []
@@ -382,11 +393,16 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     const memberOwners = new Map(part.members.map(member => [member.id, owner(member.pathSegment)]))
     const radius = settings.pipeDiameter / 2
     for (const line of group) if (!supported(line.start, line.end)) supportIssue(line.id, '绘制线')
+    const sharedStations = group.flatMap((a,i)=>group.slice(i+1).flatMap(b=>
+      footingStations(a,settings.width).filter(pair=>footingStations(b,settings.width).some(other=>pair.every(p=>other.some(q=>Math.hypot(p.x-q.x,p.z-q.z)<EPS))))
+        .map(points=>({points,layers:Math.min(a.layers,b.layers)}))))
     const removed = new Set<string>()
     const members = part.members.map(member => ({ ...member, start: world(member.start), end: world(member.end),
       connectionPoints: member.connectionPoints.map(world), pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) }))
       .filter(member => {
-        const skip = isWallEndGuard(member, transitionEnds.get(member.pathSegment) ?? [])
+        const sharedCap = member.type === 'guardrail' && sharedStations.some(station => (member.layer ?? Infinity) <= station.layers
+          && member.connectionPoints.every(p=>station.points.some(q=>Math.hypot(p[0]-q.x,p[2]-q.z)<EPS)))
+        const skip = sharedCap || isWallEndGuard(member, transitionEnds.get(member.pathSegment) ?? []) || followsWall && guardFacesWall(member, blocks, Math.max(settings.width, wallStandOff(settings)))
         if (skip) removed.add(member.id)
         return !skip
       })
@@ -395,6 +411,7 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     const connectors = part.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
       .map(c => ({ ...c, position: world(c.position) }))
     fitTransitionStock({ members, pipeSegments, connectors }, transitionEnds, radius)
+    if (followsWall) fitStockBesideWalls({members, pipeSegments, connectors}, blocks, radius)
     for (const member of members) {
       const start = member.start
       if (member.type === 'post') {
@@ -538,7 +555,10 @@ export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLa
   for (const error of errors) issues.push({ code: 'automatic-route', blocking: true, sectionIds: [error.id],
     message: `第 ${labels.get(error.id)} 段${error.message}` })
   const result = connectSiteTransitions(spanLayout, spans, spanLayout.sections, transitions, settings)
-  if (result.layout !== spanLayout) fitTransitionStock(result.layout, transitionEnds, settings.pipeDiameter / 2)
+  if (result.layout !== spanLayout) {
+    fitTransitionStock(result.layout, transitionEnds, settings.pipeDiameter / 2)
+    fitStockBesideWalls(result.layout, blocks, settings.pipeDiameter / 2)
+  }
   for (const { before, after } of result.failed) {
     const ids = [...new Set([before.id, after.id].map(id => sourceIds.get(id) ?? id))]
     issues.push({ code: 'unjoined-transition', blocking: true, sectionIds: ids,
@@ -574,7 +594,13 @@ export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLa
         }
       }
       const overlapping = new Set(physical.flatMap(item => item.index === undefined || spans[item.index].sourceId === sourceId
-        || !bounds.some(box => overlapBoxes(box, item.bounds)) ? [] : [spans[item.index].sourceId]))
+        || !bounds.some(box => {
+          if (!overlapBoxes(box, item.bounds)) return false
+          const joint = bridge.rails.some(rail => [rail.start, rail.end].some(point => point.every((value, axis) =>
+            Math.max(box.min[axis], item.bounds.min[axis]) >= value - radius * 2 - EPS
+            && Math.min(box.max[axis], item.bounds.max[axis]) <= value + radius * 2 + EPS)))
+          return !joint
+        }) ? [] : [spans[item.index].sourceId]))
       if (overlapping.size) issues.push({ code: 'bridge-overlap', blocking: true, sectionIds: [...new Set([sourceId, ...overlapping])],
         message: `第 ${labels.get(sourceId)} 段的高差接通区与其他架体重叠，请调整路线。` })
     }

@@ -2120,8 +2120,13 @@ export function countMembers(layout: ScaffoldLayout) {
  * remain editable but are flagged because their fabrication detail is unspecified.
  */
 export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
-  segmentLayerCounts?: readonly number[]): ScaffoldLayout {
+  segmentLayerCounts?: readonly number[], preserveDirection = false): ScaffoldLayout {
   const paths = drawingPaths(drawing)
+  if (preserveDirection) for (const path of paths) {
+    if (path.points[0].id !== drawing.segments[path.edgeIndices[0]].start) {
+      path.points.reverse(); path.edgeIndices.reverse()
+    }
+  }
   if (!paths.length) return calculateScaffold([], [], parameters)
   const origin = drawing.points[0]
   // A normal connected outline needs exactly one domain calculation on mobile.

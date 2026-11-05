@@ -5,15 +5,15 @@ const block = (id: string, x: number, z: number, width: number, depth: number, e
   ({ id, x, z, width, depth, name: id, ...extra })
 
 describe('plan annotations', () => {
-  it('gives the selected block every edge and gives each other block one label per axis', () => {
+  it('shows every exposed edge of adjacent blocks', () => {
     const result = layoutPlanAnnotations([
       block('B1', 0, 0, 8, 4),
       block('B2', 8, 0, 4, 4),
     ], [], 50)
     const b1 = result.dimensions.filter((item) => item.blockId === 'B1')
     const b2 = result.dimensions.filter((item) => item.blockId === 'B2')
-    expect(new Set(b1.map((item) => item.side)).size).toBe(2)
-    expect(new Set(b2.map((item) => item.side)).size).toBe(2)
+    expect(new Set(b1.map((item) => item.side)).size).toBe(3)
+    expect(new Set(b2.map((item) => item.side)).size).toBe(3)
     expect(b1.every((item) => !item.selected)).toBe(true)
   })
 
@@ -45,7 +45,7 @@ describe('plan annotations', () => {
       block('B2', 0, 0, 6, 4, { base: 3, top: 6 }),
     ], [], 50)
     expect(result.dimensions.filter((item) => item.blockId === 'B1')).toHaveLength(0)
-    expect(result.dimensions.filter((item) => item.blockId === 'B2')).toHaveLength(2)
+    expect(result.dimensions.filter((item) => item.blockId === 'B2')).toHaveLength(4)
   })
 
   it('still labels an inset upper block and its exposed parent edges', () => {
@@ -73,4 +73,14 @@ describe('plan annotations', () => {
     expect(formatMetres(10)).toBe('10.00 m')
     expect(formatMetres(9.4)).toBe('9.40 m')
   })
+})
+
+it('labels both exposed remnants of a long wall beside an attached rectangle', () => {
+  const result = layoutPlanAnnotations([block('B1', 0, 0, 10, 4), block('B2', 3, -2, 4, 2)], [], 50)
+  expect(result.dimensions.filter(d => d.blockId === 'B1' && d.side === 'top').map(d => d.length)).toEqual([3, 3])
+})
+it('labels all six actual edges of a selected L shape', () => {
+  const outline = [[0,0],[6,0],[6,2],[2,2],[2,6],[0,6]].map(([x,z]) => ({x,z}))
+  const result = layoutPlanAnnotations([block('B1',0,0,6,6,{outline,selected:true})],[],50)
+  expect(result.dimensions.map(d=>d.length)).toEqual([6,2,4,4,2,6])
 })

@@ -1,5 +1,6 @@
 import { DEFAULT_PARAMETERS, type ScaffoldParameters } from './scaffold.ts'
 import { EMPTY_SITE, GROUND, type Site, type SiteBlock, type SiteSection } from './site.ts'
+import adjacentHouses from '../../docs/fixtures/user-adjacent-houses.json?raw'
 import { footprintFromOutline } from './siteFootprints.ts'
 
 const section = (id: string, surfaceId: string, layers: number, x: number, z: number, endX: number, endZ: number): SiteSection =>
@@ -18,7 +19,10 @@ const REFERENCE_PARAMETERS = { ...DEFAULT_PARAMETERS, width: 0.9, deckSupportRai
 const demo = (id: string, title: string, site: Site, check: string, parameters: Partial<ScaffoldParameters> = {}): SiteDemo =>
   ({ id, title, site, check, parameters: { ...REFERENCE_PARAMETERS, ...parameters } })
 
+const adjacentProject = JSON.parse(adjacentHouses) as {scene: Site; parameters: ScaffoldParameters}
+
 export const SITE_DEMOS = [
+  demo('adjacent-houses', '贴合双屋 · 窄巷交汇', adjacentProject.scene, '原始 14 段回归图：第 1、14 段在 B2 顶面接通，窄巷低架借用高架已有柱位，局部离墙 0.45 m。外墙整圈长度 81.40 m。', adjacentProject.parameters),
   demo('outline', 'L 形轮廓房屋', scene([{ ...footprintFromOutline([
     { x: 0, z: 0 }, { x: 6, z: 0 }, { x: 6, z: 2 }, { x: 2, z: 2 }, { x: 2, z: 6 }, { x: 0, z: 6 },
   ])!, id: 'B1', parentId: GROUND, height: 3.5 }], [
