@@ -162,6 +162,19 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
       }
       if (placement) { low.b = placement.start; high.a = placement.a; high.b = placement.b; far.a = placement.end }
     }
+    // A terminal roof also belongs to the continuous station grid. Anchor its
+    // first pair to the neighbouring lower frame instead of to the roof rim.
+    // Keep the remote endpoint: it may be a shared roof corner on another face.
+    for (let i = 0; i < placements.length; i++) {
+      const here = placements[i]
+      if (i === placements.length - 1 && i > 0 && here.base > placements[i - 1].base) {
+        const a = roundSite(placements[i - 1].b + settings.postSpacing)
+        if (a >= here.a - EPS && here.b - a >= MIN_SECTION_LENGTH - EPS) here.a = a
+      } else if (i === 0 && placements.length > 1 && here.base > placements[1].base) {
+        const b = roundSite(placements[1].a - settings.postSpacing)
+        if (b <= here.b + EPS && b - here.a >= MIN_SECTION_LENGTH - EPS) here.b = b
+      }
+    }
     const parts = placements.map(({ a, b, base }, i) => {
       const interval = intervals[i]
       const layers = source.layers - getSectionLevels(base, settings.liftHeight, 1).firstLayer + 1

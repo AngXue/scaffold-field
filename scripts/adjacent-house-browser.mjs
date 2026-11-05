@@ -52,6 +52,14 @@ try {
  await demo.getByLabel('选择对象').selectOption('S14');await demo.getByText('内排中心距墙 0.45 m，外排位于离墙一侧。',{exact:true}).waitFor()
  await demo.getByRole('button',{name:/三维检查/}).click();await demo.locator('[data-testid="scaffold-canvas"] canvas').waitFor();await demo.waitForTimeout(1500)
  await demo.screenshot({path:output+'/original-demo-3d.png'})
+ for (const viewport of [{width:1152,height:680},{width:720,height:1110}]) {
+   await demo.setViewportSize(viewport)
+   const canvas=demo.locator('[data-testid="scaffold-canvas"] canvas')
+   await canvas.waitFor();await demo.waitForTimeout(400)
+   assert(await canvas.evaluate(el=>el.width>0&&el.height>0))
+   assert(await demo.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth))
+   await demo.screenshot({path:output+`/original-demo-3d-${viewport.width}.png`})
+ }
  assert.deepEqual(errors,[])
  console.log('Passed: actual contour labels, B2 borrowed closure, outer group, independent lift target, dragged partial range, original Demo 3D and 0.45 m wall clearance')
 } finally {await browser.close()}

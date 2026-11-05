@@ -65,3 +65,29 @@ it('calculates the generated whole perimeter with one common target', () => {
   expect(result.issues).toEqual([])
   expect(result.canExportMaterials).toBe(true)
 })
+
+it('anchors both B2 roof approaches 1.80 m from the connected lower post pairs', () => {
+  const result=calculateSite(site,fixture.parameters)
+  expect(result.issues).toEqual([])
+  const first=result.spans!.find(s=>s.sourceId==='S1' && s.line.surfaceId==='B2')!.line
+  const side=result.spans!.find(s=>s.sourceId==='S10' && s.line.surfaceId==='B2')!.line
+  expect([first.end.x, first.end.z]).toEqual([6.85,-2.5])
+  expect([side.end.x, side.end.z]).toEqual([8.5,-2.5])
+  expect([side.start.x, side.start.z]).toEqual([8.5,7.8])
+  const posts=result.members.filter(m=>m.type==='post')
+  for(const position of [[6.85,4,-2.5],[6.85,4,-3.25],[8.5,4,7.8],[9.25,4,7.8],
+    [5.05,0,-2.5],[5.05,0,-3.25],[8.5,0,9.6],[9.25,0,9.6]]) {
+    expect(posts.some(m=>m.start.every((v,i)=>Math.abs(v-position[i])<0.001)), `post at ${position}`).toBe(true)
+  }
+  expect(result.joinedLifts?.filter(j=>j.levels.join(',')==='5.64,7.52')).toHaveLength(2)
+})
+
+it.each([[1.5,6.55,8.1],[2,7.05,7.6]])('uses configured %s m spacing for terminal roof approaches', (postSpacing,x,z) => {
+  const result=calculateSite(site,{...fixture.parameters,postSpacing})
+  expect(result.issues).toEqual([])
+  const posts=result.members.filter(m=>m.type==='post')
+  for (const position of [[x,4,-2.5],[x,4,-3.25],[8.5,4,z],[9.25,4,z]]) {
+    expect(posts.some(m=>m.start.every((v,i)=>Math.abs(v-position[i])<0.001))).toBe(true)
+  }
+  expect(result.joinedLifts).toHaveLength(2)
+})

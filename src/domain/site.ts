@@ -373,7 +373,14 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     const deckLayerOffset = group.some(s => s.automatic) ? summary.firstLayer - 1 : 0
     const variedLayers = group.some(line => line.layers !== section.layers)
       ? drawing.segments.map((_, index) => group.find(line => line.id === owner(index))!.layers) : undefined
-    const part = calculateScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall)
+    const requiredEndPairs = drawing.segments.map((segment, index): [boolean, boolean] => {
+      const ends = transitionEnds.get(indexById.get(owner(index))!) ?? []
+      return [segment.start, segment.end].map(id => {
+        const point = drawing.points.find(p => p.id === id)!
+        return ends.some(end => mm(end.station) === mm((end.axis === 0 ? point.x : point.y) / PIXELS_PER_METER))
+      }) as [boolean, boolean]
+    })
+    const part = calculateScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall, requiredEndPairs)
     measuredLength += part.perimeter
     const prefix = `R${groupIndex + 1}/`
     const elements: ElementBounds[] = []

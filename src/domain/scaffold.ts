@@ -917,6 +917,7 @@ export function calculateScaffold(
   localLifts?: readonly number[],
   deckLayerOffset = 0,
   segmentLayerCounts?: readonly number[],
+  requiredEndPairs: readonly (readonly [boolean, boolean])[] = [],
 ): ScaffoldLayout {
   const legacyParameters = parameters as ScaffoldParameters & { rowCount?: number; height?: number }
   parameters = {
@@ -1528,11 +1529,13 @@ export function calculateScaffold(
         // this entire short row, the endpoint is equally redundant.
         const limits = offsetPostLimits[segmentIndex]
         const anchors = cornerStations[segmentIndex]
+        const requiredPair = (station === 0 && requiredEndPairs[segmentIndex]?.[0])
+          || (station === bayCount && requiredEndPairs[segmentIndex]?.[1])
         const nearTrimmedCorner = (station === 0 && limits.end > 0 && limits.end <= 0.25
           && anchors.some(anchor => anchor < -0.001 && limits.end - anchor <= parameters.postSpacing + 0.001))
           || (station === bayCount && segmentLength - limits.start > 0 && segmentLength - limits.start <= 0.25
           && anchors.some(anchor => anchor > segmentLength + 0.001 && anchor - limits.start <= parameters.postSpacing + 0.001))
-        if (row === 1 && (nearTrimmedCorner || skippedOffsetPosts.has(`${segmentIndex}:${station}`)
+        if (row === 1 && !requiredPair && (nearTrimmedCorner || skippedOffsetPosts.has(`${segmentIndex}:${station}`)
           || stations[station] > offsetPostLimits[segmentIndex].end + 0.001
           || stations[station] < offsetPostLimits[segmentIndex].start - 0.001)) continue
         const key = pointKey(point)
@@ -2120,7 +2123,7 @@ export function countMembers(layout: ScaffoldLayout) {
  * remain editable but are flagged because their fabrication detail is unspecified.
  */
 export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
-  segmentLayerCounts?: readonly number[], preserveDirection = false): ScaffoldLayout {
+  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): ScaffoldLayout {
   const paths = drawingPaths(drawing)
   if (preserveDirection) for (const path of paths) {
     if (path.points[0].id !== drawing.segments[path.edgeIndices[0]].start) {
@@ -2129,10 +2132,15 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   }
   if (!paths.length) return calculateScaffold([], [], parameters)
   const origin = drawing.points[0]
+  // Transition bridges require both end posts even beside a short corner return.
+  const retainedPairs = (path: ReturnType<typeof drawingPaths>[number]): [boolean, boolean][] => path.edgeIndices.map((edge, i) => {
+    const pair = requiredEndPairs[edge] ?? [false, false]
+    return path.points[i].id === drawing.segments[edge].start ? [pair[0], pair[1]] : [pair[1], pair[0]]
+  })
   // A normal connected outline needs exactly one domain calculation on mobile.
   if (paths.length === 1) {
     const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
-      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]))
+      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path))
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     result.members.forEach(m => {
@@ -2157,7 +2165,7 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   let postHeights: MaterialResult['postHeights'] | undefined
   paths.forEach((path, component) => {
     const layout = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
-      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]))
+      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path))
     postHeights ??= layout.materials.postHeights
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER
     const dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
