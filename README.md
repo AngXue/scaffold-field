@@ -47,6 +47,8 @@ npm run audit:geometry
 | `src/components/ui/`、`docs/UI组件库.md` | 新拟态组件库、设计令牌和界面规范 |
 | `src/components/planAnnotations.ts`、`SceneDimensions.tsx` | 二维标注避让、三维尺寸标签与拾取辅助 |
 
+规则框架的下一步设计见[规则框架设计](docs/规则框架设计.md)、[现有规则清单](docs/规则清单.md)和[迁移与验收方案](docs/规则框架迁移与验收.md)。当前为待确认设计，计算内核仍使用现行实现。
+
 界面组件与交互口径见[UI 组件库](docs/UI组件库.md)。测算口径见[计算规则](docs/计算规则.md)。改规则时同步更新领域代码、回归测试和文档。扣件计量的历史核对见[扣件计算复核](docs/扣件计算复核.md)。安卓性能的测量方法及迁移条件见[技术栈评估](docs/技术栈评估.md)。
 
 ## 使用范围
