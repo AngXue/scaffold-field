@@ -2,7 +2,7 @@ import { measureDrawing, normalizeDrawing, PIXELS_PER_METER, readDrawing, type P
 import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, calculateMaterials, calculateScaffold, calculateScaffoldPlan, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
 import { footprintCells, footprintContains, footprintContainsPoint, footprintCoversPolygon, footprintFromOutline, footprintSupportsSegment, footprintsOverlap } from './siteFootprints.ts'
-import { fitStockBesideWalls, guardFacesWall } from './siteWallFit.ts'
+import { fitSceneGuardrails, fitStockBesideWalls, guardFacesWall } from './siteWallFit.ts'
 import { routeSiteSections, wallStandOff, type RoutedSpan } from './siteRouting.ts'
 import { connectSiteTransitions, fitTransitionStock, isWallEndGuard, type JoinedLift, type TransitionEnd } from './siteTransitions.ts'
 
@@ -419,6 +419,7 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
       .map(c => ({ ...c, position: world(c.position) }))
     fitTransitionStock({ members, pipeSegments, connectors }, transitionEnds, radius)
     if (followsWall) fitStockBesideWalls({members, pipeSegments, connectors}, blocks, radius)
+    fitSceneGuardrails({members, pipeSegments, connectors, decks: part.decks.map(deck => ({...deck, corners: deck.corners.map(world) as typeof deck.corners, coverage: deck.coverage?.map(face => face.map(world))}))}, blocks, radius)
     for (const member of members) {
       const start = member.start
       if (member.type === 'post') {
@@ -565,6 +566,7 @@ export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLa
   if (result.layout !== spanLayout) {
     fitTransitionStock(result.layout, transitionEnds, settings.pipeDiameter / 2)
     fitStockBesideWalls(result.layout, blocks, settings.pipeDiameter / 2)
+    fitSceneGuardrails(result.layout, blocks, settings.pipeDiameter / 2)
   }
   for (const { before, after } of result.failed) {
     const ids = [...new Set([before.id, after.id].map(id => sourceIds.get(id) ?? id))]

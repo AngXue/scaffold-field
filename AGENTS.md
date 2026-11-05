@@ -128,6 +128,9 @@ The tablet build is a Capacitor WebView shell around the same web bundle, so the
 
 ## Validation
 
+- Before changing a calculation rule, compare the existing documented rules and fixed Demo expectations. Ask the user about conflicting or uncertain business semantics before implementing that part; record the confirmed exception and its regression cases.
+- Guardrails at inward crossings may stop at the shared corner post on common lifts; working-layer longitudinals, corner decks and posts retain their existing rules. Outward guard crossings keep their extension. Move whole guard stock to minimise walkway intrusion without losing design endpoints or moving post fittings; unavoidable intrusion is allowed (user-confirmed), never auto-cut stock or block export solely for that remainder. Wall/support/collision validations still apply.
+
 - Cover kernel geometry, stock assembly, and connectors in [scaffold.test.ts](src/domain/scaffold.test.ts). Cover scene routing, global levels, validation, and compatibility in [site.test.ts](src/domain/site.test.ts).
 - 2D scale, snapping, or path-resize changes require updates to [src/domain/plan.test.ts](src/domain/plan.test.ts).
 - Regenerate the geometry audit after changing `scaffold.ts`. Run `scripts/site-browser.mjs` for scene interaction and export changes. See the [web acceptance record](docs/qa/三维场景网页验收.md) for setup and scope.

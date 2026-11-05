@@ -1,6 +1,6 @@
 {
   "date": "2026-11-05",
-  "sourceHash": "2fde8aa8199550e3f71157207273abe7ada1267691fce5490db16b7c66c6596f",
+  "sourceHash": "db68c45b105ac8ea821f3222b5dd2c137ffcf59ddc79a4e292e4ddb6441ca7f2",
   "seed": "0x20261015",
   "summary": {
     "handDrawnShapes": 27,
@@ -5917,13 +5917,13 @@
         "longitudinal": 119,
         "transverse": 150,
         "guardrail": 54,
-        "pipes": 578,
+        "pipes": 566,
         "decks": 290,
         "deckArea": 172.125,
         "channels": 37,
         "connectors": {
           "cross": 1115,
-          "butt": 193,
+          "butt": 181,
           "swivel": null
         }
       },
@@ -6043,13 +6043,13 @@
         "longitudinal": 68,
         "transverse": 60,
         "guardrail": 24,
-        "pipes": 261,
+        "pipes": 249,
         "decks": 140,
         "deckArea": 78.75,
         "channels": 18,
         "connectors": {
           "cross": 494,
-          "butt": 81,
+          "butt": 69,
           "swivel": null
         }
       },
@@ -6295,13 +6295,13 @@
         "longitudinal": 102,
         "transverse": 60,
         "guardrail": 36,
-        "pipes": 321,
+        "pipes": 309,
         "decks": 165,
         "deckArea": 96.75,
         "channels": 22,
         "connectors": {
           "cross": 602,
-          "butt": 89,
+          "butt": 77,
           "swivel": null
         }
       },
@@ -6421,13 +6421,13 @@
         "longitudinal": 136,
         "transverse": 96,
         "guardrail": 48,
-        "pipes": 467,
+        "pipes": 455,
         "decks": 250,
         "deckArea": 150.75,
         "channels": 32,
         "connectors": {
           "cross": 920,
-          "butt": 135,
+          "butt": 123,
           "swivel": null
         }
       },
@@ -6556,13 +6556,13 @@
         "longitudinal": 136,
         "transverse": 54,
         "guardrail": 48,
-        "pipes": 389,
+        "pipes": 383,
         "decks": 190,
         "deckArea": 102,
         "channels": 25,
         "connectors": {
-          "cross": 811,
-          "butt": 106,
+          "cross": 806,
+          "butt": 100,
           "swivel": null
         }
       },
@@ -7910,13 +7910,13 @@
         "longitudinal": 68,
         "transverse": 66,
         "guardrail": 36,
-        "pipes": 285,
+        "pipes": 279,
         "decks": 140,
         "deckArea": 78.75,
         "channels": 18,
         "connectors": {
           "cross": 558,
-          "butt": 85,
+          "butt": 79,
           "swivel": null
         }
       },
@@ -22983,13 +22983,13 @@
         "longitudinal": 153,
         "transverse": 54,
         "guardrail": 66,
-        "pipes": 399,
+        "pipes": 393,
         "decks": 175,
         "deckArea": 94.537,
         "channels": 25,
         "connectors": {
           "cross": 806,
-          "butt": 82,
+          "butt": 76,
           "swivel": null
         }
       },
@@ -28191,12 +28191,12 @@
         "before": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         },
         "after": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         }
       }
     },
@@ -28209,12 +28209,12 @@
         "before": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         },
         "after": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         }
       }
     },
@@ -28227,12 +28227,12 @@
         "before": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         },
         "after": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         }
       }
     },
@@ -28245,12 +28245,12 @@
         "before": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         },
         "after": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         }
       }
     },
@@ -28263,12 +28263,12 @@
         "before": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         },
         "after": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         }
       }
     },
@@ -28281,12 +28281,12 @@
         "before": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         },
         "after": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         }
       }
     },
@@ -28299,12 +28299,12 @@
         "before": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         },
         "after": {
           "posts": 45,
           "decks": 190,
-          "cross": 811
+          "cross": 806
         }
       }
     },

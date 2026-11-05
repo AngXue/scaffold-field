@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { formatMetres, layoutPlanAnnotations, type PlanBlockInput } from './planAnnotations'
+import fixtureText from '../../docs/fixtures/user-adjacent-houses.json?raw'
+import { formatMetres, sectionAnnotationSize, layoutPlanAnnotations, type PlanBlockInput } from './planAnnotations'
 
 const block = (id: string, x: number, z: number, width: number, depth: number, extra: Partial<PlanBlockInput> = {}): PlanBlockInput =>
   ({ id, x, z, width, depth, name: id, ...extra })
@@ -83,4 +84,21 @@ it('labels all six actual edges of a selected L shape', () => {
   const outline = [[0,0],[6,0],[6,2],[2,2],[2,6],[0,6]].map(([x,z]) => ({x,z}))
   const result = layoutPlanAnnotations([block('B1',0,0,6,6,{outline,selected:true})],[],50)
   expect(result.dimensions.map(d=>d.length)).toEqual([6,2,4,4,2,6])
+})
+
+it.each([10,30,80])('keeps every section chip off selected contour dimensions at scale %s', scale => {
+  const fixture=JSON.parse(fixtureText)
+  for (const selected of ['B1','B2']) {
+    const result=layoutPlanAnnotations(fixture.scene.blocks.map((b: PlanBlockInput)=>({...b,name:b.id,selected:b.id===selected})),
+      fixture.scene.sections.map((line: {id:string;start:{x:number;z:number};end:{x:number;z:number}},i:number)=>({...line,text:`第 ${i+1} 段`})),scale)
+    for(const label of result.sectionLabels) for(const dim of result.dimensions.filter(d=>d.selected)) {
+      const size=sectionAnnotationSize(label.text)
+      const width=label.vertical?size.height:size.width, height=label.vertical?size.width:size.height
+      const dx=(dim.from.x+dim.to.x)/2*scale+dim.normal.x*(dim.offset*scale+10)
+      const dy=(dim.from.z+dim.to.z)/2*scale+dim.normal.z*(dim.offset*scale+10)
+      const dw=dim.normal.x===0?dim.text.length*6.6+10:15, dh=dim.normal.x===0?15:dim.text.length*6.6+10
+      const overlap=Math.abs(label.position.x*scale-dx)<(width+dw)/2 && Math.abs(label.position.z*scale-dy)<(height+dh)/2
+      expect(overlap,`${selected} ${dim.key} versus ${label.id}`).toBe(false)
+    }
+  }
 })

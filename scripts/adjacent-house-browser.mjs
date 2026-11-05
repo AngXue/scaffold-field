@@ -49,6 +49,18 @@ try {
  const original=await browser.newContext({viewport:{width:1440,height:1000}})
  await original.addInitScript(p=>localStorage.setItem('scaffold-project.v07',JSON.stringify(p)),fixture)
  const demo=await original.newPage();demo.on('pageerror',e=>errors.push(e.message));await demo.goto(process.env.SITE_URL||'http://127.0.0.1:5182')
+ for (const selected of ['B1','B2']) {
+   await demo.getByLabel('选择对象').selectOption(selected)
+   const overlaps=await demo.evaluate(()=>{
+     const dimensions=[...document.querySelectorAll('.site-dimension.is-selected text')].map(el=>el.getBoundingClientRect())
+     return [...document.querySelectorAll('.site-annotation rect')].flatMap(el=>{
+       const a=el.getBoundingClientRect()
+       return dimensions.filter(b=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top).map(()=>el.parentElement.getAttribute('data-label-for'))
+     })
+   })
+   assert.deepEqual(overlaps,[],`selected ${selected} dimensions remain clear of section chips`)
+   await demo.screenshot({path:output+`/selected-${selected}-dimensions.png`})
+ }
  await demo.getByLabel('选择对象').selectOption('S14');await demo.getByText('内排中心距墙 0.45 m，外排位于离墙一侧。',{exact:true}).waitFor()
  await demo.getByRole('button',{name:/三维检查/}).click();await demo.locator('[data-testid="scaffold-canvas"] canvas').waitFor();await demo.waitForTimeout(1500)
  await demo.screenshot({path:output+'/original-demo-3d.png'})

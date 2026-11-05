@@ -61,6 +61,11 @@ const intersectsAny = (rect: Rect, others: Rect[]) => others.some(other => overl
 const textWidth = (text: string) => Math.max(22, text.length * 6.6 + 10)
 const LABEL_HEIGHT = 15
 const blockRect = (block: Footprint, scale: number): Rect => ({ x: block.x * scale, y: block.z * scale, width: block.width * scale, height: block.depth * scale })
+/** Shared with the SVG chip: reserve CJK glyphs and the actual padded height. */
+export const sectionAnnotationSize = (text: string) => ({
+  width: [...text].reduce((sum, character) => sum + (character.charCodeAt(0) > 255 ? 10 : 6.4), 12),
+  height: 16,
+})
 export const formatMetres = (value: number) => `${value.toFixed(2)} m`
 
 function visibleEdges(block: PlanBlockInput, others: PlanBlockInput[]) {
@@ -89,7 +94,7 @@ function visibleEdges(block: PlanBlockInput, others: PlanBlockInput[]) {
 
 export function layoutPlanAnnotations(blocks: PlanBlockInput[], sections: PlanSectionInput[], scale: number): PlanAnnotationLayout {
   const safeScale = scale > 0 ? scale : 1
-  const rects = blocks.map(block => blockRect(block, safeScale))
+  const rects = blocks.flatMap(block => footprintCells(block).map(cell => blockRect(cell, safeScale)))
   const occupied: Rect[] = []
   const dimensions: PlanDimension[] = []
   const ordered = [...blocks].sort((a, b) => Number(Boolean(b.selected)) - Number(Boolean(a.selected)))
@@ -120,32 +125,28 @@ export function layoutPlanAnnotations(blocks: PlanBlockInput[], sections: PlanSe
     const length = Math.hypot(dx, dy) || 1
     const nx = -dy / length
     const ny = dx / length
-    const width = textWidth(section.text)
+    const size = sectionAnnotationSize(section.text)
+    const width = size.width + 6, height = size.height + 6
     const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }
     const vertical = Math.abs(dy) > Math.abs(dx)
     // Start a little farther out than a dimension label: a section chip and the
     // edge measurement are different readings and must not sit shoulder to shoulder.
-    const candidates = [28, 42, 58, 76, 96]
     let chosen: { x: number; y: number } | undefined
-    for (const distance of candidates) {
+    // Prefer nearby space outside houses. In a recess, a clear chip inside the
+    // footprint is easier to associate with its edge than one far across the plan.
+    // The fallback still respects every dimension and previously placed chip.
+    for (let attempt = 0; !chosen; attempt++) {
+      const outside = attempt < 6
+      const distance = 28 + (outside ? attempt : attempt - 6) * 14
       for (const sign of [1, -1]) {
         const at = { x: mid.x + nx * sign * distance, y: mid.y + ny * sign * distance }
         const box = vertical
-          ? { x: at.x - LABEL_HEIGHT / 2, y: at.y - width / 2, width: LABEL_HEIGHT, height: width }
-          : { x: at.x - width / 2, y: at.y - LABEL_HEIGHT / 2, width, height: LABEL_HEIGHT }
-        // Avoid every accepted label and every block footprint. A section label
-        // belongs beside the line, never on top of a rectangle it does not explain.
-        if (!intersectsAny(box, occupied) && !intersectsAny(box, rects)) { chosen = at; occupied.push(box); break }
+          ? { x: at.x - height / 2, y: at.y - width / 2, width: height, height: width }
+          : { x: at.x - width / 2, y: at.y - height / 2, width, height }
+        if (!intersectsAny(box, occupied) && (!outside || !intersectsAny(box, rects))) {
+          chosen = at; occupied.push(box); break
+        }
       }
-      if (chosen) break
-    }
-    if (!chosen) {
-      const at = { x: mid.x + nx * 78, y: mid.y + ny * 78 }
-      const box = vertical
-        ? { x: at.x - LABEL_HEIGHT / 2, y: at.y - width / 2, width: LABEL_HEIGHT, height: width }
-        : { x: at.x - width / 2, y: at.y - LABEL_HEIGHT / 2, width, height: LABEL_HEIGHT }
-      occupied.push(box)
-      chosen = at
     }
     sectionLabels.push({
       id: section.id,

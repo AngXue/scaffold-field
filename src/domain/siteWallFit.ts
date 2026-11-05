@@ -1,3 +1,4 @@
+import { fitGuardrailStock } from './guardrails.ts'
 import type { ScaffoldLayout, ScaffoldMember } from './scaffold.ts'
 import type { ResolvedBlock } from './site.ts'
 import { footprintCells, footprintOutline } from './siteFootprints.ts'
@@ -38,4 +39,12 @@ export function fitStockBesideWalls(layout: Pick<ScaffoldLayout, 'members' | 'pi
     for (const pipe of pipes) {pipe.start[axis]+=shift;pipe.end[axis]+=shift}
     for (const connector of layout.connectors) if(connector.type==='butt' && connector.memberId===member.id) connector.position[axis]+=shift
   }
+}
+
+/** Apply the same surplus rule after scene translation, wall fitting and bridges. */
+export function fitSceneGuardrails(layout: Pick<ScaffoldLayout, 'members' | 'pipeSegments' | 'connectors' | 'decks'>, blocks: ResolvedBlock[], radius: number) {
+  fitGuardrailStock(layout, blocks.flatMap(block => footprintCells(block).map(cell => ({
+    base: block.base, top: block.top,
+    polygon: [[cell.x,cell.z],[cell.x+cell.width,cell.z],[cell.x+cell.width,cell.z+cell.depth],[cell.x,cell.z+cell.depth]] as [number,number][],
+  }))), radius)
 }

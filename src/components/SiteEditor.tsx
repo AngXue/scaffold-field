@@ -9,7 +9,7 @@ import { footprintFromOutline, footprintOutline, reshapeFootprint } from '../dom
 import { routeSiteSections, siteWallEdges, snapScaffoldStroke, wallStandOff, type WallEdge } from '../domain/siteRouting'
 import { useCssFullscreen } from '../platform/fullscreen'
 import { Badge, Button, EmptyState, Field, IconButton, Input, SegmentedControl, Select } from './ui'
-import { layoutPlanAnnotations, type PlanDimension, type PlanSectionLabel } from './planAnnotations'
+import { layoutPlanAnnotations, sectionAnnotationSize, type PlanDimension, type PlanSectionLabel } from './planAnnotations'
 
 const Viewer = lazy(() => import('./ScaffoldViewer').then(module => ({ default: module.ScaffoldViewer })))
 
@@ -75,8 +75,9 @@ function OutlineDimension({ start, end, active, scale }: { start: SitePoint; end
 }
 
 function PlanSectionAnnotation({ label, selected, scale }: { label: PlanSectionLabel; selected: boolean; scale: number }) {
-  const width = (label.text.length * 6.4 + 12) / scale
-  const height = 16 / scale
+  const size = sectionAnnotationSize(label.text)
+  const width = size.width / scale
+  const height = size.height / scale
   const x = label.position.x, z = label.position.z
   return <g className={selected ? 'site-annotation is-selected' : 'site-annotation'} data-label-for={label.id}
     transform={label.vertical ? `rotate(-90 ${x} ${z})` : undefined}>

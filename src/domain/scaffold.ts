@@ -1,4 +1,5 @@
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
+import { fitGuardrailStock } from './guardrails.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
 
 export type Point2D = {
@@ -1756,10 +1757,25 @@ export function calculateScaffold(
       // the drawing the building is on.
       if (guardedRails.length > 0) {
         const railRow = outerRow === 1 ? offsetRowPoints : postRows[0]
+        // Only the railing is cut back at an inward crossing. Deck-supporting
+        // longitudinals still span the entire corner; higher unmatched lifts keep
+        // their end protection because there is no connected walkway there.
+        const limits = offsetPostLimits[segmentIndex]
+        const clipStart = outerRow === 1 && (neighbourLayers.get(0) ?? 0) >= layer && limits.start > 0
+        const clipEnd = outerRow === 1 && (neighbourLayers.get(bayCount) ?? 0) >= layer && limits.end < segmentLength
+        const from = clipStart ? limits.start : -Infinity, to = clipEnd ? limits.end : Infinity
+        const stationOf = (p: Vector3Tuple) => (p[0] - start2d[0]) * direction[0] + (p[2] - start2d[1]) * direction[1]
+        const at = (distance: number): Vector3Tuple => [round(start2d[0] + direction[0] * distance + normal[0] * parameters.width), 0,
+          round(start2d[1] + direction[1] * distance + normal[1] * parameters.width)]
+        const kept = railRow.filter(p => stationOf(p) > from + 0.001 && stationOf(p) < to - 0.001)
+        if (clipStart) kept.unshift(at(from))
+        if (clipEnd) kept.push(at(to))
         for (const { elevation: railElevation } of railsWithin(rowTopEdge(outerRow), railsAboveRow[outerRow], guardedThisLift)) {
-          const points = railRow.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
-          addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points)
+          const points = kept.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
+          if (points.length >= 2) addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points,
+            clipStart ? 0 : parameters.tubeEndExtension, clipEnd ? 0 : parameters.tubeEndExtension)
         }
+
 
         // 端部防护 returns across an open end. Both of that station's posts are built to
         // the railed height (nothing is against a wall at an end), so the return is
@@ -2077,6 +2093,7 @@ function finishLayout(
     ...assemblies.flatMap((assembly) => assembly.connectors),
   ]
   const assemblyPlans = assemblies.map((assembly) => assembly.plan)
+  fitGuardrailStock({ members, pipeSegments, connectors, decks })
 
 
   return {
