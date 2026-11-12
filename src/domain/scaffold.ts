@@ -1,3 +1,5 @@
+import { calculateMaterials } from './rules/materials.ts'
+export { calculateMaterials } from './rules/materials.ts'
 import { calculateConnections } from './rules/connections.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { chooseStockLengths, neighbourStockSequence, assembledLength, postStocks, postStockWarnings } from './rules/policies/stock.ts'
@@ -493,63 +495,6 @@ export function deckBetweenStations(start: [Vector3Tuple, Vector3Tuple], end: [V
 function guardrailRailCountOf(parameters: ScaffoldParameters) {
   const requested = parameters.guardrailRailCount ?? DEFAULT_PARAMETERS.guardrailRailCount
   return Math.max(1, Math.min(GUARDRAILS.length, Math.round(requested)))
-}
-
-export function calculateMaterials(
-  members: ScaffoldMember[],
-  pipeSegments: PipeSegment[],
-  decks: DeckPanel[],
-  connectors: ScaffoldConnector[],
-  baseChannels: BaseChannel[],
-  parameters: ScaffoldParameters,
-  assemblyPlans: PipeAssemblyPlan[],
-  postHeights: MaterialResult['postHeights'],
-): MaterialResult {
-  const theoreticalLength = round(members.reduce((sum, member) => sum + member.length, 0))
-  const actualLength = round(pipeSegments.reduce((sum, segment) => sum + segment.stockLength, 0))
-  const stockSummary = pipeSegments.reduce<Record<string, number>>((summary, segment) => {
-    const key = `${segment.stockLength}m`
-    summary[key] = (summary[key] ?? 0) + 1
-    return summary
-  }, {})
-
-  return {
-    theoreticalLength,
-    actualLength,
-    usedLength: theoreticalLength,
-    wasteLength: round(actualLength - theoreticalLength),
-    utilization: actualLength ? round((theoreticalLength / actualLength) * 100, 1) : 0,
-    stockSummary,
-    connectorSummary: {
-      cross: connectors.filter((connector) => connector.type === 'cross').length,
-      butt: connectors.filter((connector) => connector.type === 'butt').length,
-      swivel: null,
-    },
-    // 槽钢 is bought by the piece, so report the piece count and the run length
-    // rather than folding it into the tube figures.
-    channelSteel: {
-      count: baseChannels.length,
-      lengthPerPiece: baseChannels.length ? round(baseChannels[0].length) : 0,
-      totalLength: round(baseChannels.reduce((sum, channel) => sum + channel.length, 0)),
-    },
-    postHeights,
-    // A breakdown of tube already inside stockSummary, not an extra quantity.
-    guardrail: (() => {
-      const rails = members.filter((member) => member.type === 'guardrail')
-      // A run is an end return if it is as long as the scaffold is wide.
-      const endRuns = rails.filter((member) => Math.abs(member.length - parameters.width) < 0.5).length
-      return {
-        railCount: guardrailRailCountOf(parameters),
-        runs: rails.length,
-        endRuns,
-        totalLength: round(rails.reduce((sum, member) => sum + member.length, 0)),
-      }
-    })(),
-    pendingMaterials: PENDING_MATERIALS,
-    deckCount: decks.length,
-    deckArea: round(decks.reduce((sum, deck) => sum + deck.area, 0)),
-    assemblyPlans,
-  }
 }
 
 /** Co-linear runs are one design member, including a straight drawing split. */

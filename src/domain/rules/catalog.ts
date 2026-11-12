@@ -532,12 +532,19 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "转向扣和未建模剪刀撑／连墙件不凭空生成数量；待定保持 null/--",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.calculateMaterials/PENDING_MATERIALS"
+      "src/domain/rules/materials.ts",
+      "src/domain/rules/policies/materials.ts",
+      "src/domain/rules/facts/materialLedger.ts"
     ],
     "cases": [
-      "S9；K测 pending/excludes ties"
+      "T05",
+      "T06",
+      "T12",
+      "T14",
+      "src/domain/rules/materials.test.ts",
+      "src/domain/rules/facts/memberUses.test.ts"
     ]
   },
   {
@@ -597,12 +604,19 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "钢管、扣件、片数、覆盖面积、槽钢从最终实体统一汇总；房屋不计材料",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.calculateMaterials；S/T 汇总"
+      "src/domain/rules/materials.ts",
+      "src/domain/rules/policies/materials.ts",
+      "src/domain/rules/facts/materialLedger.ts"
     ],
     "cases": [
-      "S9；K测 totals、S测固定手算"
+      "T05",
+      "T06",
+      "T12",
+      "T14",
+      "src/domain/rules/materials.test.ts",
+      "src/domain/rules/facts/memberUses.test.ts"
     ]
   },
   {
