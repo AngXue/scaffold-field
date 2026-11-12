@@ -1,6 +1,7 @@
+import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import type { ScaffoldMember } from '../../scaffold.ts'
 import { MEMBER_USES, memberUses, combineUses } from '../facts/memberUses.ts'
-const round = (value: number) => Number(value.toFixed(3))
+
 const vectorDistance = (a: number[], b: number[]) => Math.hypot(...a.map((n, i) => n - b[i]))
 const pointKey = (p: number[]) => p.map(round).join(':')
 
@@ -39,6 +40,6 @@ export function mergeSharedRuns(members: ScaffoldMember[]) {
     }
   }
   const replacements = new Map([...groups.values()].flatMap(group => group.map(entry => [entry.member.id, entry.member] as const)))
-  return members.filter(member => !removed.has(member.id)).map(member => replacements.get(member.id) ?? member)
+  return members.filter(member => !removed.has(member.id)).map(member => replacements.get(member.id) ?? { ...member })
 }
 

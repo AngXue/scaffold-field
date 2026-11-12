@@ -14,9 +14,10 @@ const input = () => ({ values: [2, 3], result: 0 })
 describe('rule pipeline contracts', () => {
   it('catalog identifies every existing rule without claiming adapter migration complete', () => {
     expect(RULES).toHaveLength(45)
+    expect(RULES.filter(rule => rule.implementation === 'boundary').map(rule => rule.id)).toEqual(['I01', 'O02'])
     expect(new Set(RULES.map(r => r.id)).size).toBe(45)
-    expect(RULES.filter(r => r.implementation === 'legacy-adapter')).toHaveLength(30)
-    expect(RULES.filter(r => r.implementation === 'native').map(r => r.id)).toEqual(['I03', 'I04', 'I05', 'G01', 'G02', 'G04', 'G05', 'G06', 'S01', 'S02', 'S03', 'C01', 'C02', 'C03', 'O01'])
+    expect(RULES.filter(r => r.implementation === 'legacy-adapter')).toHaveLength(25)
+    expect(RULES.filter(r => r.implementation === 'native').map(r => r.id)).toEqual(['I02', 'I03', 'I04', 'I05', 'G01', 'G02', 'G04', 'G05', 'G06', 'G07', 'M08', 'S01', 'S02', 'S03', 'C01', 'C02', 'C03', 'O01'])
   })
   it('commits privately, leaves input intact and trace cannot change result', () => {
     const run = compilePipeline([definition], [step], reduce), source = input()

@@ -1,6 +1,7 @@
+import { SITE_EPS as EPS } from '../facts/precision.ts'
 import { GROUND, roundSite, type Site, type ResolvedBlock, type SiteIssue } from '../../site.ts'
 import { footprintContains, footprintFromOutline, footprintsOverlap } from '../../siteFootprints.ts'
-const EPS = 0.001
+
 
 export function resolveBlocks(site: Site): { blocks: ResolvedBlock[]; issues: SiteIssue[] } {
   const byId = new Map(site.blocks.map(block => [block.id, block]))

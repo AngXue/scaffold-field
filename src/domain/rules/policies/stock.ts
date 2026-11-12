@@ -1,6 +1,7 @@
+import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import { DEFAULT_PARAMETERS, SPLICE_STAGGER, type ScaffoldMember, type ScaffoldParameters, type Vector3Tuple, type LayoutWarning, type PipeSegment, type ScaffoldConnector, type PipeAssemblyPlan } from '../../scaffold.ts'
 import { Vector } from '../facts/vector.ts'
-const round = (value: number) => Number(value.toFixed(3))
+
 const vectorDistance = (a: Vector3Tuple, b: Vector3Tuple) => Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])
 
 export function chooseStockLengths(requiredLength: number, stockLengths: number[], overlap: number) {

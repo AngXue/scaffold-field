@@ -1,3 +1,6 @@
+import { mm, metresFromMm as m, roundSite, SITE_EPS as EPS } from './rules/facts/precision.ts'
+import { componentGroups } from './rules/groups.ts'
+import { meetOnPlan, footingStations } from './rules/policies/groups.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { MEMBER_USES, transformUses, memberUses } from './rules/facts/memberUses.ts'
 import { resolveBlocks } from './rules/policies/blocks.ts'
@@ -36,11 +39,9 @@ export type SiteLayout = ScaffoldLayout & {
 export const GROUND = 'ground'
 export const MIN_SECTION_LENGTH = 0.1
 export const EMPTY_SITE: Site = { blocks: [], guides: [], sections: [] }
-export const mm = (metres: number) => Math.round(metres * 1000)
-const m = (millimetres: number) => millimetres / 1000
-export const roundSite = (metres: number) => m(mm(metres))
+export { mm, roundSite } from './rules/facts/precision.ts'
 export const siteLength = (line: SiteLine) => roundSite(Math.hypot(line.end.x - line.start.x, line.end.z - line.start.z))
-const EPS = 0.001
+
 const clamp = (n: number, low: number, high: number) => Math.max(low, Math.min(high, n))
 export const sectionLayerCount = (n: number) => Number.isFinite(n) ? clamp(Math.round(n), 1, 20) : 5
 
@@ -184,43 +185,6 @@ function pipeEntersBlock(a: Vector3Tuple, b: Vector3Tuple, block: ResolvedBlock,
     min: [cell.x - padding(0) + EPS, block.base - padding(1) + EPS, cell.z - padding(2) + EPS],
     max: [cell.x + cell.width + padding(0) - EPS, block.top + padding(1) - EPS, cell.z + cell.depth + padding(2) - EPS],
   }))
-}
-
-function meetOnPlan(a: SiteSection, b: SiteSection) {
-  const on = (p: SitePoint, line: SiteSection) => {
-    const dx = line.end.x - line.start.x, dz = line.end.z - line.start.z
-    const length = Math.hypot(dx, dz)
-    if (length < EPS) return false
-    const x = p.x - line.start.x, z = p.z - line.start.z
-    const along = (x * dx + z * dz) / length
-    return Math.abs(x * dz - z * dx) / length <= EPS && along >= -EPS && along <= length + EPS
-  }
-  return on(a.start, b) || on(a.end, b) || on(b.start, a) || on(b.end, a)
-}
-
-function footingStations(s: SiteSection, width: number) {
-  const length = siteLength(s), dx = -(s.end.z-s.start.z)/length*width, dz = (s.end.x-s.start.x)/length*width
-  return [s.start,s.end].map(p=>[p,{x:p.x+dx,z:p.z+dz}])
-}
-function sharedFootingPair(a: SiteSection, b: SiteSection, width: number) {
-  return footingStations(a,width).some(pair=>footingStations(b,width).some(other=>pair.every(p=>other.some(q=>Math.hypot(p.x-q.x,p.z-q.z)<EPS))))
-}
-function componentGroups(sections: SiteSection[], wallIds = new Set<string>(), width = 0) {
-  const groups: SiteSection[][] = []
-  const indices = new Map(sections.map((section, i) => [section.id, i]))
-  const remaining = new Set(sections)
-  for (const first of sections) {
-    if (!remaining.delete(first)) continue
-    const group = [first]
-    for (const current of group) for (const candidate of remaining) {
-      if (candidate.surfaceId === current.surfaceId && (candidate.layers === current.layers || candidate.automatic && current.automatic)
-        && wallIds.has(candidate.id) === wallIds.has(current.id) && (meetOnPlan(current, candidate) || width > 0 && wallIds.has(current.id) && sharedFootingPair(current, candidate, width))) {
-        group.push(candidate); remaining.delete(candidate)
-      }
-    }
-    groups.push(group.sort((a, b) => indices.get(a.id)! - indices.get(b.id)!))
-  }
-  return groups
 }
 
 export function reverseSectionGroup(site: Site, id: string): Site {

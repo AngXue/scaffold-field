@@ -1,5 +1,6 @@
+import { roundFixedMillimetre as round } from './precision.ts'
 import type { Vector3Tuple } from '../../scaffold.ts'
-const round = (value: number) => Number(value.toFixed(3))
+
 
 export class Vector {
   static readonly ZERO = new Vector([0, 0, 0])

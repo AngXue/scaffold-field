@@ -1,9 +1,10 @@
+import { PIXELS_PER_METER, roundPlan as round } from './rules/facts/precision.ts'
 import type { Point2D } from './scaffold.ts'
 
-export const PIXELS_PER_METER = 50
+export { PIXELS_PER_METER } from './rules/facts/precision.ts'
 export const GRID_SIZE = PIXELS_PER_METER / 10
 
-const round = (value: number, precision = 2) => Number(value.toFixed(precision))
+
 
 export function measurePath(points: Point2D[], precision = 2) {
   return points.slice(0, -1).map((point, index) => {

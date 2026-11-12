@@ -1,3 +1,4 @@
+import { SITE_EPS as EPS } from '../facts/precision.ts'
 import { scaffoldTransverseLength, type ScaffoldParameters } from '../../scaffold.ts'
 import { footprintCells, footprintContains, footprintOutline } from '../../siteFootprints.ts'
 import { signedArea } from '../../polygons.ts'
@@ -7,7 +8,7 @@ export type Axis = 'x' | 'z'
 export type WallEdge = { axis: Axis; at: number; low: number; high: number; outward: -1 | 1 }
 export type RoutedSpan = { sourceId: string; line: SiteSection; wall: boolean; wallClearance?: number }
 export type SiteTransition = { before: SiteSection; after: SiteSection; boundary: number }
-const EPS = 0.001
+
 const other = (axis: Axis): Axis => axis === 'x' ? 'z' : 'x'
 
 export function siteWallEdges(blocks: ResolvedBlock[]) {

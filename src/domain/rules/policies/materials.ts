@@ -1,3 +1,4 @@
+import { roundDomain as round } from '../facts/precision.ts'
 import { DEFAULT_PARAMETERS, GUARDRAILS, PENDING_MATERIALS, type MaterialResult, type ScaffoldMember, type ScaffoldParameters } from '../../scaffold.ts'
 import type { PhysicalContribution } from '../facts/materialLedger.ts'
 
@@ -6,7 +7,7 @@ export type QuantitySettings = Pick<ScaffoldParameters, 'width' | 'guardrailRail
 export type ComputedQuantities = Omit<MaterialResult, 'postHeights' | 'assemblyPlans' | 'pendingMaterials' | 'connectorSummary'> & {
   connectorSummary: Pick<MaterialResult['connectorSummary'], 'cross' | 'butt'>
 }
-const round = (value: number, precision = 3) => Number(value.toFixed(precision))
+
 export function summarizeContributions(contributions: readonly PhysicalContribution[], members: readonly LogicalDemand[], settings: QuantitySettings): ComputedQuantities {
   const stockSummary: Record<string, number> = {}
   let stockLength = 0, cross = 0, butt = 0, deckCount = 0, deckArea = 0, channelCount = 0, channelLength = 0, firstChannel = 0

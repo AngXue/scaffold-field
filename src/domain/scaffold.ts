@@ -1,10 +1,13 @@
+import { roundDomain as round } from './rules/facts/precision.ts'
+import { normalizeKernelParameters } from './rules/boundaries/parameters.ts'
+export { materialQuantity, materialAdjustmentStep, stockMaterialRows } from './rules/boundaries/adjustments.ts'
 import { calculateMaterials } from './rules/materials.ts'
 export { calculateMaterials } from './rules/materials.ts'
 import { calculateConnections } from './rules/connections.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { chooseStockLengths, neighbourStockSequence, assembledLength, postStocks, postStockWarnings } from './rules/policies/stock.ts'
 import { assembleStockStage } from './rules/stock.ts'
-import { mergeSharedRuns } from './rules/policies/sharedMembers.ts'
+import { mergeMemberStage } from './rules/sharedMembers.ts'
 import { MEMBER_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
 import { fitGuardrailStock } from './guardrails.ts'
@@ -405,32 +408,7 @@ export const MATERIAL_KEYS = {
  */
 export type MaterialAdjustments = Record<string, number>
 
-/** Display, export and totals all use the same clamped base-unit quantity. */
-export function materialQuantity(calculated: number | null, adjustments: MaterialAdjustments, key: string) {
-  return Math.max(0, (calculated ?? 0) + (adjustments[key] ?? 0))
-}
 
-/** Delta to add to the stored correction, clamping the last partial bag at zero. */
-export function materialAdjustmentStep(calculated: number | null, adjustments: MaterialAdjustments, key: string, step: number) {
-  const raw = (calculated ?? 0) + (adjustments[key] ?? 0)
-  return Math.max(0, Math.max(0, raw) + step) - raw
-}
-
-/** Include unused default stocks so the site can add them manually. */
-export function stockMaterialRows(stockSummary: Record<string, number>, adjustments: MaterialAdjustments) {
-  const lengths = new Set([
-    ...DEFAULT_PARAMETERS.stockLengths.map(length => `${length}m`),
-    ...Object.keys(stockSummary),
-    ...Object.keys(adjustments).filter(key => /^stock:\d+(?:\.\d+)?m$/.test(key)).map(key => key.slice('stock:'.length)),
-  ])
-  return [...lengths].map(length => ({
-    length,
-    calculated: stockSummary[length] ?? 0,
-    quantity: materialQuantity(stockSummary[length] ?? 0, adjustments, MATERIAL_KEYS.stock(length)),
-  })).sort((a, b) => Number(b.quantity > 0) - Number(a.quantity > 0) || Number.parseFloat(b.length) - Number.parseFloat(a.length))
-}
-
-const round = (value: number, precision = 3) => Number(value.toFixed(precision))
 const vectorDistance = (a: Vector3Tuple, b: Vector3Tuple) =>
   Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
 const pointKey = (point: Vector3Tuple) => point.map((value) => round(value)).join(':')
@@ -460,7 +438,7 @@ function getPhysicalPoints(points: Point2D[], lengths: number[]) {
     const dx = next.x - current.x
     const dy = next.y - current.y
     const visualLength = Math.hypot(dx, dy) || 1
-    const actualLength = Math.max(0.1, lengths[index] ?? visualLength / 50)
+    const actualLength = Math.max(0.1, lengths[index] ?? visualLength / PIXELS_PER_METER)
     const previous = physical[index]
     physical.push([
       round(previous[0] + (dx / visualLength) * actualLength),
@@ -544,17 +522,7 @@ export function calculateScaffold(
   segmentLayerCounts?: readonly number[],
   requiredEndPairs: readonly (readonly [boolean, boolean])[] = [],
 ): ScaffoldLayout {
-  const legacyParameters = parameters as ScaffoldParameters & { rowCount?: number; height?: number }
-  parameters = {
-    ...DEFAULT_PARAMETERS,
-    ...parameters,
-    deckSupportRailCount: parameters.deckSupportRailCount ?? legacyParameters.rowCount ?? DEFAULT_PARAMETERS.deckSupportRailCount,
-    // A stored project from before `layerCount` carried a continuous 搭设高度; take the
-    // number of whole 步距 that height held.
-    layerCount: parameters.layerCount ?? (legacyParameters.height === undefined
-      ? DEFAULT_PARAMETERS.layerCount
-      : Math.max(1, Math.round((legacyParameters.height - TOP_POST_EXTENSION) / (parameters.liftHeight || DEFAULT_PARAMETERS.liftHeight)))),
-  }
+  parameters = normalizeKernelParameters(parameters)
   const physical = getPhysicalPoints(points, segmentLengths)
   const members: ScaffoldMember[] = []
   const decks: DeckPanel[] = []
@@ -1618,7 +1586,7 @@ function finishLayout(
 ): ScaffoldLayout {
   // Merge collinear shared runs before stock assembly and coupler counting.
   // This keeps all three views on the same physical quantities.
-  members = mergeSharedRuns(members)
+  members = mergeMemberStage(members)
   // A relocated station may now carry a mitre that already had its own beam.
   // Remove a beam only when ALL of its posts are carried by one other beam;
   // never join beams into a longer piece or leave a post without a base.

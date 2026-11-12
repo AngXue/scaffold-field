@@ -7,12 +7,15 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "缺失参数补默认，保留明确旧值；旧 height、rowCount 迁移；库存补入 5 / 3.5 m",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "boundary",
     "source": [
-      "J.restoreParameters；K.calculateScaffold 参数适配"
+      "src/domain/rules/boundaries/parameters.ts"
     ],
     "cases": [
-      "S0；J测、K测 legacy parameters"
+      "T01",
+      "T14",
+      "src/domain/project.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -20,12 +23,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "场景米制、旧图 50 px/m；层边界按毫米；覆盖细坐标保留 6 位精度",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "S.mm/roundSite；P；K.deckBetweenStations 等"
+      "src/domain/rules/facts/precision.ts",
+      "src/domain/polygons.ts"
     ],
     "cases": [
-      "跨阶段数值合同；S测层高边界、K测覆盖及变换"
+      "T02",
+      "T04",
+      "T05",
+      "src/domain/rules/facts/precision.test.ts",
+      "src/domain/site.test.ts"
     ]
   },
   {
@@ -183,12 +191,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "同落脚面和相连关系计算分组，自动段可有不同层数；编辑组不是物理边界",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "S.componentGroups/sharedFootingPair；E.splitSectionRange"
+      "src/domain/rules/groups.ts",
+      "src/domain/rules/policies/groups.ts"
     ],
     "cases": [
-      "S2；K测不同层、E测划分单段"
+      "T04",
+      "T08",
+      "T11",
+      "src/domain/rules/groups.test.ts",
+      "src/domain/rules/facts/memberUses.test.ts"
     ]
   },
   {
@@ -313,12 +326,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "同高同线同用途直杆合并；纵横共用保留 roles；只组装、渲染、计量一次",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.mergeSharedRuns/reassembleSiteRuns"
+      "src/domain/rules/sharedMembers.ts",
+      "src/domain/rules/policies/sharedMembers.ts"
     ],
     "cases": [
-      "S6；K测共线及支路重组、E测旋转"
+      "T04",
+      "T08",
+      "T11",
+      "src/domain/rules/groups.test.ts",
+      "src/domain/rules/facts/memberUses.test.ts"
     ]
   },
   {
@@ -624,12 +642,15 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "手工修正为增量，扣件一包 30 个；规格零数量可加，显示／CSV 共用修正后结果",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "boundary",
     "source": [
-      "K.materialQuantity/materialAdjustmentStep/stockMaterialRows"
+      "src/domain/rules/boundaries/adjustments.ts"
     ],
     "cases": [
-      "输出适配；K测 material/bag、网页导出"
+      "T01",
+      "T14",
+      "src/domain/project.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {

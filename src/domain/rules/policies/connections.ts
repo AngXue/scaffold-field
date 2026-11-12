@@ -1,7 +1,8 @@
+import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import type { ScaffoldMember, ScaffoldConnector, ScaffoldParameters, Vector3Tuple } from '../../scaffold.ts'
 import { Vector } from '../facts/vector.ts'
 import { CONNECTOR_CONTACT } from '../facts/connections.ts'
-const round = (value: number) => Number(value.toFixed(3))
+
 const pointKey = (point: Vector3Tuple) => point.map(round).join(':')
 
 export function buildCrossConnectors(members: ScaffoldMember[], builtPostTops: Record<string, number>, parameters: Pick<ScaffoldParameters, 'pipeDiameter'>) {

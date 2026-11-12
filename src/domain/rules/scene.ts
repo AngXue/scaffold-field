@@ -17,7 +17,7 @@ type SceneProposal = Proposal & (
   | { kind: 'ApplyLayerTargets'; target: 'prepared'; value: Site }
 )
 // I03 and I04/I05 publish immutable scene facts through their named reducers.
-const steps: RuleStep<SceneFacts, SceneProposal>[] = [
+export const SCENE_STEPS: RuleStep<SceneFacts, SceneProposal>[] = [
   { id: 'I03.resolve', ruleId: 'I03', phase: 1, after: [], reads: ['site'], kinds: ['ResolveBlocks'], targets: ['resolved'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'ResolveBlocks', target: 'resolved', expectedRevision: revision,
       value: resolveBlocks(facts.site as Site) }] }) },
@@ -25,7 +25,7 @@ const steps: RuleStep<SceneFacts, SceneProposal>[] = [
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'ApplyLayerTargets', target: 'prepared', expectedRevision: revision,
       value: siteWithTargetLayers(facts.site as Site, facts.parameters as ScaffoldParameters, facts.resolved!.blocks as ResolvedBlock[]) }] }) },
 ]
-const run = compilePipeline<SceneFacts, SceneProposal>(RULES, steps, (facts, proposals) => {
+const run = compilePipeline<SceneFacts, SceneProposal>(RULES, SCENE_STEPS, (facts, proposals) => {
   let next = { ...facts } as SceneFacts
   for (const proposal of proposals) {
     switch (proposal.kind) {

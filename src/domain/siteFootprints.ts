@@ -1,8 +1,8 @@
+import { SITE_EPS as EPS, roundSite as round } from './rules/facts/precision.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
 import type { Footprint, SitePoint } from './site.ts'
 
-const EPS = 0.001
-const round = (n: number) => Math.round(n * 1000) / 1000
+
 const same = (a: SitePoint, b: SitePoint) => Math.abs(a.x - b.x) < EPS && Math.abs(a.z - b.z) < EPS
 export const rectanglePolygon = (r: Footprint): PlanPolygon =>
   [[r.x, r.z], [r.x + r.width, r.z], [r.x + r.width, r.z + r.depth], [r.x, r.z + r.depth]]

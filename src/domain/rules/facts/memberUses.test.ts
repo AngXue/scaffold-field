@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { MEMBER_USES, makeUse, memberUses, clipUses } from './memberUses'
+import { mergeMemberStage } from '../sharedMembers'
 import { mergeSharedRuns } from '../policies/sharedMembers'
 import { buildEntityGraph } from './entityGraph'
 import { buildMaterialLedger } from './materialLedger'
@@ -14,7 +15,8 @@ describe('member provenance and final physical material ledger', () => {
   it('merges separate purposes without mutating the bridge validation snapshot', () => {
     const bridge = rail('bridge', 0, 1, 0, 'end-guard'), neighbour = rail('neighbour', 1, 5, 1, 'side-guard')
     const original = JSON.stringify([bridge, neighbour])
-    const merged = mergeSharedRuns([bridge, neighbour])
+    const merged = mergeMemberStage([bridge, neighbour])
+    expect(merged).toEqual(mergeSharedRuns([bridge, neighbour]))
     expect(merged).toHaveLength(1)
     expect(merged[0].end).toEqual([5, 2, 0])
     expect(JSON.stringify([bridge, neighbour])).toBe(original)

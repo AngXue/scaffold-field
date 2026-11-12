@@ -1,13 +1,47 @@
 import './loader.mjs'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+const root = resolve(import.meta.dirname, '../..')
 const { RULES } = await import('../../src/domain/rules/catalog.ts')
-const markdown = readFileSync(new URL('../../docs/规则清单.md', import.meta.url), 'utf8')
-const ids = [...markdown.matchAll(/^\| ([IGMPS CVO]\d{2}) \|/gm)].map(match => match[1]).sort()
+const markdown = readFileSync(resolve(root, 'docs/规则清单.md'), 'utf8')
+const ids = [...markdown.matchAll(/^\| ([IGMPSCVO]\d{2}) \|/gm)].map(match => match[1]).sort()
 assert.deepEqual(RULES.map(rule => rule.id).sort(), ids, 'Code and documented inventories differ')
 for (const rule of RULES) {
   assert(rule.source.length && rule.cases.length && rule.title)
   assert(Number.isInteger(rule.revision) && rule.revision > 0)
+  if (rule.implementation !== 'legacy-adapter') {
+    for (const source of rule.source) assert(existsSync(resolve(root, source)), `${rule.id}: missing implementation ${source}`)
+    for (const test of rule.cases.filter(test => test.endsWith('.ts'))) assert(existsSync(resolve(root, test)), `${rule.id}: missing test ${test}`)
+  }
 }
-console.log(JSON.stringify({ rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
-  adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length }, null, 2))
+const packages = [
+  ['scene', 'SCENE_STEPS'], ['routing', 'ROUTING_STEPS'], ['groups', 'GROUP_STEPS'],
+  ['sharedMembers', 'MERGE_STEPS'], ['stock', 'STOCK_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
+]
+const executed = new Set(), steps = new Set()
+for (const [name, exported] of packages) {
+  // Importing each live package also compiles and verifies its actual local dependency DAG.
+  const module = await import(`../../src/domain/rules/${name}.ts`)
+  for (const step of module[exported]) {
+    assert(!steps.has(step.id), `Duplicate execution step across packages: ${step.id}`)
+    steps.add(step.id); executed.add(step.ruleId)
+  }
+}
+// Pure numeric/lift policies are deliberately reusable before entity stages.
+const { getSectionLevels } = await import('../../src/domain/rules/policies/levels.ts')
+const precision = await import('../../src/domain/rules/facts/precision.ts')
+assert.equal(typeof getSectionLevels, 'function')
+assert.equal(precision.NUMERIC_POLICY.revision, 1)
+executed.add('I02'); executed.add('I04')
+assert.deepEqual([...executed].sort(), RULES.filter(rule => rule.implementation === 'native').map(rule => rule.id).sort(), 'Native registration lacks a live rule step or declared pure policy')
+const project = await import('../../src/domain/project.ts'), parameters = await import('../../src/domain/rules/boundaries/parameters.ts')
+const scaffold = await import('../../src/domain/scaffold.ts'), adjustments = await import('../../src/domain/rules/boundaries/adjustments.ts')
+assert.equal(project.restoreParameters, parameters.restoreParameters)
+for (const name of ['materialQuantity', 'materialAdjustmentStep', 'stockMaterialRows']) assert.equal(scaffold[name], adjustments[name])
+const summary = { rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
+  boundaries: RULES.filter(rule => rule.implementation === 'boundary').length,
+  adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size,
+  scope: 'live package-local DAGs and boundaries; complete global pipeline still pending' }
+console.log(JSON.stringify(summary, null, 2))
+if (process.argv.includes('--complete')) assert.equal(summary.adaptersRemaining, 0, 'Complete migration gate: legacy calculation adapters remain')
