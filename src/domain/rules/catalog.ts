@@ -218,7 +218,10 @@ export const RULES: readonly RuleDefinition[] = [
     "source": [
       "src/domain/rules/posts.ts",
       "src/domain/rules/policies/posts.ts",
-      "src/domain/rules/components.ts"
+      "src/domain/rules/components.ts",
+      "src/domain/rules/topology.ts",
+      "src/domain/rules/policies/topology.ts",
+      "src/domain/rules/policies/components.ts"
     ],
     "cases": [
       "T05",
@@ -287,7 +290,9 @@ export const RULES: readonly RuleDefinition[] = [
     "implementation": "native",
     "source": [
       "src/domain/rules/bands.ts",
-      "src/domain/rules/policies/bands.ts"
+      "src/domain/rules/policies/bands.ts",
+      "src/domain/rules/frameRows.ts",
+      "src/domain/rules/policies/frameRows.ts"
     ],
     "cases": [
       "T05",
@@ -338,7 +343,9 @@ export const RULES: readonly RuleDefinition[] = [
     "implementation": "native",
     "source": [
       "src/domain/rules/decks.ts",
-      "src/domain/rules/policies/decks.ts"
+      "src/domain/rules/policies/decks.ts",
+      "src/domain/rules/components.ts",
+      "src/domain/rules/policies/components.ts"
     ],
     "cases": [
       "T05",
@@ -356,7 +363,8 @@ export const RULES: readonly RuleDefinition[] = [
     "source": [
       "src/domain/rules/bases.ts",
       "src/domain/rules/policies/bases.ts",
-      "src/domain/rules/components.ts"
+      "src/domain/rules/components.ts",
+      "src/domain/rules/policies/components.ts"
     ],
     "cases": [
       "T05",
@@ -439,12 +447,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "面向较高实墙的低层端栏杆可省，真实外侧及更高独立防护保留",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "T.isWallEndGuard；W.guardFacesWall"
+      "src/domain/rules/guardRemovals.ts",
+      "src/domain/rules/policies/guardRemovals.ts"
     ],
     "cases": [
-      "S5；S测 corridor、E测双屋"
+      "T07",
+      "T11",
+      "src/domain/rules/guardRemovals.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {
@@ -452,12 +464,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "共同全局作业层接通工作杆、钢笆及防护；短角从真实端柱借相邻面栏杆连接",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "T.connectSiteTransitions ends/matches"
+      "src/domain/rules/transitions.ts",
+      "src/domain/rules/policies/transitions.ts"
     ],
     "cases": [
-      "S3 工作接通、S5 防护接通；S测 corridor、E测 S1 upper guard"
+      "T07",
+      "T11",
+      "src/domain/rules/transitions.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {
@@ -465,12 +481,18 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "接通后打开双排之间的横向封口；已合并的邻面外栏杆只局部裁其封口区间",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "T.capCuts/openCaps；S.sharedStations"
+      "src/domain/rules/transitions.ts",
+      "src/domain/rules/policies/transitions.ts",
+      "src/domain/rules/guardRemovals.ts",
+      "src/domain/rules/policies/guardRemovals.ts"
     ],
     "cases": [
-      "S5；E测 S1 连续／旋转／邻面保留"
+      "T07",
+      "T11",
+      "src/domain/rules/transitions.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {
@@ -478,12 +500,18 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "栏杆必须有足够柱顶承托；现行无承托时舍弃并提醒；真实连接按组装后柱顶判断",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.railsWithin/finishLayout；T.postTops"
+      "src/domain/rules/transitions.ts",
+      "src/domain/rules/policies/transitions.ts",
+      "src/domain/rules/heights.ts",
+      "src/domain/rules/policies/guardCourses.ts"
     ],
     "cases": [
-      "S4→S5；K测 surplus stock support、top-rail-height"
+      "T07",
+      "T11",
+      "src/domain/rules/transitions.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {
@@ -507,7 +535,9 @@ export const RULES: readonly RuleDefinition[] = [
     "implementation": "native",
     "source": [
       "src/domain/rules/policies/stock.ts",
-      "src/domain/rules/stock.ts"
+      "src/domain/rules/stock.ts",
+      "src/domain/rules/heights.ts",
+      "src/domain/rules/policies/heights.ts"
     ],
     "cases": [
       "T05",
@@ -543,7 +573,9 @@ export const RULES: readonly RuleDefinition[] = [
     "implementation": "native",
     "source": [
       "src/domain/rules/policies/stock.ts",
-      "src/domain/rules/stock.ts"
+      "src/domain/rules/stock.ts",
+      "src/domain/rules/posts.ts",
+      "src/domain/rules/policies/posts.ts"
     ],
     "cases": [
       "T05",

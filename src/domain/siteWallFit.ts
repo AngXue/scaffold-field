@@ -1,18 +1,9 @@
 import { fitGuardrailStock } from './guardrails.ts'
-import type { ScaffoldLayout, ScaffoldMember } from './scaffold.ts'
+import type { ScaffoldLayout } from './scaffold.ts'
 import type { ResolvedBlock } from './site.ts'
-import { footprintCells, footprintOutline } from './siteFootprints.ts'
+import { footprintCells } from './siteFootprints.ts'
 
-export function guardFacesWall(member: ScaffoldMember, blocks: ResolvedBlock[], clearance: number) {
-  if (member.type !== 'guardrail') return false
-  const points = member.connectionPoints.length ? member.connectionPoints : [member.start, member.end]
-  return blocks.some(block => member.start[1] > block.base && member.start[1] < block.top && footprintOutline(block).some((a, i, outline) => {
-    const b = outline[(i + 1) % outline.length], axis = a.x === b.x ? 0 : 2, along = axis === 0 ? 2 : 0
-    const at = axis === 0 ? a.x : a.z, low = Math.min(along === 0 ? a.x : a.z, along === 0 ? b.x : b.z)
-    const high = Math.max(along === 0 ? a.x : a.z, along === 0 ? b.x : b.z)
-    return points.every(p => Math.abs(p[axis] - at) <= clearance + 0.001 && p[along] >= low - 0.001 && p[along] <= high + 0.001)
-  }))
-}
+export { guardFacesWall } from './rules/policies/guardRemovals.ts'
 /** Slide excess stock along its own axis, preserving the design member and all ties. */
 export function fitStockBesideWalls(layout: Pick<ScaffoldLayout, 'members' | 'pipeSegments' | 'connectors'>, blocks: ResolvedBlock[], radius: number) {
   for (const member of layout.members) {

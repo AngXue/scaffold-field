@@ -16,8 +16,8 @@ describe('rule pipeline contracts', () => {
     expect(RULES).toHaveLength(45)
     expect(RULES.filter(rule => rule.implementation === 'boundary').map(rule => rule.id)).toEqual(['I01', 'O02'])
     expect(new Set(RULES.map(r => r.id)).size).toBe(45)
-    expect(RULES.filter(r => r.implementation === 'legacy-adapter')).toHaveLength(12)
-    expect(RULES.filter(r => r.implementation === 'native').map(r => r.id)).toEqual(['I02', 'I03', 'I04', 'I05', 'G01', 'G02', 'G03', 'G04', 'G05', 'G06', 'G07', 'G08', 'G09', 'M01', 'M02', 'M03', 'M04', 'M05', 'M06', 'M07', 'M08', 'P01', 'P02', 'P03', 'S01', 'S02', 'S03', 'C01', 'C02', 'C03', 'O01'])
+    expect(RULES.filter(r => r.implementation === 'legacy-adapter')).toHaveLength(8)
+    expect(RULES.filter(r => r.implementation === 'native').map(r => r.id)).toEqual(['I02', 'I03', 'I04', 'I05', 'G01', 'G02', 'G03', 'G04', 'G05', 'G06', 'G07', 'G08', 'G09', 'M01', 'M02', 'M03', 'M04', 'M05', 'M06', 'M07', 'M08', 'P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'S01', 'S02', 'S03', 'C01', 'C02', 'C03', 'O01'])
   })
   it('commits privately, leaves input intact and trace cannot change result', () => {
     const run = compilePipeline([definition], [step], reduce), source = input()

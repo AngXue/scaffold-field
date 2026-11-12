@@ -1,3 +1,4 @@
+import { resolveGuardRemovals } from './rules/guardRemovals.ts'
 import { mm, metresFromMm as m, roundSite, SITE_EPS as EPS } from './rules/facts/precision.ts'
 import { componentGroups } from './rules/groups.ts'
 import { meetOnPlan, footingStations } from './rules/policies/groups.ts'
@@ -12,9 +13,9 @@ import { measureDrawing, normalizeDrawing, PIXELS_PER_METER, readDrawing, type P
 import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, calculateMaterials, calculateScaffold, calculateScaffoldPlan, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
 import { footprintCells, footprintContainsPoint, footprintCoversPolygon, footprintSupportsSegment } from './siteFootprints.ts'
-import { fitSceneGuardrails, fitStockBesideWalls, guardFacesWall } from './siteWallFit.ts'
+import { fitSceneGuardrails, fitStockBesideWalls } from './siteWallFit.ts'
 import { routeSiteSections, wallStandOff, type RoutedSpan } from './siteRouting.ts'
-import { connectSiteTransitions, fitTransitionStock, isWallEndGuard, type JoinedLift, type TransitionEnd } from './siteTransitions.ts'
+import { connectSiteTransitions, fitTransitionStock, type JoinedLift, type TransitionEnd } from './siteTransitions.ts'
 
 /** Horizontal site coordinates and vertical heights are all measured in metres. */
 export type SitePoint = { x: number; z: number }
@@ -313,17 +314,12 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     const sharedStations = group.flatMap((a,i)=>group.slice(i+1).flatMap(b=>
       footingStations(a,settings.width).filter(pair=>footingStations(b,settings.width).some(other=>pair.every(p=>other.some(q=>Math.hypot(p.x-q.x,p.z-q.z)<EPS))))
         .map(points=>({points,layers:Math.min(a.layers,b.layers)}))))
-    const removed = new Set<string>()
-    const members = part.members.map(member => ({ ...member,
+    const transformedMembers = part.members.map(member => ({ ...member,
       [MEMBER_USES]: transformUses(member, world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) })), start: world(member.start), end: world(member.end),
       connectionPoints: member.connectionPoints.map(world), pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) }))
-      .filter(member => {
-        const sharedCap = member.type === 'guardrail' && sharedStations.some(station => (member.layer ?? Infinity) <= station.layers
-          && member.connectionPoints.every(p=>station.points.some(q=>Math.hypot(p[0]-q.x,p[2]-q.z)<EPS)))
-        const skip = sharedCap || isWallEndGuard(member, transitionEnds.get(member.pathSegment) ?? []) || followsWall && guardFacesWall(member, blocks, Math.max(settings.width, wallStandOff(settings)))
-        if (skip) removed.add(member.id)
-        return !skip
-      })
+    const removed = new Set(resolveGuardRemovals({ members: transformedMembers, ends: [...transitionEnds], blocks,
+      followsWall, clearance: Math.max(settings.width, wallStandOff(settings)), stations: sharedStations }))
+    const members = transformedMembers.filter(member => !removed.has(member.id))
     const pipeSegments = part.pipeSegments.filter(pipe => !removed.has(pipe.memberId))
       .map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
     const connectors = part.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
