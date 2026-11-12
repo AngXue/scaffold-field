@@ -17,7 +17,7 @@ for (const rule of RULES) {
 }
 const packages = [
   ['scene', 'SCENE_STEPS'], ['routing', 'ROUTING_STEPS'], ['groups', 'GROUP_STEPS'],
-  ['topology', 'TOPOLOGY_STEPS'], ['sharedMembers', 'MERGE_STEPS'], ['stock', 'STOCK_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
+  ['topology', 'TOPOLOGY_STEPS'], ['heights', 'HEIGHT_STEPS'], ['frameRows', 'FRAME_ROW_STEPS'], ['bands', 'BAND_STEPS'], ['decks', 'DECK_STEPS'], ['components', 'COMPONENT_STEPS'], ['posts', 'POST_STEPS'], ['bases', 'BASE_STEPS'], ['sharedMembers', 'MERGE_STEPS'], ['stock', 'STOCK_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
 ]
 const executed = new Set(), steps = new Set()
 for (const [name, exported] of packages) {

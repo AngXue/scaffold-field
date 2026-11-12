@@ -1,6 +1,244 @@
 {
   "date": "2026-11-12",
-  "sourceHash": "3a2261ac037365f6599a15dc68b0f45e6ad260ae722eca689edf6f02647eee29",
+  "sourceHash": "84b8057f9668aca77c9b11a155e047140705d491dd602cb1bf158bc9508806b5",
+  "sourceFiles": [
+    {
+      "path": "guardrails.ts",
+      "sha256": "3e857ff5572355c6cb01a66fc12a79a517121866e68584db915b56abc0b09846"
+    },
+    {
+      "path": "history.ts",
+      "sha256": "3d8accc45b875dc2f55dfc0492cabdde22ce35ad250cff862cf6e982f97625b6"
+    },
+    {
+      "path": "plan.ts",
+      "sha256": "d8b3ecfa6baf93bbcf2dc7a44c45504e4a234e38a9303144bf35188bb15d0431"
+    },
+    {
+      "path": "polygons.ts",
+      "sha256": "10b1a9b5fc951b48dc8809ccd5b9212f5e8c3c5fece99acd39dc03ea5f795339"
+    },
+    {
+      "path": "project.ts",
+      "sha256": "e7bf947cb66996980db7f06e89c948f2b2e0754163dd883c61cb3e569cbbf1d9"
+    },
+    {
+      "path": "rules/bands.ts",
+      "sha256": "aa60a7ce0d9174ffac47f810be52e78dfcf8ba68834e3d46f43bc6019674110b"
+    },
+    {
+      "path": "rules/bases.ts",
+      "sha256": "5ce992310755b3c3bce57a8f3f7bdbf60dc9f5c13d5231257fca13bff4d35cbc"
+    },
+    {
+      "path": "rules/boundaries/adjustments.ts",
+      "sha256": "be0e861547da9f38634614237638317d3c6a794661a04a01e5ca93c101fb5003"
+    },
+    {
+      "path": "rules/boundaries/parameters.ts",
+      "sha256": "57e6cfdae46ae4dfa3fd6901774c3bbe630f7cfa4b53846441720c8a34fa4059"
+    },
+    {
+      "path": "rules/catalog.ts",
+      "sha256": "27e0502e383b4d0b5c7a201e74d4492355536e5cba041330843fcb830f3e3646"
+    },
+    {
+      "path": "rules/components.ts",
+      "sha256": "40972765f0daa9c855e2ee58cd2c2a74ca4d7463d34fd9f3d410eebff97cd2fd"
+    },
+    {
+      "path": "rules/connections.ts",
+      "sha256": "46a5b9dd1752c4d4b324db4b959fae86403efc60f73bcda44659e5cb1d89fa1c"
+    },
+    {
+      "path": "rules/contracts.ts",
+      "sha256": "2007e8214520637ea143d83348f9ea237b4a9bd921c6224f1239fb6a66401336"
+    },
+    {
+      "path": "rules/decks.ts",
+      "sha256": "d074d46ee2df3182fc9537dc7e27a5fc241c779d5a7704d5c1d68888c8423c8c"
+    },
+    {
+      "path": "rules/facts/connections.ts",
+      "sha256": "b952330a275baf4ba84cfe9e898cab97f3001fdfb1219d941963b9c72b4d9621"
+    },
+    {
+      "path": "rules/facts/entityGraph.ts",
+      "sha256": "5589b382e43bdc701244dbeda9ac0bd3a68aec36c8410b21fa484d40fb3e4ebf"
+    },
+    {
+      "path": "rules/facts/materialLedger.ts",
+      "sha256": "68563fc7505f73c32e20613a93b797db82c052ee51f737058a04b656b5885ec5"
+    },
+    {
+      "path": "rules/facts/memberUses.ts",
+      "sha256": "db0b071cd953cd233d975ccdd428eeea3b22f3e25b3c156b313e3b43fe4e29d5"
+    },
+    {
+      "path": "rules/facts/precision.ts",
+      "sha256": "75a4109cb801ef6863377434ed25145623004fdfa3fd8c65500d786813b4a8e2"
+    },
+    {
+      "path": "rules/facts/vector.ts",
+      "sha256": "2b0a7859728bf84b63877c1009b84ee3c0f1f99568e6f8f3369d3fca29ba5d68"
+    },
+    {
+      "path": "rules/frameRows.ts",
+      "sha256": "6d08083a4625c5890b2ef28f4ac2678f4a65b619221880cb9a9259aa053ca5f4"
+    },
+    {
+      "path": "rules/groups.ts",
+      "sha256": "fcb6e4ca17c89cd5d6f54ec99a82449c38381dc4cd8aedd74b2fc70e3bcae4f1"
+    },
+    {
+      "path": "rules/heights.ts",
+      "sha256": "75b7734b90358edf9fef7c6e3fc9c84a94e427721afb8476894b1306f85b0e5d"
+    },
+    {
+      "path": "rules/materials.ts",
+      "sha256": "2106a70cc935f462619f4702ff4532cc29a7eff09722477df4b5dc3c04745a51"
+    },
+    {
+      "path": "rules/pipeline.ts",
+      "sha256": "6b82d50a616fa59efbc553780bbb8e0fca52029d34c585fe1b090dc733413f8d"
+    },
+    {
+      "path": "rules/policies/bands.ts",
+      "sha256": "741bb7b60339d2973be742c02d7d613cb3a466c4c4973f8dfcb29c794e021547"
+    },
+    {
+      "path": "rules/policies/bases.ts",
+      "sha256": "8ff8e34381db3ced6b129194baae0bc6f787275630a061a9f36465c683b4c424"
+    },
+    {
+      "path": "rules/policies/blocks.ts",
+      "sha256": "6848a4214ea1c875961e4d14d8cbfd298a0778b08a6c962aad12148585a5a6c9"
+    },
+    {
+      "path": "rules/policies/components.ts",
+      "sha256": "896b926d9313ea9d7cbdd4164287b148e86767cd02142ba41d3b530ea35b7cf8"
+    },
+    {
+      "path": "rules/policies/connections.ts",
+      "sha256": "19b0d8437bcee59abb0ba1361354d4a75bb9bba107e238d20a8b537e7a23f776"
+    },
+    {
+      "path": "rules/policies/decks.ts",
+      "sha256": "84833b65e33983208515ed0661091b3944918dedd211481debe9aaca2f18b57f"
+    },
+    {
+      "path": "rules/policies/frameRows.ts",
+      "sha256": "6df948b4f55da6e5dc0d9f5a607a965eaf2aeaad15ea87b0ab025731e74b0d83"
+    },
+    {
+      "path": "rules/policies/groups.ts",
+      "sha256": "380fd0626fb4e4b36846bf3d565264f3c418e8f3c41c21ef4535cdb9da6199a3"
+    },
+    {
+      "path": "rules/policies/guardCourses.ts",
+      "sha256": "d45da92b56e7e608aa3ae196b608057f5b83fcb2c46cdd49b7f1d5c7c6d1671c"
+    },
+    {
+      "path": "rules/policies/heights.ts",
+      "sha256": "3a38b1bf082f9d1ad5ca1bce7a696b87ac0f33820fca32d572117d8f261274fc"
+    },
+    {
+      "path": "rules/policies/levels.ts",
+      "sha256": "440c86fab272d3e13a9b39f5fd4ff8a112dbaa167c15debf4627a2236c5038a6"
+    },
+    {
+      "path": "rules/policies/materials.ts",
+      "sha256": "1937ea2f35eb01ddee65c660ac12e693679fdcaee62372bdcba33c6bcf95187d"
+    },
+    {
+      "path": "rules/policies/posts.ts",
+      "sha256": "c79ec073d4d8b6eafa15932ab950e3852aa09605293ffc0cf170676b7610875e"
+    },
+    {
+      "path": "rules/policies/protectionRanges.ts",
+      "sha256": "b79c8c45817e5629ebe6e74ef01599768eaef6b4d50827444f6bf9ef368d86ec"
+    },
+    {
+      "path": "rules/policies/routing.ts",
+      "sha256": "b106622cf460d35f712d8391392742183c8c4b545dd73638fd673f6c789fe514"
+    },
+    {
+      "path": "rules/policies/sharedMembers.ts",
+      "sha256": "5dc5ecc1d94e930bcea8ab030ba8e561c3ff4af5956c3a65978cebc29222aadc"
+    },
+    {
+      "path": "rules/policies/stock.ts",
+      "sha256": "dcbad4a99c7c4fafa9d2832bd8f846a48adba1baee0f4de3b9894bee4426b76a"
+    },
+    {
+      "path": "rules/policies/topology.ts",
+      "sha256": "f8b38b8a3277bd343ec1577e2f2845f35fb8aac3b3f4a73005d042440bd1cc26"
+    },
+    {
+      "path": "rules/posts.ts",
+      "sha256": "4dc812bf64d743196dd797342e637cf6810702ef7067cf35d2c358b5a2035c22"
+    },
+    {
+      "path": "rules/routing.ts",
+      "sha256": "8cb707f4b8e6cb0039f6c858e66dd896840f06e46ae5dd7400dc471a978a5d69"
+    },
+    {
+      "path": "rules/runtime.ts",
+      "sha256": "829b5269e1fbc635aa6a1031b5047b1caf534e7f7bebf4e99f7ca6beb3a11c18"
+    },
+    {
+      "path": "rules/scene.ts",
+      "sha256": "19ef8ee9ab1717dbed031dc0ed67c9e4b8f64cc716fbc1c70d4f8388f8b6ceb1"
+    },
+    {
+      "path": "rules/sharedMembers.ts",
+      "sha256": "59db30ed139e42a21730d3ca90539020ca0057d0b7723a2d0b4b2e41ccee8a44"
+    },
+    {
+      "path": "rules/stock.ts",
+      "sha256": "d337a49fc85d763aabf4757283d7b81147f12573647f77fc01aa942a92c805e3"
+    },
+    {
+      "path": "rules/topology.ts",
+      "sha256": "35273ad10c16069e7260a7606111ab57c9d90f76e6dea83eee6e03b67070d1bd"
+    },
+    {
+      "path": "scaffold.ts",
+      "sha256": "f2979d2910c6a3810e4e8d2e0e4d52c2d8d65e34972cd4821828dc3eb724f456"
+    },
+    {
+      "path": "site.ts",
+      "sha256": "7e92b729264f25d7ffc4a2acb31f49fd3409ef0350f025b94956978e6d33b17c"
+    },
+    {
+      "path": "siteAlignment.ts",
+      "sha256": "b320f4f114f737a00a4522d3f450ee4bf6353f5a409d3175a8c74c289d9b035d"
+    },
+    {
+      "path": "siteDemos.ts",
+      "sha256": "9ba519517fb6bfc9f586dbb4e5c096a07ce732f540a0c3f43a1c9824d7c07e1f"
+    },
+    {
+      "path": "siteEditing.ts",
+      "sha256": "545d0ab52a90ed9a8e8d377902c0a8e85db4c5edccd2de8a8f46ea78ca9eb02a"
+    },
+    {
+      "path": "siteFootprints.ts",
+      "sha256": "02a6bf37a83be4dbe246b7a99a02d635bc4d548c911ce13d7ae2bf3b745ac119"
+    },
+    {
+      "path": "siteRouting.ts",
+      "sha256": "22b02185ffdf21e0f3881bf9b77061ba15b6e9ea777dcfccbd6867ceb84d061e"
+    },
+    {
+      "path": "siteTransitions.ts",
+      "sha256": "5bf623201ef207d722bb8b728d461604d40491d751ccce566260cbc5e53d8fd9"
+    },
+    {
+      "path": "siteWallFit.ts",
+      "sha256": "9297c0e80fb1672baece83de1f5a38fa2df12bcc5bfb8bb248847c23980cdb4f"
+    }
+  ],
   "seed": "0x20261015",
   "summary": {
     "handDrawnShapes": 27,

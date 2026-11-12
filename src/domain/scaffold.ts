@@ -1,3 +1,10 @@
+import { resolvePosts } from './rules/posts.ts'
+import { resolveBaseCandidates, resolveSupportingBases } from './rules/bases.ts'
+import { reconcileComponents } from './rules/components.ts'
+import { resolveBands } from './rules/bands.ts'
+import { resolveDecks } from './rules/decks.ts'
+import { resolveFrameRows } from './rules/frameRows.ts'
+import { resolveHeightStages } from './rules/heights.ts'
 import { resolveTopology } from './rules/topology.ts'
 import { roundDomain as round } from './rules/facts/precision.ts'
 import { normalizeKernelParameters } from './rules/boundaries/parameters.ts'
@@ -6,7 +13,7 @@ import { calculateMaterials } from './rules/materials.ts'
 export { calculateMaterials } from './rules/materials.ts'
 import { calculateConnections } from './rules/connections.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
-import { chooseStockLengths, neighbourStockSequence, assembledLength, postStocks, postStockWarnings } from './rules/policies/stock.ts'
+import { assembledLength, postStockWarnings } from './rules/policies/stock.ts'
 import { assembleStockStage } from './rules/stock.ts'
 import { mergeMemberStage } from './rules/sharedMembers.ts'
 import { MEMBER_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
@@ -65,51 +72,7 @@ export type ScaffoldParameters = {
 export type MemberType = 'post' | 'longitudinal' | 'transverse' | 'guardrail'
 export type Vector3Tuple = [number, number, number]
 
-/**
- * Height of the 上栏杆 上皮 above the 作业层 (JGJ 130-2011 §7.3.12(2)). It is the
- * height a 2-rail guarded side tops out at, and it is why a row that carries rails
- * needs one more 步距 of 立杆 than the row against the building.
- */
-export const GUARDRAIL_TOP_EDGE = 1.2
-
-/**
- * JGJ 130-2011 §7.3.12 requires, at every 作业层, TWO rails per guarded side:
- *   1 栏杆和挡脚板均应搭设在外立杆的内侧; 2 上栏杆上皮高度应为 1.2m;
- *   4 中栏杆应居中设置.
- * GB 51210-2016 §8.2.8 条文说明 fixes the lower rail as 居中 between the deck and
- * the top rail. The standard gives the top rail as 上皮 (top edge), so its
- * centreline sits one radius lower. The mid rail has no stated number; 0.6 m is
- * the common site reading and does not affect any material quantity, because
- * every rail is horizontal and therefore the same length wherever it sits.
- *
- * Heights are measured from the 作业层, which is the lift axis.
- */
-export const GUARDRAILS = [
-  { id: 'top', label: '上栏杆', centreAboveDeck: GUARDRAIL_TOP_EDGE - 0.024 },
-  { id: 'mid', label: '中栏杆', centreAboveDeck: 0.6 },
-] as const
-
-/**
- * Which rails a guarded side carries, as a function of the 步距.
- *
- * - **2 根**: the §7.3.12 set — 上栏杆 (上皮 1.2 m above the 作业层) + 中栏杆.
- * - **1 根**: 居中 **in the 步距** — `liftHeight / 2` above the 作业层 (0.94 m at the
- *   1.88 m default). This is the site's single-rail position, not the 上栏杆 pulled
- *   down: it follows the 步距, so changing the 步距 moves the rail.
- *
- * The first entry of the returned set is also what a deckless top lift carries as
- * its 架顶栏杆.
- */
-export function guardrailsFor(count: number, liftHeight: number): ReadonlyArray<{
-  id: string
-  label: string
-  centreAboveDeck: number
-}> {
-  const clamped = Math.max(1, Math.min(GUARDRAILS.length, Math.round(count)))
-  return clamped === 1
-    ? [{ id: 'centre', label: '栏杆', centreAboveDeck: liftHeight / 2 }]
-    : GUARDRAILS
-}
+export { GUARDRAIL_TOP_EDGE, GUARDRAILS, guardrailsFor } from './rules/policies/guardCourses.ts'
 
 /**
  * 顶层立柱的固定延伸长度: the 立杆 rises this much above the TOP 作业层. It is what
@@ -140,14 +103,7 @@ export const DECK_PANEL_ROW_GAP = 0.05
  */
 export const DECK_PANEL_LAP = 0.1
 
-/** How many panels cover `run` once every joint is lapped by `DECK_PANEL_LAP`. */
-export function deckPanelCount(run: number, panel: number, lap = DECK_PANEL_LAP) {
-  const gain = Math.max(0.05, panel - lap)
-  return Math.max(1, Math.ceil((run - lap) / gain - 1e-9))
-}
-
-/** The deck surface is drawn a little above the lift axis. */
-const DECK_SURFACE_OFFSET = 0.055
+export { deckPanelCount, deckBetweenStations } from './rules/policies/decks.ts'
 
 /**
  * Couplers, by the names used on site:
@@ -454,66 +410,6 @@ export function scaffoldTransverseLength(parameters: ScaffoldParameters) {
 }
 
 /** Panels in the bay between two existing end stations, with no extra posts. */
-export function deckBetweenStations(start: [Vector3Tuple, Vector3Tuple], end: [Vector3Tuple, Vector3Tuple],
-  layer: number, pathSegment: number, id: string, parameters: ScaffoldParameters): DeckPanel[] {
-  const length = vectorDistance(start[0], end[0]), width = vectorDistance(start[0], start[1])
-  const along = deckPanelCount(length, Math.max(0.1, parameters.deckPanelLength))
-  const across = deckPanelCount(width, Math.max(0.1, parameters.deckPanelWidth))
-  const point = (s: number, t: number): Vector3Tuple => [0, 1, 2].map(axis => round(
-    start[0][axis] + (end[0][axis] - start[0][axis]) * s + (start[1][axis] - start[0][axis]) * t
-      + (axis === 1 ? DECK_SURFACE_OFFSET : 0), 6)) as Vector3Tuple
-  return Array.from({ length: along * across }, (_, index) => {
-    const s = Math.floor(index / across), t = index % across
-    return { id: `${id}-${index + 1}`, layer, pathSegment, area: round(length * width / (along * across)),
-      corners: [point(s / along, t / across), point((s + 1) / along, t / across),
-        point((s + 1) / along, (t + 1) / across), point(s / along, (t + 1) / across)] }
-  })
-}
-
-/** Rails per guarded side, clamped to the modelled set (上栏杆 / 上栏杆 + 中栏杆). */
-function guardrailRailCountOf(parameters: ScaffoldParameters) {
-  const requested = parameters.guardrailRailCount ?? DEFAULT_PARAMETERS.guardrailRailCount
-  return Math.max(1, Math.min(GUARDRAILS.length, Math.round(requested)))
-}
-
-/** Co-linear runs are one design member, including a straight drawing split. */
-
-/** One panel can have several cut faces; it is still bought/counts only once. */
-function resolveDeckCoverage(decks: DeckPanel[], path: Array<[number, number]>, closed: boolean) {
-  if (!decks.length) return
-  const firstLayer = Math.min(...decks.map(deck => deck.layer))
-  const templates = decks.filter(deck => deck.layer === firstLayer)
-  const plan = (deck: DeckPanel): PlanPolygon => deck.corners.map(p => [p[0], p[2]])
-  const key = (deck: DeckPanel) => `${deck.pathSegment}:${plan(deck).map(p => p.join(',')).join('|')}`
-  const raw = templates.map(plan)
-  const faces = new Map<string, PlanPolygon[]>()
-  const covered: PlanPolygon[] = []
-  // At an ordinary inside corner the incoming leg owns the common square.
-  // Applying this locally first makes the result independent of the closed seam.
-  templates.forEach((deck, index) => {
-    const previous = (deck.pathSegment + path.length - 2) % (path.length - 1)
-    const cutters = (closed || deck.pathSegment > 0)
-      ? templates.flatMap((other, i) => other.pathSegment === previous ? [raw[i]] : []) : []
-    const remaining = subtractCoverage(subtractCoverage([raw[index]], cutters), covered)
-    faces.set(key(deck), remaining)
-    covered.push(...remaining)
-  })
-  // Recover regions involved in cyclic/multiple overlaps exactly once. This also
-  // handles a narrow U without holes or guessing a fractional panel quantity.
-  templates.forEach((deck, index) => {
-    const remaining = subtractCoverage([raw[index]], covered)
-    faces.get(key(deck))!.push(...remaining)
-    covered.push(...remaining)
-  })
-  const kept = decks.flatMap(deck => {
-    const polygons = faces.get(key(deck))!
-    const area = polygons.reduce((sum, polygon) => sum + Math.abs(signedArea(polygon)), 0)
-    if (area < 1e-7) return []
-    return [{ ...deck, area: round(area, 9), coverage: polygons.map(polygon => polygon.map(([x, z]) => [x, deck.corners[0][1], z] as Vector3Tuple)) }]
-  })
-  decks.splice(0, decks.length, ...kept)
-}
-
 export function calculateScaffold(
   points: Point2D[],
   segmentLengths: number[],
@@ -526,12 +422,8 @@ export function calculateScaffold(
   parameters = normalizeKernelParameters(parameters)
   const physical = getPhysicalPoints(points, segmentLengths)
   const members: ScaffoldMember[] = []
-  const decks: DeckPanel[] = []
-  const baseChannels: BaseChannel[] = []
   const warnings: LayoutWarning[] = []
   warnings.push(...postStockWarnings(parameters))
-  const postByPoint = new Map<string, ScaffoldMember>()
-  const channelKeys = new Set<string>()
   let memberSequence = 1
   const memberByGeometry = new Map<string, ScaffoldMember>()
 
@@ -545,6 +437,7 @@ export function calculateScaffold(
     startExtension = parameters.tubeEndExtension,
     endExtension = parameters.tubeEndExtension,
     purpose: MemberPurpose = type === 'guardrail' ? 'side-guard' : type,
+    rules: readonly string[] = [],
   ) => {
     const [physicalStart, physicalEnd] = extendLine(start, end, startExtension, endExtension)
     const length = round(vectorDistance(physicalStart, physicalEnd))
@@ -552,6 +445,7 @@ export function calculateScaffold(
     const geometryKey = `${type}:${layer}:${[pointKey(physicalStart), pointKey(physicalEnd)].sort().join('|')}`
     const shared = memberByGeometry.get(geometryKey)
     const use = makeUse(pathSegment ?? 0, purpose, physicalStart, physicalEnd, type === 'post' ? 'M01' : type === 'guardrail' ? 'P02' : 'M03')
+    use.rules = [...new Set([...use.rules, ...rules])]
     if (shared) { shared[MEMBER_USES] = combineUses(memberUses(shared), [use]); return shared }
     const member: ScaffoldMember = {
       id: `M${memberSequence++}`,
@@ -580,42 +474,18 @@ export function calculateScaffold(
   // needs the extra 步距 (and its own 0.3 m) above the top 作业层 to tie those rails
   // to: the 内排 is the row against the building and stops at T. Both are then built
   // from standard tubes, so the post actually bought is never shorter than that.
-  const postRowCount = 2
-  const guardrailRailCount = guardrailRailCountOf(parameters)
-  const guardrails: ReturnType<typeof guardrailsFor> = guardrailsFor(guardrailRailCount, parameters.liftHeight)
+  const heightStages = resolveHeightStages(parameters, segmentLayerCounts ?? [], localLifts, deckLayerOffset)
   const layerCount = Math.max(1, Math.round(parameters.layerCount ?? DEFAULT_PARAMETERS.layerCount))
+  const profiles = new Map(heightStages.profiles.map(profile => [profile.count, profile]))
+  const globalProfile = profiles.get(layerCount)!
   const liftElevation = (layer: number) => localLifts?.[layer - 1] ?? round(layer * parameters.liftHeight)
   const topLiftElevation = liftElevation(layerCount)
-  const theoreticalHeight = round(TOP_POST_EXTENSION + topLiftElevation)
-  const railedHeight = round(theoreticalHeight + parameters.liftHeight + TOP_POST_EXTENSION)
-  // Which row of the drawing is which. The path is the 外立杆 line unless the user
-  // says the building is on that side (`swapInnerOuter`), and ONLY the 外排 is railed.
-  const outerRow = parameters.swapInnerOuter ? 1 : 0
-  const innerRow = outerRow === 0 ? 1 : 0
-  const rowCarriesRails = (row: number) => row === outerRow
-  /**
-   * The 立杆 height at one station. A post is built to the railed height when it
-   * carries 防护栏杆: the 外排's own side rails, or — at an OPEN path end — the 端部防护
-   * return, whose two posts both stand on the outside of the scaffold even when one
-   * of them belongs to the inner row (nothing is against a wall at an end).
-   */
+  const theoreticalHeight = globalProfile.height.theoretical
+  const { outerRow, innerRow } = globalProfile.height
   const layersAt = (index: number) => Math.max(1, Math.round(segmentLayerCounts?.[index] ?? layerCount))
-  const theoreticalAt = (index: number) => round(TOP_POST_EXTENSION + liftElevation(layersAt(index)))
-  const railedAt = (index: number) => round(theoreticalAt(index) + parameters.liftHeight + TOP_POST_EXTENSION)
-  const postHeightAt = (row: number, atOpenEnd: boolean, segmentIndex: number) =>
-    rowCarriesRails(row) || atOpenEnd ? railedAt(segmentIndex) : theoreticalAt(segmentIndex)
-  /** The shortest post of a row: what that row's side rails must be able to tie to. */
-  const rowTopEdge = (row: number) =>
-    assembledLength(
-      rowCarriesRails(row) ? railedHeight : theoreticalHeight,
-      postStocks(parameters),
-      parameters.spliceOverlap,
-    )
-  /** An open end's two posts are both railed, so a return is tied to the railed height. */
-  const endTopEdge = assembledLength(railedHeight, postStocks(parameters), parameters.spliceOverlap)
-  const sweepElevation = parameters.sweepBarHeight > 0 && parameters.sweepBarHeight < parameters.liftHeight
-    ? round(parameters.sweepBarHeight)
-    : 0
+  const profileAt = (index: number) => profiles.get(layersAt(index))!
+  const rowTopEdge = (row: number) => globalProfile.support.rowTops[row]
+  const endTopEdge = globalProfile.support.endTop
   // A closed path shares its first and last point, so it has no 临空 end.
   const pathIsClosed = physical.length > 2 &&
     Math.hypot(physical[0][0] - physical[physical.length - 1][0], physical[0][1] - physical[physical.length - 1][1]) < 0.01
@@ -654,37 +524,36 @@ export function calculateScaffold(
   const railsAboveEnd = new Set<string>()
   const supportRailCount = Math.max(2, Math.round(parameters.deckSupportRailCount))
 
-  // --- 立杆: staggered splices, and the two posts a corner does not need ---------
-
-  /**
-   * 立杆 stock sequence by parity, cached per required length. Neighbouring posts
-   * are built from different sequences so their butt joints never land at the same
-   * height (JGJ 130-2011 §6.3.6) — `neighbourStockSequence` is what picks the
-   * neighbour's. Parity is `(row + station along the whole path) % 2`, so a post
-   * differs from the one beside it AND from the one opposite it.
-   */
-  const postSequenceCache = new Map<string, number[]>()
-  const postSequenceFor = (requiredLength: number, parity: number) => {
-    const key = `${requiredLength}:${parity}`
-    const cached = postSequenceCache.get(key)
-    if (cached) return cached
-    const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...postStocks(parameters)) * 0.8))
-    const primary = chooseStockLengths(requiredLength, postStocks(parameters), overlap)
-    const sequence = parity === 0
-      ? primary
-      : neighbourStockSequence(primary, requiredLength, postStocks(parameters), overlap)
-    postSequenceCache.set(key, sequence)
-    return sequence
-  }
   /** The sequence each post was built with, keyed by member id. */
   const postSequences = new Map<string, number[]>()
   const topology = resolveTopology(physical, parameters, pathIsClosed, supportRailCount, requiredEndPairs)
-  const { segmentCount, segmentOrder, stationOffsets } = topology.grid
-  const nextSegment = (index: number) => (index + 1) % segmentCount
+  const { segmentCount, segmentOrder } = topology.grid
   const previousSegment = (index: number) => (index + segmentCount - 1) % segmentCount
-  const { cornerDecks, mitrePosts, offsetPostLimits } = topology.corners
-  const skippedChannels = new Set(topology.corners.skippedChannels), joinedCorners = new Set(topology.corners.joinedCorners)
-  const offsetRowExtensions = topology.corners.offsetRowExtensions.map(extension => ({ atStart: new Map(extension.atStart), atEnd: new Map(extension.atEnd) }))
+  const { mitrePosts } = topology.corners
+  const joinedCorners = new Set(topology.corners.joinedCorners)
+  const frame = resolveFrameRows(physical, topology.stations, topology.corners, physical.slice(0, -1).map((_, index) => layersAt(index)), pathIsClosed, parameters)
+  const postPlan = resolvePosts({ rows: frame.rows.map(rows => rows.postRows), heights: frame.rows.map((_, index) => profileAt(index).height),
+    ends: frame.ends, grid: topology.grid, stations: topology.stations, mitres: topology.corners.mitrePosts, retained: topology.retained }, parameters)
+  const postDemands = new Map(postPlan.posts.map(post => [post.key, post])), emittedPosts = new Set<string>()
+  const emitPost = (point: Vector3Tuple) => {
+    const key = pointKey(point)
+    if (emittedPosts.has(key)) return
+    const post = postDemands.get(key)!
+    const end: Vector3Tuple = [post.point[0], post.top, post.point[2]]
+    const member = addMember('post', post.point, end, undefined, post.pathSegment, [post.point, end], 0, 0)
+    if (!member) return
+    member[MEMBER_USES] = post.uses
+    if (post.cornerJunctions) member.cornerJunctions = post.cornerJunctions
+    postSequences.set(member.id, postPlan.sequences[key])
+    emittedPosts.add(key)
+  }
+  const baseChannels = resolveBaseCandidates({ rows: frame.rows.map(rows => rows.postRows), stations: topology.stations,
+    corners: topology.corners, order: segmentOrder, transverseTubeLength })
+  const working = resolveBands(frame.rows.map((rows, index) => ({ rows, bayCount: topology.stations[index].bayCount,
+    joinedStart: joinedCorners.has(previousSegment(index)), joinedEnd: joinedCorners.has(index), lifts: profileAt(index).height.lifts })), parameters, deckLayerOffset)
+  const decks = resolveDecks({ geometry: frame.rows.map((rows, index) => ({ postRows: rows.postRows, stations: topology.stations[index].stations, bands: working[index].map(({ elevation, layer, withDeck }) => ({ elevation, layer, withDeck })) })),
+    order: segmentOrder, corners: topology.corners.cornerDecks, counts: physical.slice(0, -1).map((_, index) => layersAt(index)), lifts: localLifts ? [...localLifts] : [],
+    parameters, deckLayerOffset, physical, closed: pathIsClosed, perSegmentCounts: Boolean(segmentLayerCounts) })
   const bands: PlanPolygon[] = physical.slice(0, -1).map((start, i) => {
     const end = physical[i + 1], length = Math.hypot(end[0] - start[0], end[1] - start[1]) || 1
     const nx = -(end[1] - start[1]) / length * parameters.width, nz = (end[0] - start[0]) / length * parameters.width
@@ -698,263 +567,29 @@ export function calculateScaffold(
   if (overlappingBands) warnings.push({ id: 'scaffold-overlap', message: '非相邻段的架体带重叠：共用直杆已合并、钢笆按覆盖区裁切，请复核重叠区域的搭设布置。' })
   warnings.push(...topology.corners.warnings)
 
-  // The corner keeps ONE offset-row post, where the two offset rows cross: both runs
-  // then arrive at the same upright — which is also what carries the 栏杆 around the
-  // corner when the offset row is the railed 外排 — instead of two posts a bay apart
-  // with the frame open between them.
-  for (const mitre of mitrePosts) {
-    const height = Math.max(postHeightAt(1, false, mitre.pathSegment), postHeightAt(1, false, nextSegment(mitre.pathSegment)))
-    const key = pointKey(mitre.point)
-    if (!postByPoint.has(key)) {
-      const member = addMember(
-        'post',
-        mitre.point,
-        [mitre.point[0], height, mitre.point[2]],
-        undefined,
-        mitre.pathSegment,
-        [mitre.point, [mitre.point[0], height, mitre.point[2]]],
-        0,
-        0,
-      )
-      if (member) {
-        postByPoint.set(key, member)
-        postSequences.set(member.id, postSequenceFor(height, mitre.parity))
-      }
-    }
-    const cornerPost = postByPoint.get(key)
-    if (cornerPost) {
-      cornerPost.cornerJunctions = [...(cornerPost.cornerJunctions ?? []), mitre.pathSegment]
-      cornerPost[MEMBER_USES] = combineUses(memberUses(cornerPost), [makeUse(nextSegment(mitre.pathSegment), 'post', cornerPost.start, cornerPost.end, 'G08')])
-    }
-    const half = transverseTubeLength / 2
-    const channelStart: Vector3Tuple = [
-      round(mitre.beamCentre[0] - mitre.normal[0] * half),
-      0,
-      round(mitre.beamCentre[2] - mitre.normal[1] * half),
-    ]
-    const channelEnd: Vector3Tuple = [
-      round(mitre.beamCentre[0] + mitre.normal[0] * half),
-      0,
-      round(mitre.beamCentre[2] + mitre.normal[1] * half),
-    ]
-    const channelKey = [pointKey(channelStart), pointKey(channelEnd)].sort().join('|')
-    if (!channelKeys.has(channelKey)) {
-      channelKeys.add(channelKey)
-      baseChannels.push({
-        id: `B${baseChannels.length + 1}`,
-        start: channelStart,
-        end: channelEnd,
-        length: round(vectorDistance(channelStart, channelEnd)),
-        pathSegment: mitre.pathSegment,
-      })
-    }
-  }
+  for (const mitre of mitrePosts) emitPost(mitre.point)
 
   segmentOrder.forEach((segmentIndex) => {
-    const layerCount = layersAt(segmentIndex)
-    const theoreticalHeight = theoreticalAt(segmentIndex)
-    const railedHeight = railedAt(segmentIndex)
-    const rowTopEdge = (row: number) => assembledLength(rowCarriesRails(row) ? railedHeight : theoreticalHeight,
-      postStocks(parameters), parameters.spliceOverlap)
-    const endTopEdge = assembledLength(railedHeight, postStocks(parameters), parameters.spliceOverlap)
-    const start2d = physical[segmentIndex]
-    const { segmentLength, bayCount, bayLength, stations, direction, normal } = topology.stations[segmentIndex]
+    const guardCourses = profileAt(segmentIndex).courses
+    const { segmentLength, bayCount, bayLength } = topology.stations[segmentIndex]
     if (segmentLength <= 0.001) {
       warnings.push({ id: `zero-length-${segmentIndex}`, message: `第 ${segmentIndex + 1} 段的两个节点重合，请移动节点或删除该路径段。` })
       return
     }
-    const postRows: Array<Array<Vector3Tuple>> = Array.from({ length: postRowCount }, () => [])
-
-    // 端部防护: an end that is not closed off is itself a 临边 (JGJ 80-2016 §4.1.1,
-    // 强制性条文). Both posts at such a station belong to the OUTSIDE of the scaffold
-    // — nothing is against a wall at an end — so both are built to the railed height
-    // and the return rail can be tied across them.
-    const endStations: number[] = []
-    if (!pathIsClosed && segmentIndex === 0) endStations.push(0)
-    if (!pathIsClosed && segmentIndex === physical.length - 2) endStations.push(bayCount)
-    const neighbourLayers = new Map<number, number>()
-    if (pathIsClosed || segmentIndex > 0) neighbourLayers.set(0, layersAt(previousSegment(segmentIndex)))
-    if (pathIsClosed || segmentIndex < physical.length - 2) neighbourLayers.set(bayCount, layersAt(nextSegment(segmentIndex)))
-    for (const [station, count] of neighbourLayers) if (count < layerCount) endStations.push(station)
-
-    for (let station = 0; station <= bayCount; station += 1) {
-      const atOpenEnd = endStations.includes(station)
-      for (let row = 0; row < postRowCount; row += 1) {
-        const offset = row * parameters.width
-        const point: Vector3Tuple = [
-          round(start2d[0] + direction[0] * stations[station] + normal[0] * offset),
-          0,
-          round(start2d[1] + direction[1] * stations[station] + normal[1] * offset),
-        ]
-        postRows[row].push(point)
-        // Row 1 is the row offset from the path; a corner does not need its post at
-        // either side of the junction (see `skippedOffsetPosts`).
-        // On a short return, an old endpoint can fall just INSIDE the mitre
-        // instead of just outside it. If the other convex corner already carries
-        // this entire short row, the endpoint is equally redundant.
-        if (row === 1 && !topology.retained[segmentIndex][station]) continue
-        const key = pointKey(point)
-        const post = postHeightAt(row, atOpenEnd, segmentIndex)
-        const parity = (row + stationOffsets[segmentIndex] + station) % 2
-        const existingPost = postByPoint.get(key)
-        if (existingPost) {
-          existingPost[MEMBER_USES] = combineUses(memberUses(existingPost), [makeUse(segmentIndex, 'post', point, [point[0], post, point[2]], 'G08')])
-          // A shared corner can be the railed row of one path segment and the plain
-          // row of another: the taller post is the one that gets built.
-          if (existingPost.end[1] < post) {
-            existingPost.end = [existingPost.start[0], post, existingPost.start[2]]
-            existingPost.connectionPoints = [existingPost.start, existingPost.end]
-            existingPost.length = round(post - existingPost.start[1])
-            postSequences.set(existingPost.id, postSequenceFor(post, parity))
-          }
-        } else {
-          const member = addMember(
-            'post',
-            point,
-            [point[0], post, point[2]],
-            undefined,
-            segmentIndex,
-            [point, [point[0], post, point[2]]],
-            0,
-            0,
-          )
-          if (member) {
-            postByPoint.set(key, member)
-            postSequences.set(member.id, postSequenceFor(post, parity))
-          }
-        }
-      }
-
-      // 槽钢 base beam: one piece under each pair of posts, running in the same
-      // direction as the transverse members and cut to the same length as the
-      // transverse tube above it, so the two stay aligned. Deduplicated by post
-      // pair so a shared path corner does not produce two identical beams.
-      const outerBase = postRows[0][station]
-      const innerBase = postRows[1][station]
-      const channelKey = [pointKey(outerBase), pointKey(innerBase)].sort().join('|')
-      if (!skippedChannels.has(`${segmentIndex}:${station}`) && !channelKeys.has(channelKey)) {
-        channelKeys.add(channelKey)
-        const channelCentre: Vector3Tuple = [
-          round((outerBase[0] + innerBase[0]) / 2),
-          0,
-          round((outerBase[2] + innerBase[2]) / 2),
-        ]
-        const half = transverseTubeLength / 2
-        const channelStart: Vector3Tuple = [
-          round(channelCentre[0] - normal[0] * half),
-          0,
-          round(channelCentre[2] - normal[1] * half),
-        ]
-        const channelEnd: Vector3Tuple = [
-          round(channelCentre[0] + normal[0] * half),
-          0,
-          round(channelCentre[2] + normal[1] * half),
-        ]
-        baseChannels.push({
-          id: `B${baseChannels.length + 1}`,
-          start: channelStart,
-          end: channelEnd,
-          length: round(vectorDistance(channelStart, channelEnd)),
-          pathSegment: segmentIndex,
-        })
-      }
+    const postRows = frame.rows[segmentIndex].postRows
+    for (let station = 0; station <= bayCount; station++) for (let row = 0; row < postRows.length; row++) {
+      if (row === 1 && !topology.retained[segmentIndex][station]) continue
+      emitPost(postRows[row][station])
     }
 
     // Every row of this segment is carried on to the other leg's offset row line (see
     // `offsetRowExtensions`), so all of a segment's 纵向水平杆 come out the same length.
     // `supportRows` itself stays on the station grid — the 横向杆 tie to it and the deck
     // takes its corners from it — and the members are built from these extended copies.
-    const extensionAt = (map: Map<number, Vector3Tuple>, ratio: number): Vector3Tuple | undefined => {
-      if (map.size === 0) return undefined
-      let best: Vector3Tuple | undefined
-      let bestGap = Number.POSITIVE_INFINITY
-      for (const [rowRatio, point] of map) {
-        const gap = Math.abs(rowRatio - ratio)
-        if (gap < bestGap) {
-          bestGap = gap
-          best = point
-        }
-      }
-      return bestGap < 0.001 ? best : undefined
-    }
-    const extendRow = (row: Vector3Tuple[], ratio: number): Vector3Tuple[] => {
-      const points = [...row]
-      const atStart = extensionAt(offsetRowExtensions[segmentIndex].atStart, ratio)
-      const atEnd = extensionAt(offsetRowExtensions[segmentIndex].atEnd, ratio)
-      if (atStart) points.unshift(atStart)
-      if (atEnd) points.push(atEnd)
-      return points
-    }
-
-    const supportRows = Array.from({ length: supportRailCount }, (_, supportIndex) => {
-      const ratio = supportRailCount > 1 ? supportIndex / (supportRailCount - 1) : 1
-      return postRows[0].map((outerPoint, station) => {
-        const innerPoint = postRows[1][station]
-        return [
-          round(outerPoint[0] + (innerPoint[0] - outerPoint[0]) * ratio),
-          0,
-          round(outerPoint[2] + (innerPoint[2] - outerPoint[2]) * ratio),
-        ] as Vector3Tuple
-      })
-    })
-
-    const memberRows = supportRows.map((row, rowIndex) => extendRow(
-      row,
-      supportRailCount > 1 ? rowIndex / (supportRailCount - 1) : 1,
-    ))
-    const offsetRowPoints = extendRow(postRows[1], 1)
-    if (offsetRowPoints.length !== postRows[1].length) {
-      memberRows[memberRows.length - 1] = offsetRowPoints
-    }
-
-    // The two post rows carry the ordinary 纵向水平杆. Any rows between them are
-    // 钢笆纵向支承杆 (deck-support rails), which only exist where a deck does.
-    const normalRows = [extendRow(supportRows[0], 0), offsetRowPoints]
-    const normalStationRows = [supportRows[0], postRows[1]]
-
-    const addHorizontalBand = (
-      elevation: number,
-      layer: number,
-      rows: Vector3Tuple[][],
-      stationRows: Vector3Tuple[][],
-      withDeck: boolean,
-    ) => {
-      for (const row of rows) {
-        const connectionPoints = row.map((point) => [point[0], elevation, point[2]] as Vector3Tuple)
-        addMember(
-          'longitudinal',
-          connectionPoints[0],
-          connectionPoints[connectionPoints.length - 1],
-          layer,
-          segmentIndex,
-          connectionPoints,
-        )
-      }
-
-      postRows[0].forEach((outerPoint, station) => {
-        const isInternalPathNode = (station === 0 && joinedCorners.has(previousSegment(segmentIndex))) ||
-          (station === bayCount && joinedCorners.has(segmentIndex))
-        if (isInternalPathNode) return
-
-        const innerPoint = postRows[1][station]
-        // Ties come off the STATION rows: the extended row of a convex corner carries
-        // an extra point at its end, so indexing it by station would shift every tie.
-        const transverseConnections = stationRows.map(
-          (row) => [row[station][0], elevation, row[station][2]] as Vector3Tuple,
-        )
-        addMember(
-          'transverse',
-          [outerPoint[0], elevation, outerPoint[2]],
-          [innerPoint[0], elevation, innerPoint[2]],
-          layer,
-          segmentIndex,
-          transverseConnections,
-          // No 管端外伸 here: the bought tube is longer than the 排距 on its own, and
-          // the assembly centres that surplus so the rod overhangs both posts.
-          0,
-          0,
-        )
-      })
+    for (const band of working[segmentIndex]) {
+      const { layer } = band
+      for (const member of band.members) addMember(member.type, member.start, member.end, layer, segmentIndex,
+        member.connectionPoints, member.startExtension, member.endExtension, member.type, band.layer === SWEEP_BAR_LAYER ? ['M04'] : ['M03'])
 
       // 作业层 protection. These are ADDITIONAL members, never a substitute for the
       // ordinary longitudinal rows: JGJ 130-2011 §4.1.2 puts 栏杆 in 构配件自重, a
@@ -963,161 +598,38 @@ export function calculateScaffold(
       // A decked lift is a 作业层 and gets its rails; a deckless lift gets only the
       // two normal longitudinal rows — except the top lift, which always carries the
       // 架顶栏杆, i.e. the first rail of the selected set.
-      const guardedRails = withDeck
-        ? guardrails
-        : layer === layerCount ? [guardrails[0]] : []
-
-      /** 架顶栏杆 is a 作业层-level rail like any other, only one course higher. */
-      const topRail = layer === layerCount
-        ? round(theoreticalHeight + parameters.liftHeight)
-        : null
-      const topRailUsable = topRail !== null
-        && round(topRail + parameters.pipeDiameter / 2) <= rowTopEdge(outerRow) + 0.001
-        && round(topRail + parameters.pipeDiameter / 2) <= endTopEdge + 0.001
-      const guardedThisLift: ReadonlyArray<{ id: string; label: string; centreAboveDeck: number }> =
-        topRailUsable && topRail !== null
-          ? [...guardedRails, { id: 'coping', label: '架顶栏杆', centreAboveDeck: round(topRail - elevation) }]
-          : guardedRails
-
-      /**
-       * The rails of this lift that `rowTop` can actually carry. A rail is tied to
-       * the 立杆, so one reaching past that post's top is not emitted at all — it
-       * would float in the air — and is recorded in `above` for a single report.
-       */
-      const railsWithin = (
-        rowTop: number,
-        above: Set<string>,
-        rails: typeof guardedThisLift = guardedRails,
-      ): Array<{ rail: (typeof guardedThisLift)[number]; elevation: number }> => {
-        const usable: Array<{ rail: (typeof guardedThisLift)[number]; elevation: number }> = []
-        for (const rail of rails) {
-          const railElevation = round(elevation + rail.centreAboveDeck)
-          if (round(railElevation + parameters.pipeDiameter / 2) > rowTop + 0.001) {
-            above.add(rail.label)
-            continue
-          }
-          // A short 步距 can drop a rail onto the next lift's longitudinal member;
-          // never emit two coincident tubes.
-          if (layer < layerCount && Math.abs(railElevation - round(elevation + parameters.liftHeight)) < 0.05) {
-            continue
-          }
-          usable.push({ rail, elevation: railElevation })
-        }
-        return usable
-      }
-
+      const course = guardCourses[layer - 1]
       // 防护栏杆 sit on the 外排 and nowhere else: §7.3.12(1) mandates the 外立杆, and
       // the row against the building is regulated as a gap to it. There is no
       // parameter that changes this — only `swapInnerOuter`, which says WHICH side of
       // the drawing the building is on.
-      if (guardedRails.length > 0) {
-        const railRow = outerRow === 1 ? offsetRowPoints : postRows[0]
-        // Only the railing is cut back at an inward crossing. Deck-supporting
-        // longitudinals still span the entire corner; higher unmatched lifts keep
-        // their end protection because there is no connected walkway there.
-        const limits = offsetPostLimits[segmentIndex]
-        const clipStart = outerRow === 1 && (neighbourLayers.get(0) ?? 0) >= layer && limits.start > 0
-        const clipEnd = outerRow === 1 && (neighbourLayers.get(bayCount) ?? 0) >= layer && limits.end < segmentLength
-        const from = clipStart ? limits.start : -Infinity, to = clipEnd ? limits.end : Infinity
-        const stationOf = (p: Vector3Tuple) => (p[0] - start2d[0]) * direction[0] + (p[2] - start2d[1]) * direction[1]
-        const at = (distance: number): Vector3Tuple => [round(start2d[0] + direction[0] * distance + normal[0] * parameters.width), 0,
-          round(start2d[1] + direction[1] * distance + normal[1] * parameters.width)]
-        const kept = railRow.filter(p => stationOf(p) > from + 0.001 && stationOf(p) < to - 0.001)
-        if (clipStart) kept.unshift(at(from))
-        if (clipEnd) kept.push(at(to))
-        for (const { elevation: railElevation } of railsWithin(rowTopEdge(outerRow), railsAboveRow[outerRow], guardedThisLift)) {
+      if (course?.enabled) {
+        for (const label of course.side.above) railsAboveRow[outerRow].add(label)
+        for (const label of course.end.above) railsAboveEnd.add(label)
+        const range = frame.guards[segmentIndex][layer - 1]
+        const { clipStart, clipEnd, points: kept } = range
+        for (const { elevation: railElevation } of course.side.usable) {
           const points = kept.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
           if (points.length >= 2) addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points,
-            clipStart ? 0 : parameters.tubeEndExtension, clipEnd ? 0 : parameters.tubeEndExtension)
+            clipStart ? 0 : parameters.tubeEndExtension, clipEnd ? 0 : parameters.tubeEndExtension, 'side-guard',
+            ['P01', 'P07', ...(clipStart || clipEnd ? ['P03'] : [])])
         }
 
 
         // 端部防护 returns across an open end. Both of that station's posts are built to
         // the railed height (nothing is against a wall at an end), so the return is
         // checked against that height rather than against the shorter inner row.
-        for (const { elevation: railElevation } of railsWithin(endTopEdge, railsAboveEnd, guardedThisLift)) {
-          for (const station of endStations) {
-            if (layer <= (neighbourLayers.get(station) ?? 0)) continue
+        for (const { elevation: railElevation } of course.end.usable) {
+          for (const station of range.endStations) {
             const outerPoint = postRows[0][station]
             const innerPoint = postRows[1][station]
             const start: Vector3Tuple = [outerPoint[0], railElevation, outerPoint[2]]
             const end: Vector3Tuple = [innerPoint[0], railElevation, innerPoint[2]]
-            addMember('guardrail', start, end, layer, segmentIndex, [start, end], parameters.tubeEndExtension, parameters.tubeEndExtension, 'end-guard')
+            addMember('guardrail', start, end, layer, segmentIndex, [start, end], parameters.tubeEndExtension, parameters.tubeEndExtension, 'end-guard', ['P01', 'P07'])
           }
         }
       }
 
-      if (!withDeck) return
-
-      // 钢笆片 are whole panels: the chosen width spans the 排距 (which follows it) and
-      // the chosen length runs along the bay, so the count the material list reports
-      // is the number of pieces actually laid — while `deckArea` stays the geometric
-      // area covered, which a cut piece at the end of a bay cannot exceed.
-      const deckElevation = round(elevation + DECK_SURFACE_OFFSET)
-      const panelLength = Math.max(0.1, parameters.deckPanelLength ?? DECK_PANEL.length)
-      const panelWidth = Math.max(0.1, parameters.deckPanelWidth ?? DECK_PANEL.width)
-      const panelsAcross = deckPanelCount(parameters.width, panelWidth)
-
-      for (let bay = 0; bay < bayCount; bay += 1) {
-        const bayLength = stations[bay + 1] - stations[bay]
-        const panelsAlong = deckPanelCount(bayLength, panelLength)
-        /** A point on the bay: `along` 0..1 down the bay, `across` 0..1 between the rows. */
-        const at = (along: number, across: number): Vector3Tuple => {
-          const outerStart = postRows[0][bay]
-          const outerEnd = postRows[0][bay + 1]
-          const innerStart = postRows[1][bay]
-          const innerEnd = postRows[1][bay + 1]
-          const outerX = outerStart[0] + (outerEnd[0] - outerStart[0]) * along
-          const outerZ = outerStart[2] + (outerEnd[2] - outerStart[2]) * along
-          const innerX = innerStart[0] + (innerEnd[0] - innerStart[0]) * along
-          const innerZ = innerStart[2] + (innerEnd[2] - innerStart[2]) * along
-          return [
-            round(outerX + (innerX - outerX) * across, 6),
-            deckElevation,
-            round(outerZ + (innerZ - outerZ) * across, 6),
-          ]
-        }
-
-        for (let along = 0; along < panelsAlong; along += 1) {
-          for (let across = 0; across < panelsAcross; across += 1) {
-            const s0 = along / panelsAlong
-            const s1 = (along + 1) / panelsAlong
-            const a0 = across / panelsAcross
-            const a1 = (across + 1) / panelsAcross
-            decks.push({
-              id: `D${decks.length + 1}`,
-              corners: [at(s0, a0), at(s1, a0), at(s1, a1), at(s0, a1)],
-              area: round((bayLength / panelsAlong) * (parameters.width / panelsAcross)),
-              layer,
-              pathSegment: segmentIndex,
-            })
-          }
-        }
-      }
-    }
-
-    // 扫地杆 layer. It gets ordinary transverse + longitudinal members only:
-    // there is no deck here, so no deck-support rails and no edge protection.
-    if (sweepElevation > 0) {
-      addHorizontalBand(sweepElevation, SWEEP_BAR_LAYER, normalRows, normalStationRows, false)
-    }
-
-    for (let layer = 1; layer <= layerCount; layer += 1) {
-      // Every 作业层 is exactly `layer × liftHeight` above the base: the first one is
-      // a full 步距 up, and `TOP_POST_EXTENSION` is the 立杆 extension above the TOP
-      // one rather than a start offset.
-      const elevation = liftElevation(layer)
-      const withDeck = (layer + deckLayerOffset) % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0
-      // A decked lift is a 作业层 and gets its rails; a deckless lift gets only the
-      // two normal longitudinal rows — except the top lift, which always carries
-      // the 架顶栏杆 that carries the top of the scaffold.
-      addHorizontalBand(
-        elevation,
-        layer,
-        withDeck ? memberRows : normalRows,
-        withDeck ? supportRows : normalStationRows,
-        withDeck,
-      )
     }
 
     if (bayLength < parameters.postSpacing * 0.55) {
@@ -1127,37 +639,6 @@ export function calculateScaffold(
       })
     }
   })
-
-  // The corner square of a convex junction is framed on all four sides — the two
-  // 横向杆 of the junction and the two carried-on runs — so the 作业层 platform
-  // continues around the building's corner instead of stopping at it. One 钢笆 piece
-  // per decked lift, cut to the square, and only for the lifts that carry a deck.
-  if (cornerDecks.length > 0) {
-    const deckInterval = Math.max(1, Math.round(parameters.deckLiftInterval))
-    for (const corner of cornerDecks) {
-      const sharedLayers = Math.min(layersAt(corner.pathSegment), layersAt(nextSegment(corner.pathSegment)))
-      for (let layer = 1; layer <= sharedLayers; layer += 1) {
-        if ((layer + deckLayerOffset) % deckInterval !== 0) continue
-        const deckElevation = round(liftElevation(layer) + DECK_SURFACE_OFFSET)
-        const corners = corner.points.map(
-          (point) => [point[0], deckElevation, point[2]] as Vector3Tuple,
-        ) as [Vector3Tuple, Vector3Tuple, Vector3Tuple, Vector3Tuple]
-        let twiceArea = 0
-        for (let index = 0; index < corners.length; index += 1) {
-          const current = corners[index]
-          const next = corners[(index + 1) % corners.length]
-          twiceArea += current[0] * next[2] - next[0] * current[2]
-        }
-        decks.push({
-          id: `D${decks.length + 1}`,
-          corners,
-          area: round(Math.abs(twiceArea) / 2),
-          layer,
-          pathSegment: corner.pathSegment,
-        })
-      }
-    }
-  }
 
   // A rail the 立杆 cannot reach was dropped rather than floated. The 内侧 row is the
   // short one on purpose (it is the row against the building), so an open end's top
@@ -1219,16 +700,6 @@ export function calculateScaffold(
       ] as Vector3Tuple,
     }]
   })
-  if (segmentLayerCounts) {
-    const layers = new Set(decks.map(deck => deck.layer))
-    const covered: DeckPanel[] = []
-    for (const layer of layers) {
-      const panels = decks.filter(deck => deck.layer === layer)
-      resolveDeckCoverage(panels, physical, pathIsClosed)
-      covered.push(...panels)
-    }
-    decks.splice(0, decks.length, ...covered)
-  } else resolveDeckCoverage(decks, physical, pathIsClosed)
   return finishLayout(members, decks, baseChannels, warnings, parameters, postSequences, pathDimensions, {
     theoretical: theoreticalHeight,
     inner: round(rowTopEdge(innerRow)),
@@ -1248,23 +719,7 @@ function finishLayout(
   // A relocated station may now carry a mitre that already had its own beam.
   // Remove a beam only when ALL of its posts are carried by one other beam;
   // never join beams into a longer piece or leave a post without a base.
-  if (!fixedPostsAndBases) {
-    const postsForBases = members.filter(member => member.type === 'post')
-    const beamSupports = (beam: BaseChannel) => postsForBases.filter(post => {
-      const dx = beam.end[0] - beam.start[0], dz = beam.end[2] - beam.start[2]
-      const length = Math.hypot(dx, dz)
-      const x = post.start[0] - beam.start[0], z = post.start[2] - beam.start[2]
-      const along = (x * dx + z * dz) / length
-      return along >= -0.001 && along <= length + 0.001 && Math.abs(x * dz - z * dx) / length < 0.001
-    }).map(post => post.id)
-    const supportedByBeam = new Map(baseChannels.map(beam => [beam, beamSupports(beam)]))
-    for (let index = baseChannels.length - 1; index >= 0; index--) {
-      const beam = baseChannels[index], supported = supportedByBeam.get(beam)!
-      if (supported.length === 0 || baseChannels.some(other => other !== beam
-        && supportedByBeam.get(other)!.length > supported.length
-        && supported.every(id => supportedByBeam.get(other)!.includes(id)))) baseChannels.splice(index, 1)
-    }
-  }
+  if (!fixedPostsAndBases) baseChannels = resolveSupportingBases(baseChannels, members)
 
   const stock = assembleStockStage(members, Object.fromEntries(postSequences), parameters, fixedPostsAndBases)
   warnings.push(...stock.warnings)
@@ -1405,42 +860,10 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   if ([...degrees.values()].some(degree => degree > 2)) warnings.unshift({
     id: 'branch-junction', message: '图纸含三向或四向交汇点：已合并共点立杆，支路按各自端部估算；交汇处栏杆、钢笆及搭设细节需人工复核。',
   })
-  // Shared endpoints belong to one physical post, taking the taller requirement.
-  const posts = new Map<string, ScaffoldMember>()
-  for (let i = members.length - 1; i >= 0; i--) {
-    const post = members[i]
-    if (post.type !== 'post') continue
-    const key = pointKey(post.start), existing = posts.get(key)
-    if (!existing) { posts.set(key, post); continue }
-    existing[MEMBER_USES] = combineUses(memberUses(existing), memberUses(post))
-    if (post.length > existing.length) {
-      existing.length = post.length; existing.end = [...post.end]
-      postSequences.set(existing.id, postSequences.get(post.id)!)
-    }
-    members.splice(i, 1)
-  }
-  const beams = new Set<string>()
-  for (let i = baseChannels.length - 1; i >= 0; i--) {
-    const b = baseChannels[i], key = [pointKey(b.start), pointKey(b.end)].sort().join('|')
-    if (beams.has(key)) baseChannels.splice(i, 1)
-    else beams.add(key)
-  }
-  // Components/branches may overlap in plan. Count and draw covered ground once.
-  const coveredByLayer = new Map<number, PlanPolygon[]>()
-  let overlap = false
-  for (let i = 0; i < decks.length;) {
-    const deck = decks[i], covered = coveredByLayer.get(deck.layer) ?? []
-    const original = (deck.coverage ?? [deck.corners]).map(face => face.map(p => [p[0], p[2]] as [number, number]))
-    const faces = subtractCoverage(original, covered)
-    const area = faces.reduce((sum, face) => sum + Math.abs(signedArea(face)), 0)
-    if (area < deck.area - 0.001) overlap = true
-    if (area < 0.00001) { decks.splice(i, 1); continue }
-    deck.coverage = faces.map(face => face.map(p => [p[0], deck.corners[0][1], p[1]] as Vector3Tuple))
-    deck.area = round(area, 4)
-    coveredByLayer.set(deck.layer, [...covered, ...faces]); i++
-  }
+  const reconciled = reconcileComponents(members, decks, baseChannels, Object.fromEntries(postSequences))
+  const overlap = reconciled.overlap
   if (overlap && !warnings.some(w => w.id === 'branch-junction')) warnings.unshift({ id: 'overlapping-components',
     message: '独立架段的铺设范围重叠：钢笆覆盖已去重，交汇处立杆、栏杆及搭设细节需人工复核。' })
-  return finishLayout(members, decks, baseChannels, warnings, parameters, postSequences,
+  return finishLayout(reconciled.members, reconciled.decks, reconciled.bases, warnings, parameters, new Map(Object.entries(reconciled.sequences)),
     dimensions.sort((a, b) => a.index - b.index), postHeights!)
 }

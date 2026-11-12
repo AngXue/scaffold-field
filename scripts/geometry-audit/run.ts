@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import process from 'node:process'
 import { calculateScaffold, DEFAULT_PARAMETERS, countMembers, type ScaffoldLayout, type Vector3Tuple } from '../../src/domain/scaffold.ts'
@@ -6,8 +6,20 @@ import { CONFIGURATIONS, SHAPES, generatedShapes, planInput, type Shape, type XY
 import { inspect } from './checks.ts'
 
 const output = new URL('../../docs/geometry-audit/', import.meta.url)
-const source = await readFile(new URL('../../src/domain/scaffold.ts', import.meta.url), 'utf8')
-const sourceHash = createHash('sha256').update(source).digest('hex')
+const domainRoot = new URL('../../src/domain/', import.meta.url)
+async function domainSources(relative = ''): Promise<string[]> {
+  const entries = await readdir(new URL(relative, domainRoot), { withFileTypes: true })
+  const files: string[] = []
+  for (const entry of entries) {
+    const name = relative + entry.name
+    if (entry.isDirectory()) files.push(...await domainSources(name + '/'))
+    else if (name.endsWith('.ts') && !name.endsWith('.test.ts')) files.push(name)
+  }
+  return files.sort()
+}
+const sourceFiles = await Promise.all((await domainSources()).map(async path => ({ path,
+  sha256: createHash('sha256').update(await readFile(new URL(path, domainRoot))).digest('hex') })))
+const sourceHash = createHash('sha256').update(JSON.stringify(sourceFiles)).digest('hex')
 const allShapes = [...SHAPES, ...generatedShapes()]
 const layouts = new Map<string, ScaffoldLayout>()
 const cases = allShapes.flatMap((shape) => CONFIGURATIONS.map((config) => {
@@ -128,7 +140,7 @@ const details=detailIds.map((id,index)=>{
 }).join('')
 const detailSvg=`<svg xmlns="http://www.w3.org/2000/svg" width="1308" height="792"><rect width="100%" height="100%" fill="#f1f3f4"/><g font-family="Arial, Noto Sans SC, Microsoft YaHei, sans-serif" fill="#16191b"><text x="24" y="42" font-size="25" font-weight="700">修复后俯视图 · 六个回归案例</text><text x="24" y="73" font-size="14">黑线：路径 · 细线：横向杆 · 黑点：立杆 · 灰面：首层钢笆 · 虚线圈：复核区域</text>${details}</g></svg>`
 await mkdir(output, { recursive:true })
-await writeFile(new URL('results.json',output), JSON.stringify({ date:new Date().toISOString().slice(0,10),sourceHash,seed:'0x20261015',summary,configurations:CONFIGURATIONS,shapes:allShapes,cases,transformations },null,2)+'\n')
+await writeFile(new URL('results.json',output), JSON.stringify({ date:new Date().toISOString().slice(0,10),sourceHash,sourceFiles,seed:'0x20261015',summary,configurations:CONFIGURATIONS,shapes:allShapes,cases,transformations },null,2)+'\n')
 await writeFile(new URL('atlas.svg',output),atlas)
 await writeFile(new URL('details.svg',output),detailSvg)
 await writeFile(new URL('projects.json',output),JSON.stringify(SHAPES.map((shape)=>({id:shape.id,label:shape.name,...planInput(shape),parameters:DEFAULT_PARAMETERS,adjustments:{}})),null,2)+'\n')

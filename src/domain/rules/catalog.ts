@@ -214,14 +214,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "内角合柱、外角延伸补柱、共点取较高柱；闭合首尾同规则；必需跨界端柱对保留",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.offsetRowCrossing/requiredEndPairs；S.calculateSiteSpans",
-      "src/domain/rules/topology.ts",
-      "src/domain/rules/policies/topology.ts"
+      "src/domain/rules/posts.ts",
+      "src/domain/rules/policies/posts.ts",
+      "src/domain/rules/components.ts"
     ],
     "cases": [
-      "S2；K测内外角闭环、E测 B2"
+      "T05",
+      "T12",
+      "src/domain/rules/posts.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -247,12 +250,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "始终两排立杆；填芯数量只改变钢笆纵向支承杆",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.calculateScaffold postRows/supportRows"
+      "src/domain/rules/frameRows.ts",
+      "src/domain/rules/policies/frameRows.ts"
     ],
     "cases": [
-      "S3；K测三条支承杆"
+      "T05",
+      "T12",
+      "src/domain/rules/frameRows.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -260,12 +267,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "当地顶层高度加固定延伸；带栏杆排与开口端按现有较高柱需求，实际定尺另算",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.postHeightAt/theoreticalAt/railedAt"
+      "src/domain/rules/heights.ts",
+      "src/domain/rules/policies/heights.ts"
     ],
     "cases": [
-      "S3/S4；K测内外柱、开口端高柱"
+      "T05",
+      "T12",
+      "src/domain/rules/heights.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -273,12 +284,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "纵杆和填芯按现有转角范围齐长；横杆不加管端外伸；成功转角省其横杆",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.memberRows/addHorizontalBand"
+      "src/domain/rules/bands.ts",
+      "src/domain/rules/policies/bands.ts"
     ],
     "cases": [
-      "S3；K测 7.1+4.3 齐长、横管、无悬空"
+      "T05",
+      "T12",
+      "src/domain/rules/bands.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -286,12 +301,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "扫地杆从当地底面算，只有两排普通纵杆及横杆，无钢笆／填芯",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.sweepElevation/addHorizontalBand；S.calculateSiteSpans"
+      "src/domain/rules/bands.ts",
+      "src/domain/rules/policies/bands.ts"
     ],
     "cases": [
-      "S3；K测 sweep/deckless、S测首层冲突"
+      "T05",
+      "T12",
+      "src/domain/rules/bands.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -299,12 +318,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "钢笆按选定规格及 0.10 m 搭接计整片；铺板间隔按全局层；外角补角片",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.deckPanelCount/deckBetweenStations/cornerDecks"
+      "src/domain/rules/decks.ts",
+      "src/domain/rules/policies/decks.ts"
     ],
     "cases": [
-      "S3；K测片数、S测交替铺板及屋顶手算"
+      "T05",
+      "T12",
+      "src/domain/rules/decks.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -312,12 +335,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "同层重叠覆盖只计一次；内角归进段，裁片不按碎面数重复计片，不留孔洞",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.resolveDeckCoverage；polygons.subtractCoverage"
+      "src/domain/rules/decks.ts",
+      "src/domain/rules/policies/decks.ts"
     ],
     "cases": [
-      "S3；K测裁片、F测凹形、审计"
+      "T05",
+      "T12",
+      "src/domain/rules/decks.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -325,12 +352,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "每柱对一根与横管等长的槽钢；转角单方向；无柱或支承被更完整底座承接时去重",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.calculateScaffold/finishLayout bases"
+      "src/domain/rules/bases.ts",
+      "src/domain/rules/policies/bases.ts",
+      "src/domain/rules/components.ts"
     ],
     "cases": [
-      "S3；K测 channel、审计 unbased-posts"
+      "T05",
+      "T12",
+      "src/domain/rules/bases.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -356,12 +388,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "单道居中，两道按现有上皮／居中；顶层多架顶栏杆，最高无板层仍有架顶防护",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.guardrailsFor/guardedThisLift"
+      "src/domain/rules/heights.ts",
+      "src/domain/rules/policies/guardCourses.ts"
     ],
     "cases": [
-      "S3 候选、S5 生效；K测 rail courses/coping"
+      "T05",
+      "T12",
+      "src/domain/rules/heights.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -369,12 +405,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "外排纵向防护、真实开口横向折返；外侧交叉沿原角部延伸",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.railRow/endStations"
+      "src/domain/rules/frameRows.ts",
+      "src/domain/rules/policies/protectionRanges.ts"
     ],
     "cases": [
-      "S5；K测外排、开口、G测外角"
+      "T05",
+      "T12",
+      "src/domain/rules/frameRows.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -382,12 +422,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "内侧交叉可能进入同层通道时收至共用角柱，取消交叉端额外伸长",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.clipStart/clipEnd"
+      "src/domain/rules/frameRows.ts",
+      "src/domain/rules/policies/protectionRanges.ts"
     ],
     "cases": [
-      "S5；G测内角、不同层"
+      "T05",
+      "T12",
+      "src/domain/rules/frameRows.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
