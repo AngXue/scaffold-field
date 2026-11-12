@@ -121,12 +121,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "纵距为上限，等分排站；距角位 ≤0.25 m 可整站协调，不能超纵距或改原端点",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.calculateScaffold stations/cornerStations"
+      "src/domain/rules/topology.ts",
+      "src/domain/rules/policies/topology.ts"
     ],
     "cases": [
-      "S2；K测短折返、几何审计"
+      "T04",
+      "T07",
+      "T08",
+      "src/domain/rules/topology.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -211,7 +216,9 @@ export const RULES: readonly RuleDefinition[] = [
     "status": "active",
     "implementation": "legacy-adapter",
     "source": [
-      "K.offsetRowCrossing/requiredEndPairs；S.calculateSiteSpans"
+      "K.offsetRowCrossing/requiredEndPairs；S.calculateSiteSpans",
+      "src/domain/rules/topology.ts",
+      "src/domain/rules/policies/topology.ts"
     ],
     "cases": [
       "S2；K测内外角闭环、E测 B2"
@@ -222,12 +229,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "连续短折返可借相邻已有延伸；冗余端柱受 0.25 m、纵距、交点支承条件限制",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.offsetPostLimits/nearTrimmedCorner"
+      "src/domain/rules/topology.ts",
+      "src/domain/rules/policies/topology.ts"
     ],
     "cases": [
-      "S2；K测 user-short-returns、短边失败"
+      "T04",
+      "T07",
+      "T08",
+      "src/domain/rules/topology.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {

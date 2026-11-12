@@ -17,7 +17,7 @@ for (const rule of RULES) {
 }
 const packages = [
   ['scene', 'SCENE_STEPS'], ['routing', 'ROUTING_STEPS'], ['groups', 'GROUP_STEPS'],
-  ['sharedMembers', 'MERGE_STEPS'], ['stock', 'STOCK_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
+  ['topology', 'TOPOLOGY_STEPS'], ['sharedMembers', 'MERGE_STEPS'], ['stock', 'STOCK_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
 ]
 const executed = new Set(), steps = new Set()
 for (const [name, exported] of packages) {
@@ -34,14 +34,15 @@ const precision = await import('../../src/domain/rules/facts/precision.ts')
 assert.equal(typeof getSectionLevels, 'function')
 assert.equal(precision.NUMERIC_POLICY.revision, 1)
 executed.add('I02'); executed.add('I04')
-assert.deepEqual([...executed].sort(), RULES.filter(rule => rule.implementation === 'native').map(rule => rule.id).sort(), 'Native registration lacks a live rule step or declared pure policy')
+assert([...executed].every(id => RULES.some(rule => rule.id === id && rule.status === 'active')), 'Unregistered execution owner')
+assert.deepEqual([...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'native').sort(), RULES.filter(rule => rule.implementation === 'native').map(rule => rule.id).sort(), 'Native registration lacks a live rule step or declared pure policy')
 const project = await import('../../src/domain/project.ts'), parameters = await import('../../src/domain/rules/boundaries/parameters.ts')
 const scaffold = await import('../../src/domain/scaffold.ts'), adjustments = await import('../../src/domain/rules/boundaries/adjustments.ts')
 assert.equal(project.restoreParameters, parameters.restoreParameters)
 for (const name of ['materialQuantity', 'materialAdjustmentStep', 'stockMaterialRows']) assert.equal(scaffold[name], adjustments[name])
 const summary = { rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
   boundaries: RULES.filter(rule => rule.implementation === 'boundary').length,
-  adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size,
+  adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size, partialRuleOwners: [...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'legacy-adapter'),
   scope: 'live package-local DAGs and boundaries; complete global pipeline still pending' }
 console.log(JSON.stringify(summary, null, 2))
 if (process.argv.includes('--complete')) assert.equal(summary.adaptersRemaining, 0, 'Complete migration gate: legacy calculation adapters remain')
