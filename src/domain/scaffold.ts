@@ -1,4 +1,5 @@
-import { Vector } from './rules/facts/vector.ts'
+import { calculateConnections } from './rules/connections.ts'
+import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { chooseStockLengths, neighbourStockSequence, assembledLength, postStocks, postStockWarnings } from './rules/policies/stock.ts'
 import { assembleStockStage } from './rules/stock.ts'
 import { mergeSharedRuns } from './rules/policies/sharedMembers.ts'
@@ -204,6 +205,7 @@ export type DeckPanel = {
 }
 
 export type ScaffoldConnector = {
+  [CONNECTOR_CONTACT]?: Vector3Tuple
   id: string
   type: ConnectorType
   position: Vector3Tuple
@@ -1700,75 +1702,7 @@ function finishLayout(
     .filter((assembly) => assembly.segments[0]?.type === 'post')
     .map((assembly) => [assembly.plan.memberId, Math.max(...assembly.segments.map((segment) => segment.end[1]))]))
 
-  // Count actual connections, not nominal station points: a corner can remove
-  // a post or omit a transverse, while its longitudinal connectionPoints survive.
-  const planDistanceToRun = (member: ScaffoldMember, x: number, z: number) => {
-    const dx = member.end[0] - member.start[0]
-    const dz = member.end[2] - member.start[2]
-    const length = Math.hypot(dx, dz)
-    if (length <= 0.001) return Number.POSITIVE_INFINITY
-    const along = ((x - member.start[0]) * dx + (z - member.start[2]) * dz) / length
-    if (along < -0.001 || along > length + 0.001) return Number.POSITIVE_INFINITY
-    return Math.abs((x - member.start[0]) * dz - (z - member.start[2]) * dx) / length
-  }
-  const memberAxis = (member: ScaffoldMember): Vector3Tuple =>
-    new Vector(member.end).subtract(new Vector(member.start)).normalize().toTuple()
-  const rawCrossConnectors: ScaffoldConnector[] = []
-  const connectionKeys = new Set<string>()
-  const addCross = (member: ScaffoldMember, other: ScaffoldMember, point: Vector3Tuple) => {
-    const key = [member.id, other.id].sort().join(':')
-    if (connectionKeys.has(key)) return
-    connectionKeys.add(key)
-    const verticalOffset = (member.type === 'transverse' ? -1 : 1) * parameters.pipeDiameter * 0.65
-    rawCrossConnectors.push({
-      id: `C-${member.id}-${other.id}`,
-      type: 'cross',
-      position: [point[0], round(point[1] + verticalOffset), point[2]],
-      memberId: member.id,
-      connectedMemberId: other.id,
-      axis: memberAxis(member),
-      secondaryAxis: memberAxis(other),
-    })
-  }
-  const posts = members.filter((member) => member.type === 'post')
-  const longitudinals = members.filter((member) => member.type === 'longitudinal')
-  for (const member of members) {
-    if (member.type === 'post') continue
-    const elevation = member.start[1]
-    for (const post of posts) {
-      if (elevation < post.start[1] - 0.001 || elevation > (builtPostTops.get(post.id) ?? post.end[1]) + 0.001) continue
-      if (planDistanceToRun(member, post.start[0], post.start[2]) < 0.005) {
-        addCross(member, post, [post.start[0], elevation, post.start[2]])
-      }
-    }
-    if (!(member.roles ?? [member.type]).includes('transverse')) continue
-    // Only the intermediate deck-support rows: the two ordinary rows already
-    // have their two main-node ties (longitudinal→post and transverse→post).
-    for (const point of member.connectionPoints) {
-      if (posts.some(post => elevation >= post.start[1] - 0.001 && elevation <= (builtPostTops.get(post.id) ?? post.end[1]) + 0.001
-        && Math.hypot(post.start[0] - point[0], post.start[2] - point[2]) < 0.005)) continue
-      const support = longitudinals.find((candidate) =>
-        candidate.id !== member.id && candidate.layer === member.layer && Math.abs(candidate.start[1] - elevation) <= 0.001
-        && Math.abs(memberAxis(candidate).reduce((sum, value, i) => sum + value * memberAxis(member)[i], 0)) < 0.01
-        && planDistanceToRun(candidate, point[0], point[2]) < 0.005)
-      if (support) addCross(support, member, point)
-    }
-  }
-  const connectorsByPosition = rawCrossConnectors
-    .reduce<Map<string, ScaffoldConnector[]>>((groups, connector) => {
-      const key = pointKey(connector.position)
-      groups.set(key, [...(groups.get(key) ?? []), connector])
-      return groups
-    }, new Map())
-  const crossConnectors = [...connectorsByPosition.values()].flatMap((connectorsAtPoint) =>
-    connectorsAtPoint.map((connector, index) => {
-      if (connectorsAtPoint.length === 1) return connector
-      const offset = (index - (connectorsAtPoint.length - 1) / 2) * parameters.pipeDiameter * 1.4
-      return {
-        ...connector,
-        position: [round(connector.position[0] + offset), connector.position[1], connector.position[2]] as Vector3Tuple,
-      }
-    }))
+  const crossConnectors = calculateConnections(members, Object.fromEntries(builtPostTops), parameters)
   const pipeSegments = assemblies.flatMap((assembly) => assembly.segments)
   const connectors = [
     ...crossConnectors,
@@ -1849,7 +1783,7 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
       m.cornerJunctions = m.cornerJunctions?.map(i => path.edgeIndices[i])
     })
     result.pipeSegments.forEach(p => { p.start = move(p.start); p.end = move(p.end) })
-    result.connectors.forEach(c => { c.position = move(c.position) })
+    result.connectors.forEach(c => { c.position = move(c.position); if (c[CONNECTOR_CONTACT]) c[CONNECTOR_CONTACT] = move(c[CONNECTOR_CONTACT]) })
     result.decks.forEach(d => {
       d.corners = d.corners.map(move) as DeckPanel['corners']; d.coverage = d.coverage?.map(face => face.map(move))
       d.pathSegment = path.edgeIndices[d.pathSegment]

@@ -1,5 +1,6 @@
 import type { Site, SiteLayout } from '../../site.ts'
 import type { Vector3Tuple } from '../../scaffold.ts'
+import { contactOf } from './connections.ts'
 import { memberUses } from './memberUses.ts'
 import { buildMaterialLedger } from './materialLedger.ts'
 
@@ -34,7 +35,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   for (const member of layout.members) if (member.type === 'post') reference(member.id, node('footing', member.start, [member.id]))
   for (const connector of layout.connectors) {
     const ids = [connector.memberId, ...(connector.connectedMemberId ? [connector.connectedMemberId] : [])]
-    const id = node(connector.type === 'butt' ? 'splice' : 'tie', connector.position, ids, connector.id)
+    const id = node(connector.type === 'butt' ? 'splice' : 'tie', contactOf(connector), ids, connector.id)
     ids.forEach(memberId => reference(memberId, id))
   }
   const members = layout.members.map(member => {

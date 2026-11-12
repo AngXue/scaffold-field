@@ -258,8 +258,8 @@ describe('calculateScaffold', () => {
     expect(half.reduce((sum, p) => sum + Math.abs(signedArea(p)), 0)).toBeCloseTo(8)
   })
 
-  it('passes all 636 orthogonal geometry cases, including opposing post splices', () => {
-    for (const shape of [...SHAPES, ...generatedShapes()]) for (const config of CONFIGURATIONS) {
+  it.each([...SHAPES, ...generatedShapes()])('passes all configurations and splice checks for $id', shape => {
+    for (const config of CONFIGURATIONS) {
       const input = planInput(shape), parameters = { ...REFERENCE_PARAMETERS, ...config.parameters }
       const layout = calculateScaffold(input.points, input.lengths, parameters)
       expect(inspect(shape, layout, parameters), `${shape.id}/${config.id}`).toEqual([])

@@ -1,3 +1,4 @@
+import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { MEMBER_USES, transformUses, memberUses } from './rules/facts/memberUses.ts'
 import { resolveBlocks } from './rules/policies/blocks.ts'
 export { resolveBlocks } from './rules/policies/blocks.ts'
@@ -362,7 +363,7 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     const pipeSegments = part.pipeSegments.filter(pipe => !removed.has(pipe.memberId))
       .map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
     const connectors = part.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
-      .map(c => ({ ...c, position: world(c.position) }))
+      .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
     fitTransitionStock({ members, pipeSegments, connectors }, transitionEnds, radius)
     if (followsWall) fitStockBesideWalls({members, pipeSegments, connectors}, blocks, radius)
     fitSceneGuardrails({members, pipeSegments, connectors, decks: part.decks.map(deck => ({...deck, corners: deck.corners.map(world) as typeof deck.corners, coverage: deck.coverage?.map(face => face.map(world))}))}, blocks, radius)

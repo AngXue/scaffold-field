@@ -497,12 +497,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "十字扣按真实相连成员对计一次；填芯只在实际横杆交点计；移走的柱不计虚扣",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.finishLayout/addCross"
+      "src/domain/rules/policies/connections.ts",
+      "src/domain/rules/connections.ts"
     ],
     "cases": [
-      "S8；K测 main-node/phantom ties/unique pairs"
+      "T05",
+      "T12",
+      "src/domain/rules/connections.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
