@@ -1,11 +1,13 @@
 import { MEMBER_USES, transformUses, memberUses } from './rules/facts/memberUses.ts'
+import { resolveBlocks } from './rules/policies/blocks.ts'
+export { resolveBlocks } from './rules/policies/blocks.ts'
 import { getSectionLevels } from './rules/policies/levels.ts'
 export { getSectionLevels, defaultSectionLayers, sectionTargetLayer, siteWithTargetLayers } from './rules/policies/levels.ts'
 import { prepareScene } from './rules/scene.ts'
 import { measureDrawing, normalizeDrawing, PIXELS_PER_METER, readDrawing, type PlanDrawing } from './plan.ts'
 import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, calculateMaterials, calculateScaffold, calculateScaffoldPlan, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
-import { footprintCells, footprintContains, footprintContainsPoint, footprintCoversPolygon, footprintFromOutline, footprintSupportsSegment, footprintsOverlap } from './siteFootprints.ts'
+import { footprintCells, footprintContainsPoint, footprintCoversPolygon, footprintSupportsSegment } from './siteFootprints.ts'
 import { fitSceneGuardrails, fitStockBesideWalls, guardFacesWall } from './siteWallFit.ts'
 import { routeSiteSections, wallStandOff, type RoutedSpan } from './siteRouting.ts'
 import { connectSiteTransitions, fitTransitionStock, isWallEndGuard, type JoinedLift, type TransitionEnd } from './siteTransitions.ts'
@@ -51,60 +53,6 @@ export function surfaceElevation(blocks: ResolvedBlock[], id: string) {
 
 export function containsPoint(rect: Footprint, p: SitePoint, tolerance = EPS) {
   return footprintContainsPoint(rect, p, tolerance)
-}
-
-function containsRect(parent: Footprint, child: Footprint) {
-  return footprintContains(parent, child)
-}
-
-export function resolveBlocks(site: Site): { blocks: ResolvedBlock[]; issues: SiteIssue[] } {
-  const byId = new Map(site.blocks.map(block => [block.id, block]))
-  const resolved = new Map<string, ResolvedBlock>()
-  const issues: SiteIssue[] = []
-  const failed = new Set<string>()
-  const visiting = new Set<string>()
-  const fail = (id: string, message: string) => {
-    if (!failed.has(id)) issues.push({ code: 'block-placement', blocking: true, message, sectionIds: [], blockId: id })
-    failed.add(id)
-  }
-  const visit = (id: string): ResolvedBlock | undefined => {
-    if (resolved.has(id)) return resolved.get(id)
-    if (failed.has(id)) return
-    const block = byId.get(id)
-    if (!block) return
-    if (visiting.has(id)) { fail(id, '体块的叠放关系形成了循环。'); return }
-    if (![block.width, block.depth, block.height].every(value => Number.isFinite(value) && value >= 0.001)) {
-      fail(id, '体块的长、宽和高度必须大于 0。'); return
-    }
-    if (block.outline) {
-      const shape = footprintFromOutline(block.outline)
-      if (!shape || [shape.x - block.x, shape.z - block.z, shape.width - block.width, shape.depth - block.depth].some(n => Math.abs(n) > EPS)) {
-        fail(id, '房屋轮廓须为闭合、无自交的水平垂直线。'); return
-      }
-    }
-    visiting.add(id)
-    const parent = block.parentId === GROUND ? undefined : visit(block.parentId)
-    visiting.delete(id)
-    if (block.parentId !== GROUND && (!parent || !containsRect(parent, block))) {
-      fail(id, '体块须完整落在父体块顶面。'); return
-    }
-    const base = parent?.top ?? 0
-    const result = { ...block, base, top: roundSite(base + block.height) }
-    resolved.set(id, result)
-    return result
-  }
-  const blocks = site.blocks.flatMap(block => {
-    const result = visit(block.id)
-    return result ? [result] : []
-  })
-  for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) {
-    const a = blocks[i], b = blocks[j]
-    if (Math.min(a.top, b.top) - Math.max(a.base, b.base) > EPS &&
-        footprintsOverlap(a, b)) {
-      fail(b.id, '两个房屋体块在空间内重叠，请移开或叠放。')
-    }
-  }
-  return { blocks, issues }
 }
 
 export function blockHasDependents(site: Site, id: string) {
@@ -303,8 +251,9 @@ function deckBounds(corners: Vector3Tuple[]): AxisBox {
     max: [Math.max(...corners.map(p => p[0])), corners[0][1] + 0.004, Math.max(...corners.map(p => p[2]))] }
 }
 
-function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = new Set<string>(), transitionEnds = new Map<number, TransitionEnd[]>()): SiteLayout {
-  const { blocks, issues } = resolveBlocks(site)
+function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = new Set<string>(), transitionEnds = new Map<number, TransitionEnd[]>(), resolution = resolveBlocks(site)): SiteLayout {
+  const { blocks } = resolution
+  const issues = [...resolution.issues]
   const summaries: SectionSummary[] = []
   const flat = legacySiteDrawing(site)
   const layout = calculateScaffold([], [], settings)
@@ -518,9 +467,9 @@ export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLa
   const prepared = prepareScene(input, settings)
   const { site, blocks } = prepared
   settings = prepared.parameters
-  if (!site.blocks.length) return calculateSiteSpans(site, settings)
+  if (!site.blocks.length) return calculateSiteSpans(site, settings, undefined, undefined, prepared.resolution)
   const { spans, transitions, errors } = routeSiteSections(site.sections, blocks, settings)
-  if (!site.sections.some(section => section.automatic) && !spans.some(span => span.wall)) return calculateSiteSpans(site, settings)
+  if (!site.sections.some(section => section.automatic) && !spans.some(span => span.wall)) return calculateSiteSpans(site, settings, undefined, undefined, prepared.resolution)
   const wallIds = new Set(spans.filter(span => span.wall).map(span => span.line.id))
   const sourceIds = new Map(spans.map(span => [span.line.id, span.sourceId]))
   const indices = new Map(spans.map((span, index) => [span.line.id, index]))
@@ -538,7 +487,7 @@ export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLa
     ends.push({ axis, boundary, station, roof: Math.max(leftBase, rightBase), towardRoof: Math.sign(roofStation - station), wall: wallIds.has(low.id) })
     transitionEnds.set(index, ends)
   }
-  const spanLayout = calculateSiteSpans({ ...site, sections: spans.map(span => span.line) }, settings, wallIds, transitionEnds)
+  const spanLayout = calculateSiteSpans({ ...site, sections: spans.map(span => span.line) }, settings, wallIds, transitionEnds, prepared.resolution)
   const labels = new Map(site.sections.map((line, i) => [line.id, i + 1]))
   const issues = spanLayout.issues.map(issue => ({ ...issue,
     message: issue.message.replace(/第 (\d+) 段/g, (_, index) => `第 ${labels.get(spans[Number(index) - 1]?.sourceId) ?? index} 段`),

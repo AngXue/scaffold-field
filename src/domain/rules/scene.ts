@@ -1,4 +1,5 @@
-import { resolveBlocks, siteWithTargetLayers, type Site, type ResolvedBlock, type SiteIssue } from '../site.ts'
+import { siteWithTargetLayers, type Site, type ResolvedBlock, type SiteIssue } from '../site.ts'
+import { resolveBlocks } from './policies/blocks.ts'
 import type { ScaffoldParameters } from '../scaffold.ts'
 import { RULES } from './catalog.ts'
 import { compilePipeline } from './pipeline.ts'
@@ -14,8 +15,7 @@ type SceneProposal = Proposal & (
   | { kind: 'ResolveBlocks'; target: 'resolved'; value: { blocks: ResolvedBlock[]; issues: SiteIssue[] } }
   | { kind: 'ApplyLayerTargets'; target: 'prepared'; value: Site }
 )
-// Block resolution still uses its legacy adapter. Layer targets now use the
-// extracted I04/I05 policy; both retain existing business semantics.
+// I03 and I04/I05 publish immutable scene facts through their named reducers.
 const steps: RuleStep<SceneFacts, SceneProposal>[] = [
   { id: 'I03.resolve', ruleId: 'I03', phase: 1, after: [], reads: ['site'], kinds: ['ResolveBlocks'], targets: ['resolved'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'ResolveBlocks', target: 'resolved', expectedRevision: revision,
@@ -38,5 +38,6 @@ const run = compilePipeline<SceneFacts, SceneProposal>(RULES, steps, (facts, pro
 export function prepareScene(site: Site, parameters: ScaffoldParameters, trace = false) {
   const result = run({ site, parameters }, { trace })
   return { site: result.facts.prepared as Site, blocks: result.facts.resolved!.blocks as ResolvedBlock[],
+    resolution: result.facts.resolved as { blocks: ResolvedBlock[]; issues: SiteIssue[] },
     parameters: result.facts.parameters as ScaffoldParameters, trace: result.trace }
 }

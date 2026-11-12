@@ -33,12 +33,15 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "正交闭合真实轮廓、凹口留空；叠放完整支承、无循环，子体块随父标高变化",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "F.footprintFromOutline/footprintContains；S.resolveBlocks"
+      "src/domain/rules/policies/blocks.ts",
+      "src/domain/rules/scene.ts"
     ],
     "cases": [
-      "S1；F测、S测叠放／循环／缺面"
+      "T03",
+      "T13",
+      "src/domain/site.test.ts"
     ]
   },
   {
@@ -72,12 +75,18 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 2,
     "title": "共线墙面合并识别，地面沿墙笔画不依赖 automatic 标记，按毫米容差识别并向真实外侧偏移；默认距墙 0.30 m，横管余量可能增加净空",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "R.siteWallEdges/wallStandOff/routeSiteSections"
+      "src/domain/rules/policies/routing.ts",
+      "src/domain/rules/routing.ts"
     ],
     "cases": [
-      "S1；S测沿墙反画、E测双屋"
+      "T03",
+      "T07",
+      "T08",
+      "T13",
+      "src/domain/rules/routing.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {
@@ -85,12 +94,18 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "自动笔画按整个双排和底座占用范围识别顶面并分段；手选面不自动换面",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "R.routeSiteSections；F.footprintCells/footprintContains"
+      "src/domain/rules/policies/routing.ts",
+      "src/domain/rules/routing.ts"
     ],
     "cases": [
-      "S1；S测自动跨顶、F测凹形"
+      "T03",
+      "T07",
+      "T08",
+      "T13",
+      "src/domain/rules/routing.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {
@@ -111,12 +126,18 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "两侧落地的屋顶中段从两侧端站协调排跨，减少屋顶冗余柱对",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "R.routeSiteSections 双侧站位求解"
+      "src/domain/rules/policies/routing.ts",
+      "src/domain/rules/routing.ts"
     ],
     "cases": [
-      "S2；S测 corridor，1.50 m 纵距"
+      "T03",
+      "T07",
+      "T08",
+      "T13",
+      "src/domain/rules/routing.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {
@@ -124,12 +145,18 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "单侧屋顶接入口从低侧端柱按纵距定位，远端共用屋顶转角保留；短面保留可行短跨",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "R.routeSiteSections terminal roof"
+      "src/domain/rules/policies/routing.ts",
+      "src/domain/rules/routing.ts"
     ],
     "cases": [
-      "S2；E测 B2 1.80/1.50/2.00 m"
+      "T03",
+      "T07",
+      "T08",
+      "T13",
+      "src/domain/rules/routing.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {
@@ -137,12 +164,18 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "相向墙末端窄巷满足一套双排净空但放不下两套时，低架接高架已有柱对，显示实际墙距",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "R.routeSiteSections sharedEnds/clearances"
+      "src/domain/rules/policies/routing.ts",
+      "src/domain/rules/routing.ts"
     ],
     "cases": [
-      "S2；E测原图 0.45 m 墙距"
+      "T03",
+      "T07",
+      "T08",
+      "T13",
+      "src/domain/rules/routing.test.ts",
+      "src/domain/siteEditing.test.ts"
     ]
   },
   {

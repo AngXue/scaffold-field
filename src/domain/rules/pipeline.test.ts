@@ -15,8 +15,8 @@ describe('rule pipeline contracts', () => {
   it('catalog identifies every existing rule without claiming adapter migration complete', () => {
     expect(RULES).toHaveLength(45)
     expect(new Set(RULES.map(r => r.id)).size).toBe(45)
-    expect(RULES.filter(r => r.implementation === 'legacy-adapter')).toHaveLength(43)
-    expect(RULES.filter(r => r.implementation === 'native').map(r => r.id)).toEqual(['I04', 'I05'])
+    expect(RULES.filter(r => r.implementation === 'legacy-adapter')).toHaveLength(37)
+    expect(RULES.filter(r => r.implementation === 'native').map(r => r.id)).toEqual(['I03', 'I04', 'I05', 'G01', 'G02', 'G04', 'G05', 'G06'])
   })
   it('commits privately, leaves input intact and trace cannot change result', () => {
     const run = compilePipeline([definition], [step], reduce), source = input()
