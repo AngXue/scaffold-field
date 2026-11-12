@@ -1,3 +1,6 @@
+import { Vector } from './rules/facts/vector.ts'
+import { chooseStockLengths, neighbourStockSequence, assembledLength, postStocks, postStockWarnings } from './rules/policies/stock.ts'
+import { assembleStockStage } from './rules/stock.ts'
 import { mergeSharedRuns } from './rules/policies/sharedMembers.ts'
 import { MEMBER_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
@@ -463,129 +466,6 @@ function getPhysicalPoints(points: Point2D[], lengths: number[]) {
   return physical
 }
 
-function chooseStockLengths(requiredLength: number, stockLengths: number[], overlap: number) {
-  const stocks = [...stockLengths].filter((length) => length > overlap).sort((a, b) => b - a)
-  if (!stocks.length) return [requiredLength]
-
-  const maximumSegments = Math.ceil(requiredLength / (stocks[0] - overlap)) + 2
-  let states = new Map<number, number[]>([[0, []]])
-
-  for (let count = 1; count <= maximumSegments; count += 1) {
-    const nextStates = new Map<number, number[]>()
-    for (const [sum, combination] of states) {
-      for (const stock of stocks) {
-        const nextSum = round(sum + stock)
-        if (!nextStates.has(nextSum)) nextStates.set(nextSum, [...combination, stock])
-      }
-    }
-
-    const candidates = [...nextStates.entries()]
-      .map(([sum, combination]) => ({
-        combination,
-        effectiveLength: round(sum - overlap * (combination.length - 1)),
-      }))
-      .filter((candidate) => candidate.effectiveLength + 0.001 >= requiredLength)
-      .sort((a, b) => a.effectiveLength - b.effectiveLength)
-
-    if (candidates.length) return candidates[0].combination
-    states = nextStates
-  }
-
-  return [stocks[0]]
-}
-
-/**
- * Butt-joint heights of an ordered stock sequence, laid from the member's base up.
- * The sequence IS the joint layout, which is why the order matters: [6, 4.5] joints
- * at 6 m, [4.5, 6] at 4.5 m.
- */
-function jointHeights(sequence: number[], overlap = 0) {
-  const joints: number[] = []
-  let cursor = 0
-  sequence.slice(0, -1).forEach((stock) => {
-    cursor += stock - overlap
-    joints.push(round(cursor))
-  })
-  return joints
-}
-
-/** True when no joint of `candidate` lands within SPLICE_STAGGER of one of `base`. */
-function jointsAreStaggered(candidate: number[], base: number[]) {
-  const baseJoints = jointHeights(base)
-  if (!baseJoints.length) return false
-  return jointHeights(candidate).every((joint) =>
-    baseJoints.every((baseJoint) => Math.abs(joint - baseJoint) >= SPLICE_STAGGER - 0.001))
-}
-
-/**
- * Every ordered sequence of exactly `size` stock lengths that still covers
- * `requiredLength`, cheapest first. Ordered on purpose — see `jointHeights` — and
- * bounded, because it only ever serves the neighbouring post of an already-chosen
- * one.
- */
-function stockSequences(requiredLength: number, stocks: number[], overlap: number, size: number) {
-  let sequences: number[][] = [[]]
-  for (let piece = 0; piece < size; piece += 1) {
-    sequences = sequences.flatMap((sequence) => stocks.map((stock) => [...sequence, stock]))
-  }
-  return sequences
-    .map((sequence) => ({
-      sequence,
-      effectiveLength: round(sequence.reduce((sum, stock) => sum + stock, 0) - overlap * (size - 1)),
-    }))
-    .filter((candidate) => candidate.effectiveLength + 0.001 >= requiredLength)
-    .sort((a, b) => a.effectiveLength - b.effectiveLength || a.sequence.join().localeCompare(b.sequence.join()))
-    .map((candidate) => candidate.sequence)
-}
-
-/**
- * The sequence the post NEXT TO `primary` is built with, so their butt joints do not
- * land at the same height (JGJ 130-2011 §6.3.6).
- *
- * The first choice is the primary sequence REVERSED: the same tubes, the same cost,
- * joints moved (6+4.5 beside 4.5+6). When that changes nothing — a palindromic
- * sequence such as 6+6 — the next cheapest sequence that is genuinely staggered is
- * used instead (4.5+6+2 = 12.5 m beside 6+6 = 12 m), which is one tube longer and
- * leaves that post a little taller. Both are physical: the tubes are bought whole and
- * the 水平杆 tie the posts together at every lift.
- */
-function neighbourStockSequence(
-  primary: number[],
-  requiredLength: number,
-  stockLengths: number[],
-  overlap: number,
-) {
-  const reversed = [...primary].reverse()
-  if (jointsAreStaggered(reversed, primary)) return reversed
-
-  const stocks = [...stockLengths].filter((length) => length > overlap).sort((a, b) => b - a)
-  const total = (sequence: number[]) =>
-    round(sequence.reduce((sum, stock) => sum + stock, 0) - overlap * (sequence.length - 1))
-  const candidates = [primary.length, primary.length + 1]
-    .flatMap((size) => stockSequences(requiredLength, stocks, overlap, size))
-    .filter((sequence) => sequence.join() !== primary.join() && jointsAreStaggered(sequence, primary))
-
-  // A combination that only reorders the same tubes into the same TOTAL length is
-  // indistinguishable from its neighbour — on site and in the 3D view — so the
-  // neighbour is given a different mix altogether (6+6 beside 2+6+4.5 = 12.5 m).
-  // Same-length alternatives are only a last resort before giving up.
-  return candidates.find((sequence) => Math.abs(total(sequence) - total(primary)) > 0.001)
-    ?? candidates[0]
-    ?? reversed
-}
-
-/** Physical length of the tube actually bought for a member: the chosen stock
- * combination, less the length each butt joint swallows. Used by both the pipe
- * assembly and the 槽钢 base beam, which is laid to the same length as the
- * transverse tube above it. */
-function assembledLength(requiredLength: number, stockLengths: number[], requestedOverlap: number) {
-  const overlap = Math.max(0, Math.min(requestedOverlap, Math.min(...stockLengths) * 0.8))
-  const selectedStocks = chooseStockLengths(requiredLength, stockLengths, overlap)
-  return round(
-    selectedStocks.reduce((sum, stock) => sum + stock, 0) - overlap * (selectedStocks.length - 1),
-  )
-}
-
 export function scaffoldTransverseLength(parameters: ScaffoldParameters) {
   return assembledLength(parameters.width, parameters.stockLengths, parameters.spliceOverlap)
 }
@@ -605,110 +485,6 @@ export function deckBetweenStations(start: [Vector3Tuple, Vector3Tuple], end: [V
       corners: [point(s / along, t / across), point((s + 1) / along, t / across),
         point((s + 1) / along, (t + 1) / across), point(s / along, (t + 1) / across)] }
   })
-}
-
-function createPipeAssembly(
-  member: ScaffoldMember,
-  stockLengths: number[],
-  requestedOverlap: number,
-  /** An already-chosen sequence, used to give a 立杆 its staggered assembly. */
-  sequence?: number[],
-): { segments: PipeSegment[]; connectors: ScaffoldConnector[]; plan: PipeAssemblyPlan } {
-  const minimumStock = Math.min(...stockLengths)
-  const overlap = Math.max(0, Math.min(requestedOverlap, minimumStock * 0.8))
-  const selectedStocks = sequence ?? chooseStockLengths(member.length, stockLengths, overlap)
-  const effectiveLength = round(
-    selectedStocks.reduce((sum, stock) => sum + stock, 0) - overlap * (selectedStocks.length - 1),
-  )
-  const excessLength = round(Math.max(0, effectiveLength - member.length))
-  const start = new Vector(member.start)
-  const end = new Vector(member.end)
-  const direction = end.subtract(start).normalize()
-  const assemblyStart = member.type === 'post'
-    ? start
-    : start.subtract(direction.scale(excessLength / 2))
-  const segments: PipeSegment[] = []
-  const spliceConnectors: ScaffoldConnector[] = []
-  let cursor = assemblyStart
-
-  selectedStocks.forEach((stockLength, index) => {
-    const segmentStart = cursor
-    const segmentEnd = cursor.add(direction.scale(stockLength))
-    const id = `S-${member.id}-${index + 1}`
-    segments.push({
-      id,
-      memberId: member.id,
-      type: member.type,
-      start: segmentStart.toTuple(),
-      end: segmentEnd.toTuple(),
-      stockLength,
-      sequence: index + 1,
-      overlapWithPrevious: index === 0 ? 0 : overlap,
-    })
-
-    // A 对接扣件 is one sleeve that two tube ends butt into, so a butt joint
-    // takes exactly ONE coupler. The previous model emitted two per joint
-    // because it assumed a lap clamped at both ends.
-    if (index > 0) {
-      spliceConnectors.push({
-        id: `C-${member.id}-splice-${index}`,
-        type: 'butt',
-        position: cursor.toTuple(),
-        memberId: member.id,
-        axis: direction.toTuple(),
-      })
-    }
-    cursor = cursor.add(direction.scale(stockLength - overlap))
-  })
-
-  return {
-    segments,
-    connectors: spliceConnectors,
-    plan: {
-      memberId: member.id,
-      requiredLength: member.length,
-      effectiveLength,
-      excessLength,
-      stockLengths: selectedStocks,
-      segmentIds: segments.map((segment) => segment.id),
-    },
-  }
-}
-
-class Vector {
-  static readonly ZERO = new Vector([0, 0, 0])
-  private readonly value: Vector3Tuple
-
-  constructor(value: Vector3Tuple) {
-    this.value = value
-  }
-
-  add(other: Vector) {
-    return new Vector(this.value.map((value, index) => value + other.value[index]) as Vector3Tuple)
-  }
-
-  subtract(other: Vector) {
-    return new Vector(this.value.map((value, index) => value - other.value[index]) as Vector3Tuple)
-  }
-
-  scale(factor: number) {
-    return new Vector(this.value.map((value) => value * factor) as Vector3Tuple)
-  }
-
-  normalize() {
-    const length = Math.hypot(...this.value)
-    return length > 0 ? this.scale(1 / length) : Vector.ZERO
-  }
-
-  perpendicular() {
-    const [x, y, z] = this.value
-    const candidate: Vector3Tuple = Math.abs(y) > 0.9 ? [1, 0, 0] : [-z, 0, x]
-    return new Vector(candidate).normalize()
-  }
-
-  toTuple() {
-    return this.value.map((value) => round(value)) as Vector3Tuple
-  }
 }
 
 /** Rails per guarded side, clamped to the modelled set (上栏杆 / 上栏杆 + 中栏杆). */
@@ -776,74 +552,6 @@ export function calculateMaterials(
 
 /** Co-linear runs are one design member, including a straight drawing split. */
 
-function onPlanRun(point: Vector3Tuple, member: ScaffoldMember) {
-  const dx = member.end[0] - member.start[0], dz = member.end[2] - member.start[2]
-  const length = Math.hypot(dx, dz)
-  if (length < 0.001) return false
-  const along = ((point[0] - member.start[0]) * dx + (point[2] - member.start[2]) * dz) / length
-  return along >= -0.005 && along <= length + 0.005
-    && Math.abs((point[0] - member.start[0]) * dz - (point[2] - member.start[2]) * dx) / length < 0.005
-}
-
-/** Preserve the preferred alternating sequences, then repair the FINAL graph. */
-/** 5 m stock is available for horizontal members, never for uprights. */
-function postStocks(parameters: ScaffoldParameters) {
-  const allowed = parameters.stockLengths.filter(stock => Math.abs(stock - 5) > 0.001)
-  return allowed.length ? allowed : DEFAULT_PARAMETERS.stockLengths.filter(stock => stock !== 5)
-}
-
-function repairPostSplices(members: ScaffoldMember[], sequences: Map<string, number[]>, parameters: ScaffoldParameters, warnings: LayoutWarning[]) {
-  const posts = members.filter(m => m.type === 'post')
-  const neighbours = new Map(posts.map(post => [post.id, new Set<string>()]))
-  for (const run of members.filter(m => (m.type === 'longitudinal' || m.type === 'transverse') && m.layer === 1)) {
-    const row = posts.filter(post => onPlanRun(post.start, run)).sort((a, b) =>
-      vectorDistance(a.start, run.start) - vectorDistance(b.start, run.start))
-    for (let i = 1; i < row.length; i++) {
-      neighbours.get(row[i - 1].id)!.add(row[i].id)
-      neighbours.get(row[i].id)!.add(row[i - 1].id)
-    }
-  }
-  const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...postStocks(parameters)) * 0.8))
-  const stocks = postStocks(parameters).filter(stock => stock > overlap).sort((a, b) => b - a)
-  const assigned = new Set<string>()
-  const cache = new Map<string, number[] | null>()
-  for (const post of posts) {
-    const forbidden = [...neighbours.get(post.id)!].filter(id => assigned.has(id)).flatMap(id => jointHeights(sequences.get(id)!, overlap))
-    const fits = (sequence: number[]) => jointHeights(sequence, overlap).every(joint => forbidden.every(other => Math.abs(joint - other) >= SPLICE_STAGGER - 0.001))
-    const preferred = sequences.get(post.id)!
-    if (!fits(preferred)) {
-      const cacheKey = `${post.length}:${[...new Set(forbidden)].sort((a, b) => a - b).join(',')}`
-      let replacement = cache.get(cacheKey)
-      if (replacement === undefined) {
-        // DP keeps one legal prefix per (piece count, height). Future legality
-        // only depends on that height, so no exponential stock permutations.
-        let states = new Map<number, number[]>([[0, []]])
-        replacement = null
-        const limit = Math.ceil(post.length / Math.max(0.1, (stocks[0] ?? post.length) - overlap)) + 3
-        for (let count = 1; count <= limit && !replacement; count++) {
-          const next = new Map<number, number[]>()
-          for (const [height, prefix] of states) {
-            if (prefix.length && forbidden.some(joint => Math.abs(height - overlap - joint) < SPLICE_STAGGER - 0.001)) continue
-            for (const stock of stocks) {
-              const total = round(height + stock - (prefix.length ? overlap : 0))
-              if (!next.has(total)) next.set(total, [...prefix, stock])
-            }
-          }
-          const primaryTotal = preferred.reduce((a, b) => a + b, 0) - overlap * (preferred.length - 1)
-          const candidates = [...next].filter(([height]) => height >= post.length - 0.001)
-          candidates.sort(([a], [b]) => Number(Math.abs(a - primaryTotal) < 0.001) - Number(Math.abs(b - primaryTotal) < 0.001) || a - b)
-          replacement = candidates[0]?.[1] ?? null
-          states = next
-        }
-        cache.set(cacheKey, replacement)
-      }
-      if (replacement) sequences.set(post.id, replacement)
-      else warnings.push({ id: `splice-stagger-${post.id}`, message: `立杆 (${post.start[0]}, ${post.start[2]}) 在当前库存管规格下无法与相邻接头错开 0.5 m，请调整规格或站位。` })
-    }
-    assigned.add(post.id)
-  }
-}
-
 /** One panel can have several cut faces; it is still bought/counts only once. */
 function resolveDeckCoverage(decks: DeckPanel[], path: Array<[number, number]>, closed: boolean) {
   if (!decks.length) return
@@ -905,9 +613,7 @@ export function calculateScaffold(
   const decks: DeckPanel[] = []
   const baseChannels: BaseChannel[] = []
   const warnings: LayoutWarning[] = []
-  if (parameters.stockLengths.every(stock => Math.abs(stock - 5) < 0.001)) warnings.push({
-    id: 'post-stock-unavailable', message: '库存只有禁用于立柱的 5 m 规格：立柱暂按默认非 5 m 库存估算，请补充可用规格后复核。',
-  })
+  warnings.push(...postStockWarnings(parameters))
   const postByPoint = new Map<string, ScaffoldMember>()
   const channelKeys = new Set<string>()
   let memberSequence = 1
@@ -1985,11 +1691,11 @@ function finishLayout(
         && supportedByBeam.get(other)!.length > supported.length
         && supported.every(id => supportedByBeam.get(other)!.includes(id)))) baseChannels.splice(index, 1)
     }
-    repairPostSplices(members, postSequences, parameters, warnings)
   }
 
-  const assemblies = members.map((member) =>
-    createPipeAssembly(member, member.type === 'post' ? postStocks(parameters) : parameters.stockLengths, parameters.spliceOverlap, postSequences.get(member.id)))
+  const stock = assembleStockStage(members, Object.fromEntries(postSequences), parameters, fixedPostsAndBases)
+  warnings.push(...stock.warnings)
+  const assemblies = stock.assemblies
   const builtPostTops = new Map(assemblies
     .filter((assembly) => assembly.segments[0]?.type === 'post')
     .map((assembly) => [assembly.plan.memberId, Math.max(...assembly.segments.map((segment) => segment.end[1]))]))

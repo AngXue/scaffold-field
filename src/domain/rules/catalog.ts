@@ -430,12 +430,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "标准规格组合覆盖所需长度，先最少根数再较小有效总长；横管居中分配余量，立杆自底向上",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.chooseStockLengths/createPipeAssembly"
+      "src/domain/rules/policies/stock.ts",
+      "src/domain/rules/stock.ts"
     ],
     "cases": [
-      "S4/S6；K测 stock/long run、S测屋顶"
+      "T05",
+      "T10",
+      "T12",
+      "src/domain/rules/stock.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -443,12 +448,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "立柱所有选管路径禁用 5 m，允许 3.5 m；库存只剩禁用规格时按现行回退并提醒",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.postStocks/calculateScaffold"
+      "src/domain/rules/policies/stock.ts",
+      "src/domain/rules/stock.ts"
     ],
     "cases": [
-      "S4；K测 expanded stock/no permitted size"
+      "T05",
+      "T10",
+      "T12",
+      "src/domain/rules/stock.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -456,12 +466,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "邻柱接头错开，优先不同序列及不同总长；按最终现行邻接修复；无解提示",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.neighbourStockSequence/repairPostSplices"
+      "src/domain/rules/policies/stock.ts",
+      "src/domain/rules/stock.ts"
     ],
     "cases": [
-      "S4；K测 stagger、审计"
+      "T05",
+      "T10",
+      "T12",
+      "src/domain/rules/stock.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -495,12 +510,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "每个物理管接头一只对接扣；位置与方向跟随真实组管",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.createPipeAssembly；G/T 余量移位"
+      "src/domain/rules/policies/stock.ts",
+      "src/domain/rules/stock.ts"
     ],
     "cases": [
-      "S8；K测 sleeve、G测 butt moves"
+      "T05",
+      "T10",
+      "T12",
+      "src/domain/rules/stock.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {

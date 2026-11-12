@@ -1,3 +1,4 @@
+import { VERIFY_RULE_INPUTS } from './runtime.ts'
 import { siteWithTargetLayers, type Site, type ResolvedBlock, type SiteIssue } from '../site.ts'
 import { resolveBlocks } from './policies/blocks.ts'
 import type { ScaffoldParameters } from '../scaffold.ts'
@@ -33,7 +34,7 @@ const run = compilePipeline<SceneFacts, SceneProposal>(RULES, steps, (facts, pro
     }
   }
   return next
-})
+}, { verifyImmutability: VERIFY_RULE_INPUTS })
 
 export function prepareScene(site: Site, parameters: ScaffoldParameters, trace = false) {
   const result = run({ site, parameters }, { trace })

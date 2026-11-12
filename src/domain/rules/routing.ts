@@ -1,3 +1,4 @@
+import { VERIFY_RULE_INPUTS } from './runtime.ts'
 import type { ResolvedBlock, SiteSection } from '../site.ts'
 import type { ScaffoldParameters } from '../scaffold.ts'
 import { resolveWallFacts, resolveNarrowClearance, splitSupport, balanceRoofStations, anchorRoofEntries, publishSupportSpans,
@@ -50,7 +51,7 @@ const run = compilePipeline<RoutingFacts, RoutingProposal>(RULES, ROUTING_STEPS,
     case 'PublishSupportSpans': result = { ...result, routed: proposal.value }; break
   }
   return result
-})
+}, { verifyImmutability: VERIFY_RULE_INPUTS })
 export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock[], settings: ScaffoldParameters) {
   return run({ sections, blocks, settings }).facts.routed as ReturnType<typeof publishSupportSpans>
 }

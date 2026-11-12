@@ -14,12 +14,29 @@ function cloneFacts<T>(value: T): T {
   if (Array.isArray(value)) return value.map(cloneFacts) as T
   if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
     throw new RuleFailure('input', 'facts must use plain objects and arrays')
-  return Object.fromEntries(Reflect.ownKeys(value).map(key => [key, cloneFacts(Reflect.get(value, key))])) as T
+  const copy: Record<PropertyKey, unknown> = {}
+  for (const key of Reflect.ownKeys(value)) {
+    const child = cloneFacts(Reflect.get(value, key))
+    if (key === '__proto__') Object.defineProperty(copy, key, { value: child, writable: true, enumerable: true, configurable: true })
+    else copy[key] = child
+  }
+  return copy as T
+}
+
+
+function sameValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object' || Array.isArray(left) !== Array.isArray(right)) return false
+  const keys = Reflect.ownKeys(left), otherKeys = Reflect.ownKeys(right)
+  return keys.length === otherKeys.length && keys.every(key => Object.hasOwn(right, key) && sameValue(Reflect.get(left, key), Reflect.get(right, key)))
 }
 
 /** Compile once. No rule can be activated by a project file or arbitrary priority. */
 export function compilePipeline<F extends object, P extends Proposal>(definitions: readonly RuleDefinition[], steps: readonly RuleStep<F, P>[],
-  reduce: (facts: DeepReadonly<F>, proposals: readonly P[]) => F) {
+  reduce: (facts: DeepReadonly<F>, proposals: readonly P[]) => F, configuration: { verifyImmutability?: boolean; snapshot?: (input: F) => F } = {}) {
+  // Type-level immutability is always active. Deep runtime verification may be
+  // disabled only by trusted compiled packages, never by a saved project.
+  const publish = configuration.verifyImmutability === false ? <T>(value: T) => value as DeepReadonly<T> : freeze
   const rules = new Map<string, RuleDefinition>()
   for (const rule of definitions) {
     if (rules.has(rule.id) || !Number.isInteger(rule.revision) || rule.revision < 1 || !rule.source.length || !rule.cases.length)
@@ -54,7 +71,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
     }
   }
   return (input: F, options: { trace?: boolean } = {}): { facts: DeepReadonly<F>; trace: Trace[] } => {
-    let facts = freeze(cloneFacts(input)), revision = 0
+    let facts = publish(configuration.snapshot ? configuration.snapshot(input) : cloneFacts(input)), revision = 0
     const trace: Trace[] = []
     const written = new Map<string, { proposal: P; step: string }>()
     // All writes remain private until the entire calculation succeeds. A thrown
@@ -64,7 +81,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
       for (const step of batch) {
         const view = Object.fromEntries(step.reads.map(key => [key, (facts as Readonly<F>)[key]])) as DeepReadonly<Partial<F>>
         let outcome
-        try { outcome = step.evaluate(freeze(view) as DeepReadonly<Partial<F>>, revision) }
+        try { outcome = step.evaluate(publish(view) as DeepReadonly<Partial<F>>, revision) }
         catch (error) { throw new RuleFailure(step.id, error instanceof Error ? error.message : String(error)) }
         if (outcome.status === 'rejected') throw new RuleFailure(step.id, outcome.reason)
         if (options.trace) trace.push({ step: step.id, phase: step.phase, status: outcome.status,
@@ -75,7 +92,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
           if (!step.kinds.includes(proposal.kind) || !step.targets.includes(proposal.target) || proposal.expectedRevision !== revision || !proposal.target)
             throw new RuleFailure(step.id, 'unauthorized proposal or stale revision')
           const existing = written.get(proposal.target)
-          const same = existing && JSON.stringify({ ...existing.proposal, expectedRevision: 0 }) === JSON.stringify({ ...proposal, expectedRevision: 0 })
+          const same = existing && sameValue({ ...existing.proposal, expectedRevision: 0 }, { ...proposal, expectedRevision: 0 })
           if (existing && !same && !step.refines?.some(relation => relation.step === existing.step
             && relation.targets.includes(proposal.target) && relation.when(proposal, existing.proposal, view)))
             throw new RuleFailure(step.id, `conflicting proposals: ${proposal.target}`)
@@ -83,7 +100,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
           written.set(proposal.target, { proposal, step: step.id })
         }
       }
-      if (proposals.size) facts = freeze(reduce(facts, [...proposals.values()]))
+      if (proposals.size) facts = publish(reduce(facts, [...proposals.values()]))
       revision++
     }
     return { facts, trace }

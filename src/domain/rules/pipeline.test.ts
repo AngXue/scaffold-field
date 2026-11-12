@@ -15,8 +15,8 @@ describe('rule pipeline contracts', () => {
   it('catalog identifies every existing rule without claiming adapter migration complete', () => {
     expect(RULES).toHaveLength(45)
     expect(new Set(RULES.map(r => r.id)).size).toBe(45)
-    expect(RULES.filter(r => r.implementation === 'legacy-adapter')).toHaveLength(37)
-    expect(RULES.filter(r => r.implementation === 'native').map(r => r.id)).toEqual(['I03', 'I04', 'I05', 'G01', 'G02', 'G04', 'G05', 'G06'])
+    expect(RULES.filter(r => r.implementation === 'legacy-adapter')).toHaveLength(33)
+    expect(RULES.filter(r => r.implementation === 'native').map(r => r.id)).toEqual(['I03', 'I04', 'I05', 'G01', 'G02', 'G04', 'G05', 'G06', 'S01', 'S02', 'S03', 'C02'])
   })
   it('commits privately, leaves input intact and trace cannot change result', () => {
     const run = compilePipeline([definition], [step], reduce), source = input()
@@ -93,4 +93,29 @@ it('preserves and freezes symbol-keyed provenance instead of silently dropping i
 it('rejects mutable collection containers instead of offering a false readonly contract', () => {
   const run = compilePipeline([definition], [], (facts: DeepReadonly<{ mutable: Map<string, number> }>) => facts as { mutable: Map<string, number> })
   expect(() => run({ mutable: new Map() })).toThrow('plain objects')
+})
+
+
+it('compares proposal values independent of property order and includes symbol origins', () => {
+  const provenance = Symbol('source')
+  type FactsWithSource = { result: number; values: number[] }
+  type WithSource = Add & { [provenance]?: { id: string } }
+  const base: RuleStep<FactsWithSource, WithSource> = { ...step, evaluate: (_, revision) => ({ status: 'proposed', proposals: [
+    { kind: 'sum', target: 'result', value: 5, expectedRevision: revision, [provenance]: { id: 'S1' } },
+  ] }) }
+  const reversed: RuleStep<FactsWithSource, WithSource> = { ...base, id: 'same', evaluate: (_, revision) => ({ status: 'proposed', proposals: [
+    { [provenance]: { id: 'S1' }, expectedRevision: revision, value: 5, target: 'result', kind: 'sum' },
+  ] }) }
+  expect(compilePipeline([definition], [base, reversed], reduce)(input()).facts.result).toBe(5)
+  const different: RuleStep<FactsWithSource, WithSource> = { ...reversed, evaluate: (_, revision) => ({ status: 'proposed', proposals: [
+    { kind: 'sum', target: 'result', value: 5, expectedRevision: revision, [provenance]: { id: 'S2' } },
+  ] }) }
+  expect(() => compilePipeline([definition], [base, different], reduce)(input())).toThrow('conflicting')
+})
+it('development verification and production execution commit identical outputs', () => {
+  const strict = compilePipeline([definition], [step], reduce)
+  const production = compilePipeline([definition], [step], reduce, { verifyImmutability: false })
+  const source = input()
+  expect(production(source, { trace: true })).toEqual(strict(source, { trace: true }))
+  expect(source).toEqual(input())
 })
