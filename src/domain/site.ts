@@ -535,8 +535,9 @@ export function siteWithTargetLayers(site: Site, settings: ScaffoldParameters, b
 export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLayout {
   const { blocks } = resolveBlocks(input)
   const site = siteWithTargetLayers(input, settings, blocks)
-  if (!site.blocks.length || !site.sections.some(section => section.automatic)) return calculateSiteSpans(site, settings)
+  if (!site.blocks.length) return calculateSiteSpans(site, settings)
   const { spans, transitions, errors } = routeSiteSections(site.sections, blocks, settings)
+  if (!site.sections.some(section => section.automatic) && !spans.some(span => span.wall)) return calculateSiteSpans(site, settings)
   const wallIds = new Set(spans.filter(span => span.wall).map(span => span.line.id))
   const sourceIds = new Map(spans.map(span => [span.line.id, span.sourceId]))
   const indices = new Map(spans.map((span, index) => [span.line.id, index]))

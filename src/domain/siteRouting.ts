@@ -39,9 +39,9 @@ export function snapScaffoldStroke(start: SitePoint, end: SitePoint, edges: Wall
       && Math.abs(start[axis] - e.at) <= tolerance && Math.abs(end[axis] - e.at) <= tolerance)
     .sort((a, b) => Math.abs(start[axis] - a.at) - Math.abs(start[axis] - b.at)
       || (b.high - b.low) - (a.high - a.low))[0]
-  const project = (p: SitePoint) => edge ? { ...p, [axis]: edge.at,
-    [along]: Math.abs(p[along] - edge.low) <= tolerance ? edge.low
-      : Math.abs(p[along] - edge.high) <= tolerance ? edge.high : p[along] } : p
+  const project = (p: SitePoint) => edge ? { ...p, [axis]: roundSite(edge.at),
+    [along]: roundSite(Math.abs(p[along] - edge.low) <= tolerance ? edge.low
+      : Math.abs(p[along] - edge.high) <= tolerance ? edge.high : p[along]) } : p
   return { start: project(start), end: project(end), edge }
 }
 
@@ -50,9 +50,21 @@ export function wallStandOff(settings: ScaffoldParameters) {
   return roundSite(Math.max(0.30, excess + settings.pipeDiameter / 2 + 0.05))
 }
 
+/** Resolve floating-point noise without treating a genuinely diagonal stroke as orthogonal. */
+function orthogonalSection(section: SiteSection): SiteSection | undefined {
+  const dx = Math.abs(section.end.x - section.start.x), dz = Math.abs(section.end.z - section.start.z)
+  const cross = dx > EPS && dz <= EPS ? 'z' : dz > EPS && dx <= EPS ? 'x' : undefined
+  if (!cross) return
+  const at = roundSite((section.start[cross] + section.end[cross]) / 2)
+  return { ...section, start: { ...section.start, [cross]: at }, end: { ...section.end, [cross]: at } }
+}
+
 export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock[], settings: ScaffoldParameters) {
   const edges = siteWallEdges(blocks)
-  const walls = sections.map(s => s.automatic && s.surfaceId === GROUND ? snapScaffoldStroke(s.start, s.end, edges, EPS).edge : undefined)
+  const aligned = sections.map(orthogonalSection)
+  // A ground stroke on a wall denotes a wall face, even in a saved manual run.
+  // Footing selection and layer-following flags must not disable wall clearance.
+  const walls = aligned.map(s => s?.surfaceId === GROUND ? snapScaffoldStroke(s.start, s.end, edges, EPS).edge : undefined)
   const clearances = sections.map(() => wallStandOff(settings))
   const sharedEnds = new Map<number, { high: number; low: number }>()
   walls.forEach((wall, i) => {
@@ -77,11 +89,11 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
   const spans: RoutedSpan[] = [], transitions: SiteTransition[] = []
   const errors: Array<{ id: string; message: string }> = []
   const takenIds = new Set(sections.map(section => section.id))
-  sections.forEach((source, index) => {
-    if (!source.automatic || source.surfaceId !== GROUND || source.start.x !== source.end.x && source.start.z !== source.end.z) {
-      spans.push({ sourceId: source.id, line: source, wall: false }); return
+  sections.forEach((original, index) => {
+    const source = aligned[index], wall = walls[index]
+    if (!source || source.surfaceId !== GROUND || !source.automatic && !wall) {
+      spans.push({ sourceId: original.id, line: original, wall: false }); return
     }
-    const wall = walls[index]
     const cross = source.start.x === source.end.x ? 'x' : 'z', along = other(cross)
     let { start, end } = source
     if (wall) {
@@ -108,6 +120,12 @@ export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock
       const low = Math.min(start[along], end[along]), high = Math.max(start[along], end[along])
       const trim = (p: SitePoint) => ({ ...p, [along]: low < shared.low ? Math.min(p[along], shared.low) : high > shared.high ? Math.max(p[along], shared.high) : p[along] })
       start = trim(start); end = trim(end)
+    }
+    if (!source.automatic) {
+      // Explicit ground selection still means ground: apply clearance, but do
+      // not silently change its support surface or independent layer count.
+      spans.push({ sourceId: source.id, line: { ...source, start, end }, wall: true, wallClearance: clearance })
+      return
     }
     const sign = Math.sign(end[along] - start[along])
     if (!sign) { spans.push({ sourceId: source.id, line: source, wall: false }); return }

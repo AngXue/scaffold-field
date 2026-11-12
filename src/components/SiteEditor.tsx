@@ -322,7 +322,7 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
     if (splitMode && selectedSection) return { start: g.start, end, kind: 'split' }
     if (g.endpoint && selectedSection) {
       const other = selectedSection[g.endpoint === 'start' ? 'end' : 'start']
-      const resized = selectedSection.automatic ? wallDraft(other, end) : { start: other, end: straight(other, end) }
+      const resized = selectedSection.surfaceId === GROUND ? wallDraft(other, end) : { start: other, end: straight(other, end) }
       return { ...resized, kind: 'end' }
     }
     if (tool === 'scaffold') return { ...wallDraft(g.start, end), kind: 'section' }

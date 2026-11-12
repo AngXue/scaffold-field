@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import wallStrokeText from '../../docs/fixtures/user-wall-stroke.json?raw'
 import { calculateSite, defaultSectionLayers, drawingFromSections, GROUND, getSectionLevels, legacySiteDrawing, roundSite, siteWithTargetLayers,
   legacySnapshot, readSite, rectangleFromGuides, siteFromLegacy, siteFromSnapshot, blockHasDependents, type Site, type SitePoint } from './site'
 import { SITE_DEMOS } from './siteDemos'
@@ -307,5 +308,79 @@ describe('坐标变换和 1.3 存档兼容', () => {
     expect(siteFromSnapshot(history[0])).toEqual(site)
     expect(legacySiteDrawing(site)).toBeUndefined()
     expect(calculateSite(site, { ...DEFAULT_PARAMETERS, layerCount: 2 } as ScaffoldParameters).sections.map(s => s.top)).toEqual([9.4, 9.4])
+  })
+})
+
+
+describe('沿墙笔画自动退墙', () => {
+  const project = JSON.parse(wallStrokeText) as { scene: Site; parameters: ScaffoldParameters }
+
+  it.each([undefined, true])('用户原图无需修改坐标或 automatic=%s 即可出量', automatic => {
+    const site = readSite(project.scene)!
+    site.sections[0].automatic = automatic
+    const before = JSON.stringify(site)
+    const layout = calculateSite(site, project.parameters)
+    expect(layout.issues).toEqual([])
+    expect(layout.canExportMaterials).toBe(true)
+    expect(layout.perimeter).toBe(24)
+    expect(layout.spans?.[0]).toMatchObject({ wall: true, wallClearance: 0.3 })
+    expect(new Set(posts(layout).map(post => post.start[2]))).toEqual(new Set([1, 1.9]))
+    expect(posts(layout)).toHaveLength(30)
+    expect(layout.materials.channelSteel.count).toBe(15)
+    expect(JSON.stringify(site)).toBe(before)
+  })
+
+  it.each([
+    [{ x: 2, z: 0 }, { x: 6, z: Number.EPSILON }, 2, [-0.3, -1.05]],
+    [{ x: 6, z: 10 }, { x: 2, z: 10 + Number.EPSILON * 8 }, 2, [10.3, 11.05]],
+    [{ x: 0, z: 2 }, { x: Number.EPSILON, z: 8 }, 0, [-0.3, -1.05]],
+    [{ x: 8, z: 8 }, { x: 8 + Number.EPSILON * 8, z: 2 }, 0, [8.3, 9.05]],
+  ] as const)('手选地面沿任一外墙落笔自动朝外退墙', (start, end, axis, rows) => {
+    const site: Site = { blocks: [{ id: 'B1', parentId: GROUND, x: 0, z: 0, width: 8, depth: 10, height: 20 }], guides: [],
+      sections: [{ id: 'S1', surfaceId: GROUND, start, end, layers: 3, followGlobal: false }] }
+    for (const reversed of [false, true]) {
+      const section = site.sections[0]
+      const input = { ...site, sections: [{ ...section, start: reversed ? end : start, end: reversed ? start : end }] }
+      const layout = calculateSite(input, DEFAULT_PARAMETERS)
+      expect(layout.issues).toEqual([])
+      expect(layout.sections[0].levels).toHaveLength(3)
+      expect(layout.spans?.[0].wall).toBe(true)
+      expect(new Set(posts(layout).map(post => post.start[axis]))).toEqual(new Set(rows))
+    }
+  })
+
+  it('沿墙识别不依赖内外侧参数，不对已退墙的自由架段重复偏移', () => {
+    const expected = calculateSite(project.scene, project.parameters)
+    const swapped = calculateSite(project.scene, { ...project.parameters, swapInnerOuter: false })
+    expect(swapped.issues).toEqual([])
+    expect(swapped.materials.stockSummary).toEqual(expected.materials.stockSummary)
+    const free = structuredClone(project.scene)
+    free.sections[0].start.z = free.sections[0].end.z = 1
+    const layout = calculateSite(free, project.parameters)
+    expect(layout.issues).toEqual([])
+    expect(new Set(posts(layout).map(post => post.start[2]))).toEqual(new Set([1, 1.9]))
+  })
+
+  it('手选地面沿墙仍保留当地落脚语义，跨走廊需自动识别落脚面', () => {
+    const { site, parameters } = demo('corridor')
+    const manual: Site = { ...site, sections: [{ ...site.sections[1], automatic: undefined, layers: 3, followGlobal: false }] }
+    const layout = calculateSite(manual, parameters)
+    expect(layout.spans).toHaveLength(1)
+    expect(layout.spans?.[0]).toMatchObject({ wall: true, line: { surfaceId: GROUND, layers: 3 } })
+    expect(layout.canExportMaterials).toBe(false)
+    expect(layout.issues.some(issue => issue.code === 'house-penetration')).toBe(true)
+    expect(run('corridor').canExportMaterials).toBe(true)
+  })
+
+  it('手选屋顶边界不自动移到墙外，真实斜线也不冒充沿墙线', () => {
+    const roof = structuredClone(project.scene)
+    roof.sections[0].surfaceId = 'B1'
+    expect(calculateSite(roof, project.parameters).issues.some(issue => issue.code === 'off-surface')).toBe(true)
+    const diagonal = structuredClone(project.scene)
+    diagonal.sections[0].automatic = true
+    diagonal.sections[0].end.z = 0.8
+    const layout = calculateSite(diagonal, project.parameters)
+    expect(layout.spans?.[0].wall).toBe(false)
+    expect(layout.canExportMaterials).toBe(false)
   })
 })
