@@ -14,7 +14,10 @@
     "apk": "bash scripts/build-apk.sh",
     "apk:release": "bash scripts/build-apk.sh release",
     "adb": "bash scripts/adb.sh",
-    "audit:geometry": "node --experimental-strip-types scripts/geometry-audit/run.ts"
+    "audit:geometry": "node --experimental-strip-types scripts/geometry-audit/run.ts",
+    "test:parity": "node scripts/calculation-parity/run.mjs",
+    "audit:rules": "node scripts/calculation-parity/audit.mjs",
+    "bench:rules": "node scripts/calculation-parity/run.mjs --bench"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

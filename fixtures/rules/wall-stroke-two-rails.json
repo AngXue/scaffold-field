@@ -1,0 +1,63 @@
+{
+  "id": "wall-stroke-two-rails",
+  "version": "0.7",
+  "scene": {
+    "blocks": [
+      {
+        "x": 1.8,
+        "z": -2.3,
+        "width": 30,
+        "depth": 3,
+        "id": "B1",
+        "parentId": "ground",
+        "height": 20
+      }
+    ],
+    "guides": [],
+    "sections": [
+      {
+        "id": "S1",
+        "surfaceId": "ground",
+        "start": {
+          "x": 1.8,
+          "z": 0.7000000000000002
+        },
+        "end": {
+          "x": 25.8,
+          "z": 0.7
+        },
+        "layers": 5,
+        "followGlobal": true
+      }
+    ]
+  },
+  "parameters": {
+    "layerCount": 5,
+    "width": 0.9,
+    "deckSupportRailCount": 3,
+    "postSpacing": 1.8,
+    "liftHeight": 1.88,
+    "sweepBarHeight": 0.2,
+    "swapInnerOuter": true,
+    "guardrailRailCount": 2,
+    "tubeEndExtension": 0.1,
+    "spliceOverlap": 0,
+    "deckLiftInterval": 1,
+    "deckPanelLength": 1.2,
+    "deckPanelWidth": 0.95,
+    "pipeDiameter": 0.048,
+    "stockLengths": [
+      6,
+      5,
+      4.5,
+      4,
+      3.5,
+      3,
+      2.4,
+      2,
+      1.2,
+      0.8
+    ]
+  },
+  "adjustments": {}
+}

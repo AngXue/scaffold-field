@@ -1,3 +1,6 @@
+import { getSectionLevels } from './rules/policies/levels.ts'
+export { getSectionLevels, defaultSectionLayers, sectionTargetLayer, siteWithTargetLayers } from './rules/policies/levels.ts'
+import { prepareScene } from './rules/scene.ts'
 import { measureDrawing, normalizeDrawing, PIXELS_PER_METER, readDrawing, type PlanDrawing } from './plan.ts'
 import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, calculateMaterials, calculateScaffold, calculateScaffoldPlan, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
@@ -37,17 +40,9 @@ const EPS = 0.001
 const clamp = (n: number, low: number, high: number) => Math.max(low, Math.min(high, n))
 export const sectionLayerCount = (n: number) => Number.isFinite(n) ? clamp(Math.round(n), 1, 20) : 5
 
-export function getSectionLevels(base: number, step: number, layers: number): SectionLevels {
-  const groundMm = mm(base), stepMm = Math.max(1, mm(step))
-  const firstLayer = Math.floor(groundMm / stepMm) + 1
-  const levels = Array.from({ length: sectionLayerCount(layers) }, (_, i) => m((firstLayer + i) * stepMm))
-  return { firstLayer, levels, firstClearance: m(mm(levels[0]) - groundMm), top: levels.at(-1)! }
-}
 
-export function defaultSectionLayers(base: number, step: number, target: number) {
-  const { firstLayer } = getSectionLevels(base, step, 1)
-  return { layers: Math.max(1, sectionLayerCount(target) - firstLayer + 1), aboveTarget: firstLayer > sectionLayerCount(target) }
-}
+
+
 
 export function surfaceElevation(blocks: ResolvedBlock[], id: string) {
   return id === GROUND ? 0 : blocks.find(block => block.id === id)?.top
@@ -513,28 +508,14 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
 }
 
 /** Target lift number measured from the lowest ground, including independent faces. */
-export function sectionTargetLayer(section: SiteSection, settings: ScaffoldParameters, blocks: ResolvedBlock[]): number {
-  if (section.automatic) return sectionLayerCount(section.followGlobal === false ? section.layers : settings.layerCount)
-  const base = surfaceElevation(blocks, section.surfaceId) ?? 0
-  const first = getSectionLevels(base, settings.liftHeight, 1).firstLayer
-  const count = section.followGlobal ? defaultSectionLayers(base, settings.liftHeight, settings.layerCount).layers : section.layers
-  return first + count - 1
-}
 
-export function siteWithTargetLayers(site: Site, settings: ScaffoldParameters, blocks = resolveBlocks(site).blocks): Site {
-  return { ...site, sections: site.sections.map(section => {
-    if (section.automatic) return { ...section, layers: sectionTargetLayer(section, settings, blocks) }
-    if (section.followGlobal) {
-      const base = surfaceElevation(blocks, section.surfaceId)
-      if (base !== undefined) return { ...section, layers: defaultSectionLayers(base, settings.liftHeight, settings.layerCount).layers }
-    }
-    return section
-  }) }
-}
+
+
 
 export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLayout {
-  const { blocks } = resolveBlocks(input)
-  const site = siteWithTargetLayers(input, settings, blocks)
+  const prepared = prepareScene(input, settings)
+  const { site, blocks } = prepared
+  settings = prepared.parameters
   if (!site.blocks.length) return calculateSiteSpans(site, settings)
   const { spans, transitions, errors } = routeSiteSections(site.sections, blocks, settings)
   if (!site.sections.some(section => section.automatic) && !spans.some(span => span.wall)) return calculateSiteSpans(site, settings)

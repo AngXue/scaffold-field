@@ -1,0 +1,84 @@
+{
+  "id": "corridor",
+  "scene": {
+    "blocks": [
+      {
+        "id": "B1",
+        "parentId": "ground",
+        "x": 0,
+        "z": 0,
+        "width": 8,
+        "depth": 10,
+        "height": 10
+      },
+      {
+        "id": "B2",
+        "parentId": "ground",
+        "x": -4,
+        "z": 2.5,
+        "width": 4,
+        "depth": 5,
+        "height": 3.5
+      }
+    ],
+    "guides": [],
+    "sections": [
+      {
+        "id": "S1",
+        "surfaceId": "ground",
+        "layers": 5,
+        "start": {
+          "x": 8,
+          "z": 0
+        },
+        "end": {
+          "x": 0,
+          "z": 0
+        },
+        "automatic": true
+      },
+      {
+        "id": "S2",
+        "surfaceId": "ground",
+        "layers": 5,
+        "start": {
+          "x": 0,
+          "z": 0
+        },
+        "end": {
+          "x": 0,
+          "z": 10
+        },
+        "automatic": true
+      }
+    ]
+  },
+  "parameters": {
+    "layerCount": 5,
+    "width": 0.75,
+    "deckSupportRailCount": 3,
+    "postSpacing": 1.8,
+    "liftHeight": 1.88,
+    "sweepBarHeight": 0.2,
+    "swapInnerOuter": false,
+    "guardrailRailCount": 1,
+    "tubeEndExtension": 0.1,
+    "spliceOverlap": 0,
+    "deckLiftInterval": 1,
+    "deckPanelLength": 1,
+    "deckPanelWidth": 0.75,
+    "pipeDiameter": 0.048,
+    "stockLengths": [
+      6,
+      5,
+      4.5,
+      4,
+      3.5,
+      3,
+      2.4,
+      2,
+      1.2,
+      0.8
+    ]
+  }
+}

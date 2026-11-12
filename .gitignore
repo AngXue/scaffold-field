@@ -29,3 +29,6 @@ android/keystore.properties
 *.njsproj
 *.sln
 *.sw?
+
+# Reproducible calculation comparison reports
+artifacts/rule-migration/

@@ -1,0 +1,328 @@
+{
+  "id": "adjacent-houses",
+  "scene": {
+    "blocks": [
+      {
+        "id": "B1",
+        "parentId": "ground",
+        "x": -6.4,
+        "z": -3.8,
+        "width": 14.6,
+        "depth": 14.1,
+        "height": 8.4,
+        "outline": [
+          {
+            "x": -6.4,
+            "z": -3.8
+          },
+          {
+            "x": 4,
+            "z": -3.8
+          },
+          {
+            "x": 4,
+            "z": -2.2
+          },
+          {
+            "x": 5.5,
+            "z": -2.2
+          },
+          {
+            "x": 8.2,
+            "z": -2.2
+          },
+          {
+            "x": 8.2,
+            "z": 10.3
+          },
+          {
+            "x": 0.2,
+            "z": 10.3
+          },
+          {
+            "x": 0.2,
+            "z": 8.3
+          },
+          {
+            "x": -4.3,
+            "z": 8.3
+          },
+          {
+            "x": -4.3,
+            "z": 2.3
+          },
+          {
+            "x": -6.4,
+            "z": 2.3
+          }
+        ]
+      },
+      {
+        "id": "B2",
+        "parentId": "ground",
+        "x": 5.5,
+        "z": -9.7,
+        "width": 7.2,
+        "depth": 19,
+        "height": 4,
+        "outline": [
+          {
+            "x": 5.5,
+            "z": -2.2
+          },
+          {
+            "x": 5.5,
+            "z": -9.7
+          },
+          {
+            "x": 12.7,
+            "z": -9.7
+          },
+          {
+            "x": 12.7,
+            "z": 9.3
+          },
+          {
+            "x": 8.2,
+            "z": 9.3
+          },
+          {
+            "x": 8.2,
+            "z": -2.2
+          }
+        ]
+      }
+    ],
+    "guides": [],
+    "sections": [
+      {
+        "id": "S1",
+        "surfaceId": "ground",
+        "start": {
+          "x": 8.2,
+          "z": -2.2
+        },
+        "end": {
+          "x": 4,
+          "z": -2.2
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S9",
+        "surfaceId": "ground",
+        "start": {
+          "x": 8.2,
+          "z": 10.3
+        },
+        "end": {
+          "x": 0.2,
+          "z": 10.3
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S8",
+        "surfaceId": "ground",
+        "start": {
+          "x": 0.2,
+          "z": 10.3
+        },
+        "end": {
+          "x": 0.2,
+          "z": 8.3
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S7",
+        "surfaceId": "ground",
+        "start": {
+          "x": 0.2,
+          "z": 8.3
+        },
+        "end": {
+          "x": -4.3,
+          "z": 8.3
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S6",
+        "surfaceId": "ground",
+        "start": {
+          "x": -4.3,
+          "z": 8.3
+        },
+        "end": {
+          "x": -4.3,
+          "z": 2.3
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S5",
+        "surfaceId": "ground",
+        "start": {
+          "x": -4.3,
+          "z": 2.3
+        },
+        "end": {
+          "x": -6.4,
+          "z": 2.3
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S4",
+        "surfaceId": "ground",
+        "start": {
+          "x": -6.4,
+          "z": 2.3
+        },
+        "end": {
+          "x": -6.4,
+          "z": -3.8
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S3",
+        "surfaceId": "ground",
+        "start": {
+          "x": -6.4,
+          "z": -3.8
+        },
+        "end": {
+          "x": 4,
+          "z": -3.8
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S11",
+        "surfaceId": "ground",
+        "start": {
+          "x": 8.2,
+          "z": 9.3
+        },
+        "end": {
+          "x": 12.7,
+          "z": 9.3
+        },
+        "layers": 1,
+        "automatic": true,
+        "followGlobal": false
+      },
+      {
+        "id": "S12",
+        "surfaceId": "ground",
+        "start": {
+          "x": 12.7,
+          "z": 9.3
+        },
+        "end": {
+          "x": 12.7,
+          "z": -9.7
+        },
+        "layers": 1,
+        "automatic": true,
+        "followGlobal": false
+      },
+      {
+        "id": "S13",
+        "surfaceId": "ground",
+        "start": {
+          "x": 12.7,
+          "z": -9.7
+        },
+        "end": {
+          "x": 5.5,
+          "z": -9.7
+        },
+        "layers": 1,
+        "automatic": true,
+        "followGlobal": false
+      },
+      {
+        "id": "S14",
+        "surfaceId": "ground",
+        "start": {
+          "x": 5.5,
+          "z": -9.7
+        },
+        "end": {
+          "x": 5.5,
+          "z": -2.3
+        },
+        "layers": 1,
+        "automatic": true,
+        "followGlobal": false
+      },
+      {
+        "id": "S2",
+        "surfaceId": "ground",
+        "start": {
+          "x": 4,
+          "z": -2.2
+        },
+        "end": {
+          "x": 4,
+          "z": -3.8
+        },
+        "layers": 4,
+        "automatic": true
+      },
+      {
+        "id": "S10",
+        "surfaceId": "ground",
+        "start": {
+          "x": 8.2,
+          "z": -2.2
+        },
+        "end": {
+          "x": 8.2,
+          "z": 10.3
+        },
+        "layers": 4,
+        "automatic": true
+      }
+    ]
+  },
+  "parameters": {
+    "layerCount": 4,
+    "width": 0.75,
+    "deckSupportRailCount": 3,
+    "postSpacing": 1.8,
+    "liftHeight": 1.88,
+    "sweepBarHeight": 0.2,
+    "swapInnerOuter": false,
+    "guardrailRailCount": 1,
+    "tubeEndExtension": 0.1,
+    "spliceOverlap": 0,
+    "deckLiftInterval": 1,
+    "deckPanelLength": 1,
+    "deckPanelWidth": 0.75,
+    "pipeDiameter": 0.048,
+    "stockLengths": [
+      6,
+      5,
+      4.5,
+      4,
+      3.5,
+      3,
+      2.4,
+      2,
+      1.2,
+      0.8
+    ]
+  }
+}
