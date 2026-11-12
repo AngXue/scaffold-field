@@ -49,8 +49,14 @@ const run = compilePipeline<Facts, Change>(RULES, FRAME_ROW_STEPS, (facts, propo
   }
   return result
 }, { verifyImmutability: VERIFY_RULE_INPUTS })
-export function resolveFrameRows(physical: PlanPoint[], stations: AlignedStations, corners: CornerTopology, counts: number[], closed: boolean, parameters: ScaffoldParameters) {
-  const { facts } = run({ physical, stations, corners, counts, closed, width: parameters.width,
+export function startFrameRows(physical: PlanPoint[], stations: AlignedStations, corners: CornerTopology, counts: number[], closed: boolean, parameters: ScaffoldParameters) {
+  const stage = run.start({ physical, stations, corners, counts, closed, width: parameters.width,
     supportCount: Math.max(2, Math.round(parameters.deckSupportRailCount)), outerRow: parameters.swapInnerOuter ? 1 : 0 })
-  return { rows: facts.rows as FrameRows[], ends: facts.ends as EndBoundary[], guards: facts.guards as GuardRange[][] }
+  return { advance: (phase: import('./contracts.ts').Phase) => {
+    const { facts } = stage.advance(phase)
+    return { rows: facts.rows as FrameRows[], ends: facts.ends as EndBoundary[], guards: facts.guards as GuardRange[][] }
+  } }
+}
+export function resolveFrameRows(physical: PlanPoint[], stations: AlignedStations, corners: CornerTopology, counts: number[], closed: boolean, parameters: ScaffoldParameters) {
+  return startFrameRows(physical, stations, corners, counts, closed, parameters).advance(5)
 }

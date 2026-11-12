@@ -25,7 +25,13 @@ const run = compilePipeline<Facts, Change>(RULES, POST_STEPS, (facts, proposals)
   }
   return result
 }, { verifyImmutability: VERIFY_RULE_INPUTS })
+export function startPosts(input: PostInput, parameters: ScaffoldParameters) {
+  const stage = run.start({ input, parameters })
+  return { advance: (phase: import('./contracts.ts').Phase) => {
+    const { facts } = stage.advance(phase)
+    return { posts: facts.posts as PostDemand[], sequences: facts.sequences as Record<string, number[]> }
+  } }
+}
 export function resolvePosts(input: PostInput, parameters: ScaffoldParameters) {
-  const { facts } = run({ input, parameters })
-  return { posts: facts.posts as PostDemand[], sequences: facts.sequences as Record<string, number[]> }
+  return startPosts(input, parameters).advance(4)
 }

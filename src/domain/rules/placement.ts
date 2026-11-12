@@ -40,7 +40,12 @@ const run = compilePipeline<Facts, Change>(RULES, PLACEMENT_STEPS, (facts, propo
     }
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // Production borrows calculation-owned readonly geometry. Policies allocate
+  // their changed entities privately; copying the entire scene here is redundant.
+  // Development still clones/freezes every nested input to enforce that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function positionStock(layout: PlacementLayout, environment: PlacementEnvironment) {
   if (!layout.pipeSegments.length) return []
   const { facts } = run({ members: layout.members, pipes: layout.pipeSegments, connectors: layout.connectors, decks: layout.decks ?? [], environment })

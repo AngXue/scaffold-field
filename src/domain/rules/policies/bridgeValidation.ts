@@ -1,4 +1,5 @@
-import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, type ScaffoldLayout } from '../../scaffold.ts'
+import type { ScaffoldAssembly } from '../facts/draft.ts'
+import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH } from '../../scaffold.ts'
 import type { ResolvedBlock, SiteIssue } from '../../site.ts'
 import type { RoutedSpan } from '../../siteRouting.ts'
 import type { Bridge, JoinedLift } from '../facts/transitions.ts'
@@ -7,7 +8,7 @@ import { subtractCoverage } from '../../polygons.ts'
 import { SITE_EPS as EPS } from '../facts/precision.ts'
 import { sourcedIssue } from '../facts/issues.ts'
 import { stockBounds, deckBounds, pipeEntersBlock, coveredArea, footprintPolygon, overlapBoxes } from './collisionGeometry.ts'
-export function bridgeIssues(layout: ScaffoldLayout, blocks: ResolvedBlock[], spans: RoutedSpan[], bridges: Bridge[], joined: JoinedLift[], radius: number,
+export function bridgeIssues(layout: ScaffoldAssembly, blocks: ResolvedBlock[], spans: RoutedSpan[], bridges: Bridge[], joined: JoinedLift[], radius: number,
   labelEntries: [string, number][], previous: readonly SiteIssue[]): SiteIssue[] {
   const issues = [...previous], start = issues.length, labels = new Map(labelEntries)
   if (joined.length) {

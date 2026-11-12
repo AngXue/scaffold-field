@@ -120,3 +120,36 @@ it('development verification and production execution commit identical outputs',
   expect(production(source, { trace: true })).toEqual(strict(source, { trace: true }))
   expect(source).toEqual(input())
 })
+
+it('advances committed phases without replaying earlier rules or publishing future facts', () => {
+  const calls: string[] = []
+  const first: RuleStep<Facts, Add> = { ...step, evaluate: (facts, revision) => { calls.push('first'); return step.evaluate(facts, revision) } }
+  const second: RuleStep<Facts, Add> = { ...step, id: 'later', phase: 5, after: [step.id], reads: ['result'],
+    refines: [{ step: step.id, targets: ['result'], reason: 'explicit stage extension', caseId: 'phase-resume', when: next => next.value === 6 }],
+    evaluate: (facts, revision) => { calls.push('later'); return { status: 'proposed', proposals: [{ kind: 'sum', target: 'result', expectedRevision: revision, value: facts.result! + 1 }] } } }
+  const stage = compilePipeline([definition], [second, first], reduce).start(input(), { trace: true })
+  const initial = stage.advance(0)
+  expect(initial.facts.result).toBe(0)
+  expect(calls).toEqual([])
+  const early = stage.advance(3)
+  expect(early.facts.result).toBe(5)
+  expect(stage.advance(3).facts).toBe(early.facts)
+  expect(stage.advance(5).facts.result).toBe(6)
+  expect(stage.finish().facts.result).toBe(6)
+  expect(calls).toEqual(['first', 'later'])
+  expect(early.facts.result).toBe(5)
+  expect(early.trace).toHaveLength(1)
+  expect(initial.trace).toHaveLength(0)
+  expect(() => stage.advance(4)).toThrow('backwards')
+})
+
+it('rejects recovery of a failed phase and retains the last published immutable stage', () => {
+  const fail: RuleStep<Facts, Add> = { ...step, id: 'reject', phase: 5, after: [step.id],
+    evaluate: () => ({ status: 'rejected', reason: 'conflicting guard requirement' }) }
+  const source = input(), stage = compilePipeline([definition], [step, fail], reduce).start(source)
+  const committed = stage.advance(3)
+  expect(() => stage.advance(5)).toThrow('conflicting guard requirement')
+  expect(() => stage.finish()).toThrow('cannot resume')
+  expect(committed.facts.result).toBe(5)
+  expect(source).toEqual(input())
+})

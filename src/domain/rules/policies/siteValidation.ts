@@ -1,4 +1,6 @@
-import type { Vector3Tuple } from '../../scaffold.ts'
+import { memberUses } from '../facts/memberUses.ts'
+import type { SiteSection } from '../../site.ts'
+import type { PipeSegment, ScaffoldMember, Vector3Tuple } from '../../scaffold.ts'
 import { containsPoint, type ResolvedBlock, type SitePoint, type SiteIssue } from '../../site.ts'
 import { footprintCells, footprintCoversPolygon, footprintSupportsSegment } from '../../siteFootprints.ts'
 import { subtractCoverage, type PlanPolygon } from '../../polygons.ts'
@@ -61,4 +63,28 @@ export function independentOverlapIssues(physicalGroups: readonly PhysicalGroup[
   }
 
   return issues
+}
+
+/** V03 collision ownership follows source intervals after a physical run is shared.
+ * Bridge intervals are checked by bridgeIssues against final entities. A surviving
+ * display prefix must not turn a supported shared run into an independent overlap.
+ * All physical surplus outside the logical ends stays with its end owner.
+ */
+export function independentPipeScopes(pipe: PipeSegment, member: ScaffoldMember, sections: readonly SiteSection[], groupBySection: ReadonlyMap<string, number>) {
+  const uses = memberUses(member)
+  const origins = new Set(uses.map(use => groupBySection.get(sections[use.pathSegment]?.id)))
+  const sectionId = sections[member.pathSegment ?? -1]?.id
+  if (origins.size <= 1) return [{ group: groupBySection.get(sectionId), sectionId, start: pipe.start, end: pipe.end }]
+  const axis = Math.abs(member.end[0] - member.start[0]) > EPS ? 0 : 2
+  const low = Math.min(pipe.start[axis], pipe.end[axis]), high = Math.max(pipe.start[axis], pipe.end[axis])
+  const memberLow = Math.min(member.start[axis], member.end[axis]), memberHigh = Math.max(member.start[axis], member.end[axis])
+  return uses.flatMap(use => {
+    if (use.purpose.startsWith('bridge-')) return []
+    const a = Math.min(use.start[axis], use.end[axis]), b = Math.max(use.start[axis], use.end[axis])
+    const from = Math.max(low, a <= memberLow + EPS ? low : a), to = Math.min(high, b >= memberHigh - EPS ? high : b)
+    if (to - from <= EPS) return []
+    const point = (value: number) => pipe.start.map((coordinate, index) => index === axis ? value : coordinate) as Vector3Tuple
+    const id = sections[use.pathSegment]?.id
+    return [{ group: groupBySection.get(id), sectionId: id, start: point(from), end: point(to) }]
+  })
 }

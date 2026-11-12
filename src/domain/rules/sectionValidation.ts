@@ -31,7 +31,12 @@ const run = compilePipeline<Facts, Change>(RULES, SECTION_VALIDATION_STEPS, (fac
     case 'SweepIssues': result = { ...result, sweepIssues: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // Production borrows calculation-owned readonly geometry. Policies allocate
+  // their changed entities privately; copying the entire scene here is redundant.
+  // Development still clones/freezes every nested input to enforce that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function validateSectionInputs(sections: SiteSection[], blocks: ResolvedBlock[], parameters: ScaffoldParameters, minimumLength: number) {
   const { facts } = run({ sections, blocks, parameters, minimumLength })
   return { summaries: facts.levels!.flatMap(section => section.summary ? [{ ...section.summary }] : []) as SectionSummary[],

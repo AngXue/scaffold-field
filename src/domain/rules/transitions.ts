@@ -41,7 +41,12 @@ const run = compilePipeline<Facts, Change>(RULES, TRANSITION_STEPS, (facts, prop
     case 'OpenTransitionCaps': result = { ...result, opened: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // Production borrows calculation-owned readonly geometry. Policies allocate
+  // their changed entities privately; copying the entire scene here is redundant.
+  // Development still clones/freezes every nested input to enforce that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function resolveTransitions(input: Omit<Facts, 'geometry' | 'tops' | 'plan' | 'opened'>, trace = false) {
   const result = run(input, { trace }), { facts } = result
   return { trace: result.trace, plan: facts.plan as TransitionPlan, opened: facts.opened && { groups: [...facts.opened.groups],

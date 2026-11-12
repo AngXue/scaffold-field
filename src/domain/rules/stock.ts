@@ -5,9 +5,10 @@ import { RULES } from './catalog.ts'
 import { compilePipeline } from './pipeline.ts'
 import type { RuleStep, Proposal } from './contracts.ts'
 
-type Assembly = ReturnType<typeof createPipeAssembly>
-type StockFacts = {
-  members: ScaffoldMember[]; sequences: Record<string, number[]>; parameters: ScaffoldParameters; fixed: boolean
+export type StockAssembly = ReturnType<typeof createPipeAssembly>
+type Assembly = StockAssembly
+export type StockFacts = {
+  members: ScaffoldMember[]; prebuiltPosts?: Assembly[]; sequences: Record<string, number[]>; parameters: ScaffoldParameters; fixed: boolean
   inventory?: number[]; repaired?: { sequences: Record<string, number[]>; warnings: LayoutWarning[] }
   posts?: Assembly[]; horizontals?: Assembly[]; splices?: Record<string, ScaffoldConnector[]>
 }
@@ -26,10 +27,30 @@ export const STOCK_STEPS: RuleStep<StockFacts, StockProposal>[] = [
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'RepairPostSplices', target: 'repaired', expectedRevision: revision,
       value: facts.fixed ? { sequences: facts.sequences as Record<string, number[]>, warnings: [] }
         : repairPostSplices(facts.members as ScaffoldMember[], facts.sequences as Record<string, number[]>, facts.parameters as ScaffoldParameters) }] }) },
-  { id: 'S01.posts', ruleId: 'S01', phase: 4, after: ['S03.repair'], reads: ['members', 'parameters', 'inventory', 'repaired'], kinds: ['AssemblePosts'], targets: ['posts'],
-    evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'AssemblePosts', target: 'posts', expectedRevision: revision,
-      value: (facts.members as ScaffoldMember[]).filter(member => member.type === 'post').map(member => createPipeAssembly(member,
-        facts.inventory as number[], facts.parameters!.spliceOverlap!, facts.repaired!.sequences[member.id] as number[] | undefined)) }] }) },
+  { id: 'S01.posts', ruleId: 'S01', phase: 4, after: ['S03.repair'], reads: ['members', 'parameters', 'inventory', 'repaired', 'prebuiltPosts'], kinds: ['AssemblePosts'], targets: ['posts'],
+    evaluate: (facts, revision) => {
+      const existing = new Map((facts.prebuiltPosts as Assembly[] | undefined)?.map(assembly => [assembly.plan.memberId, assembly]))
+      const value = (facts.members as ScaffoldMember[]).filter(member => member.type === 'post').map(member => {
+        const fixed = existing.get(member.id)
+        if (fixed) {
+          const sequence = facts.repaired!.sequences[member.id]
+          if (fixed.plan.requiredLength !== member.length || fixed.plan.stockLengths.length !== sequence?.length
+            || fixed.plan.stockLengths.some((length, index) => length !== sequence[index]))
+            throw new Error('Committed post stock no longer matches the logical demand')
+          const pipes = fixed.segments
+          if (pipes.length !== fixed.plan.stockLengths.length || !pipes.length
+            || pipes.some((pipe, index) => pipe.memberId !== member.id || pipe.stockLength !== fixed.plan.stockLengths[index]
+              || pipe.id !== fixed.plan.segmentIds[index] || pipe.type !== 'post'
+              || Math.abs(Math.hypot(...pipe.end.map((value, axis) => value - pipe.start[axis])) - pipe.stockLength) > 0.001
+              || [pipe.start, pipe.end].some(point => [0, 2].some(axis => Math.abs(point[axis] - member.start[axis]) > 0.001)))
+            || Math.abs(pipes[0].start[1] - member.start[1]) > 0.001 || pipes.at(-1)!.end[1] < member.end[1] - 0.001)
+            throw new Error('Committed post geometry no longer matches its stock or support')
+          return fixed
+        }
+        return createPipeAssembly(member, facts.inventory as number[], facts.parameters!.spliceOverlap!, facts.repaired!.sequences[member.id] as number[] | undefined)
+      })
+      return { status: 'proposed', proposals: [{ kind: 'AssemblePosts', target: 'posts', expectedRevision: revision, value }] }
+    } },
   { id: 'S01.horizontals', ruleId: 'S01', phase: 6, after: ['S01.posts'], reads: ['members', 'parameters', 'repaired'], kinds: ['AssembleHorizontals'], targets: ['horizontals'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'AssembleHorizontals', target: 'horizontals', expectedRevision: revision,
       value: assembleHorizontalRuns(facts.members as ScaffoldMember[], facts.parameters as ScaffoldParameters, facts.repaired!.sequences as Record<string, number[]>) }] }) },
@@ -42,7 +63,7 @@ export const STOCK_STEPS: RuleStep<StockFacts, StockProposal>[] = [
     },
   },
 ]
-const run = compilePipeline<StockFacts, StockProposal>(RULES, STOCK_STEPS, (facts, proposals) => {
+const reduceStock = (facts: import('./contracts.ts').DeepReadonly<StockFacts>, proposals: readonly StockProposal[]): StockFacts => {
   let result = { ...facts } as StockFacts
   for (const proposal of proposals) switch (proposal.kind) {
     case 'SelectPostInventory':
@@ -61,19 +82,38 @@ const run = compilePipeline<StockFacts, StockProposal>(RULES, STOCK_STEPS, (fact
     }
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS,
-  snapshot: input => ({ ...input, parameters: { ...input.parameters, stockLengths: [...input.parameters.stockLengths] },
+}
+const configuration = { verifyImmutability: VERIFY_RULE_INPUTS,
+  snapshot: (input: StockFacts): StockFacts => ({ ...input, parameters: { ...input.parameters, stockLengths: [...input.parameters.stockLengths] },
+    prebuiltPosts: input.prebuiltPosts?.map(assembly => ({ plan: { ...assembly.plan, stockLengths: [...assembly.plan.stockLengths], segmentIds: [...assembly.plan.segmentIds] },
+      segments: assembly.segments.map(pipe => ({ ...pipe, start: [...pipe.start], end: [...pipe.end] })) })),
     sequences: Object.fromEntries(Object.entries(input.sequences).map(([id, sequence]) => [id, [...sequence]])),
     members: input.members.map(member => ({ ...member, start: [...member.start], end: [...member.end], connectionPoints: member.connectionPoints.map(point => [...point]) })) }),
-})
-export function assembleStockStage(members: ScaffoldMember[], sequences: Record<string, number[]>, parameters: ScaffoldParameters, fixed = false) {
+}
+const run = compilePipeline<StockFacts, StockProposal>(RULES, STOCK_STEPS, reduceStock, configuration)
+const runPosts = compilePipeline<StockFacts, StockProposal>(RULES, STOCK_STEPS.filter(step => step.phase === 4), reduceStock, configuration)
+const runPostPreferences = compilePipeline<StockFacts, StockProposal>(RULES, STOCK_STEPS.filter(step => ['S02.inventory', 'S03.repair'].includes(step.id)), reduceStock, configuration)
+/** Commit only upright stock. Horizontal stock and every fitting wait for final geometry. */
+export function assemblePostsStage(members: ScaffoldMember[], sequences: Record<string, number[]>, parameters: ScaffoldParameters) {
+  const { facts } = runPosts({ members, sequences, parameters, fixed: false })
+  return { posts: facts.posts!.map(assembly => ({
+    plan: { ...assembly.plan, stockLengths: [...assembly.plan.stockLengths], segmentIds: [...assembly.plan.segmentIds] },
+    segments: assembly.segments.map(pipe => ({ ...pipe, start: [...pipe.start], end: [...pipe.end] })),
+  })) as StockAssembly[], sequences: facts.repaired!.sequences as Record<string, number[]>, warnings: facts.repaired!.warnings as LayoutWarning[] }
+}
+export function resolvePostSequences(members: ScaffoldMember[], sequences: Record<string, number[]>, parameters: ScaffoldParameters) {
+  const { facts } = runPostPreferences({ members, sequences, parameters, fixed: false })
+  return { sequences: Object.fromEntries(Object.entries(facts.repaired!.sequences).map(([id, sequence]) => [id, [...sequence]])),
+    warnings: facts.repaired!.warnings.map(warning => ({ ...warning })) }
+}
+export function assembleStockStage(members: ScaffoldMember[], sequences: Record<string, number[]>, parameters: ScaffoldParameters, fixed = false, prebuiltPosts?: Assembly[]) {
   if (!members.length) return { assemblies: [], warnings: [] }
   // Stock consumes geometry and ties, not a second copy of the provenance graph.
   const demands = members.map(({ id, type, start, end, length, layer, connectionPoints }) => ({ id, type, start, end, length, layer, connectionPoints }))
-  const { facts } = run({ members: demands, sequences, parameters, fixed })
+  const { facts } = run({ members: demands, sequences, parameters, fixed, prebuiltPosts })
   const byId = new Map([...facts.posts!, ...facts.horizontals!].map(assembly => [assembly.plan.memberId, assembly]))
-  // Until S7 is migrated, its legacy positioning adapter owns these detached
-  // mutable pipe records. The committed stock stage remains immutable.
+  // The single positioning policy owns these detached mutable pipe records.
+  // The committed stock choice remains immutable.
   const assemblies = members.map(member => {
     const assembly = byId.get(member.id)!
     return { segments: assembly.segments.map(pipe => ({ ...pipe, start: [...pipe.start], end: [...pipe.end] })),

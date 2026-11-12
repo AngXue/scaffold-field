@@ -28,7 +28,12 @@ const run = compilePipeline<Facts, Change>(RULES, GUARD_REMOVAL_STEPS, (facts, p
     }
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // Production borrows calculation-owned readonly geometry. Policies allocate
+  // their changed entities privately; copying the entire scene here is redundant.
+  // Development still clones/freezes every nested input to enforce that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function resolveGuardRemovals(input: Omit<Facts, 'wall' | 'shared'>) {
   const { facts } = run(input)
   return [...new Set([...facts.wall!, ...facts.shared!])]

@@ -1,8 +1,12 @@
+import type { ScaffoldAssembly } from './rules/facts/draft.ts'
+import { resolveHeightStages } from './rules/heights.ts'
+import { normalizeKernelParameters } from './rules/boundaries/parameters.ts'
 import { calculationSession, type DiagnosedLayout } from './rules/diagnostics/session.ts'
 import { sectionDimension, sourceDimensions, sourcePerimeter } from './rules/boundaries/dimensions.ts'
 import { legacySiteDrawing, drawingFromSections } from './rules/boundaries/sceneFiles.ts'
 export { siteFromLegacy, drawingFromSections, legacySiteDrawing, readSite, siteFromSnapshot, legacySnapshot } from './rules/boundaries/sceneFiles.ts'
 import { validateSectionInputs } from './rules/sectionValidation.ts'
+import { independentPipeScopes } from './rules/policies/siteValidation.ts'
 import { splitLengthIssues } from './rules/policies/sectionValidation.ts'
 import { validatePhysicalChecks, validateIndependentGroups, validateBridges } from './rules/siteValidation.ts'
 import type { PhysicalCheck, ElementBounds, PhysicalGroup } from './rules/policies/siteValidation.ts'
@@ -19,7 +23,7 @@ export { resolveBlocks } from './rules/policies/blocks.ts'
 export { getSectionLevels, defaultSectionLayers, sectionTargetLayer, siteWithTargetLayers } from './rules/policies/levels.ts'
 import { prepareScene } from './rules/scene.ts'
 import { measureDrawing, PIXELS_PER_METER } from './plan.ts'
-import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, calculateMaterials, calculateScaffold, calculateScaffoldPlan, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
+import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, publishScaffoldAssembly, assembleScaffoldDraft, prepareScaffoldPlan, prepareScaffoldAssembly, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import type { PlanPolygon } from './polygons.ts'
 import { footprintContainsPoint } from './siteFootprints.ts'
 import { positionSiteStock } from './siteWallFit.ts'
@@ -97,14 +101,21 @@ export function reverseSectionGroup(site: Site, id: string): Site {
   return { ...site, sections: site.sections.map(s => ids.has(s.id) ? reversed[i++] : s) }
 }
 
-function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = new Set<string>(), transitionEnds = new Map<number, TransitionEnd[]>(), resolution = resolveBlocks(site)): SiteLayout {
+type SiteAssembly = ScaffoldAssembly & Omit<SiteLayout, keyof ScaffoldLayout>
+
+function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = new Set<string>(), transitionEnds = new Map<number, TransitionEnd[]>(), resolution = resolveBlocks(site)) {
   const { blocks } = resolution
   const issues = [...resolution.issues]
   const flat = legacySiteDrawing(site)
-  const layout = calculateScaffold([], [], settings)
-  layout.warnings = []
+  // Assembly plans and height labels are draft metadata, not a provisional BOM.
+  const layout: ScaffoldAssembly = {
+    pathDimensions: [], perimeter: 0, members: [], pipeSegments: [], decks: [], connectors: [], baseChannels: [], warnings: [],
+    assemblyPlans: [], postHeights: { theoretical: 0, inner: 0, outer: 0 },
+  }
   const indexById = new Map(site.sections.map((line, index) => [line.id, index]))
   const physicalGroups: PhysicalGroup[] = []
+  const completions: Array<{ prefix: string; complete: () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans'> }> = []
+  const validations: Array<{ groupIndex: number; validate: (physical: { checks: PhysicalCheck[]; elements: ElementBounds[] }) => void }> = []
   let measuredLength = 0
   const minimumLength = flat ? 0.01 : MIN_SECTION_LENGTH
   const label = (sectionId: string) => `第 ${indexById.get(sectionId)! + 1} 段`
@@ -155,7 +166,17 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
         return ends.some(end => mm(end.station) === mm((end.axis === 0 ? point.x : point.y) / PIXELS_PER_METER))
       }) as [boolean, boolean]
     })
-    const part = calculateScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall, requiredEndPairs)
+    const plan = prepareScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall, requiredEndPairs)
+    const preparation = prepareScaffoldAssembly(plan.draft)
+    const part: ScaffoldAssembly = plan.toPlan({ ...preparation.draft,
+      members: preparation.draft.members.map(member => ({ ...member })),
+      decks: preparation.draft.decks.map(deck => ({ ...deck })), baseChannels: preparation.draft.baseChannels.map(base => ({ ...base })),
+      pathDimensions: preparation.draft.pathDimensions.map(dimension => ({ ...dimension })),
+      // Only uprights exist physically before the global high/low joins are settled.
+      pipeSegments: preparation.posts.flatMap(post => post.segments.map(pipe => ({ ...pipe }))), connectors: [],
+      assemblyPlans: preparation.posts.map(post => post.plan),
+      perimeter: roundSite(preparation.draft.pathDimensions.reduce((sum, dimension) => sum + dimension.length, 0)),
+    })
     measuredLength += part.perimeter
     const prefix = `R${groupIndex + 1}/`
     const elements: ElementBounds[] = []
@@ -179,8 +200,17 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
       .map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
     const connectors = part.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
       .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
-    positionSiteStock({ members, pipeSegments, connectors, decks: part.decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,
-      coverage: deck.coverage?.map(face => face.map(world)) })) }, blocks, radius, transitionEnds, followsWall)
+    completions.push({ prefix, complete: () => {
+      const completed = plan.toPlan(assembleScaffoldDraft(preparation.draft, true, preparation.posts))
+      const finalPipes = completed.pipeSegments.filter(pipe => !removed.has(pipe.memberId)).map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
+      const finalConnectors = completed.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
+        .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
+      positionSiteStock({ members, pipeSegments: finalPipes, connectors: finalConnectors, decks: part.decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,
+        coverage: deck.coverage?.map(face => face.map(world)) })) }, blocks, radius, transitionEnds, followsWall)
+      return { pipeSegments: finalPipes.map(pipe => ({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })),
+        connectors: finalConnectors.map(c => ({ ...c, id: prefix + c.id, memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })),
+        assemblyPlans: completed.assemblyPlans.filter(p => !removed.has(p.memberId)).map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })) }
+    } })
     for (const member of members) {
       if (member.type === 'post') checks.push({ kind: 'post', sectionId: memberOwners.get(member.id)!, point: member.start })
       layout.members.push({ ...member, id: prefix + member.id })
@@ -200,10 +230,7 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
       layout.baseChannels.push({ ...beam, id: prefix + beam.id, start, end, pathSegment: pathIndex(beam.pathSegment) })
     }
     for (const pipe of pipeSegments) {
-      const { start, end } = pipe, sid = memberOwners.get(pipe.memberId) ?? section.id
-      checks.push({ kind: 'pipe', sectionId: sid, start, end })
       layout.pipeSegments.push({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })
-      elements.push({ bounds: stockBounds(start, end, radius), sectionId: sid })
     }
     for (const deck of part.decks) {
       const corners = deck.corners.map(world) as typeof deck.corners
@@ -213,17 +240,21 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
       elements.push({ sectionId: owner(deck.pathSegment), deck: polygons, bounds: deckBounds(coverage?.flat() ?? corners) })
       layout.decks.push({ ...deck, id: prefix + deck.id, corners, coverage, pathSegment: pathIndex(deck.pathSegment) })
     }
-    for (const issue of validatePhysicalChecks(checks, { blocks, surface, obstructing, radius, labels })) appendIssue(issues, issue)
-    if (elements.length) physicalGroups.push({
-      bounds: elements.reduce<AxisBox>((acc, item) => ({
-        min: acc.min.map((v, i) => Math.min(v, item.bounds.min[i])) as Vector3Tuple,
-        max: acc.max.map((v, i) => Math.max(v, item.bounds.max[i])) as Vector3Tuple,
-      }), elements[0].bounds),
-      elements: elements.sort((a, b) => a.bounds.min[0] - b.bounds.min[0]),
-    })
+    validations.push({ groupIndex, validate: physical => {
+      checks.push(...physical.checks)
+      elements.push(...physical.elements)
+      for (const issue of validatePhysicalChecks(checks, { blocks, surface, obstructing, radius, labels })) appendIssue(issues, issue)
+      if (elements.length) physicalGroups.push({
+        bounds: elements.reduce<AxisBox>((acc, item) => ({
+          min: acc.min.map((v, i) => Math.min(v, item.bounds.min[i])) as Vector3Tuple,
+          max: acc.max.map((v, i) => Math.max(v, item.bounds.max[i])) as Vector3Tuple,
+        }), elements[0].bounds),
+        elements: elements.sort((a, b) => a.bounds.min[0] - b.bounds.min[0]),
+      })
+    } })
     layout.connectors.push(...connectors.map(c => ({ ...c, id: prefix + c.id,
       memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })))
-    layout.materials.assemblyPlans.push(...part.materials.assemblyPlans.filter(p => !removed.has(p.memberId))
+    layout.assemblyPlans.push(...part.assemblyPlans.filter(p => !removed.has(p.memberId))
       .map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })))
     for (const d of part.pathDimensions) {
       const index = pathIndex(d.index)
@@ -233,15 +264,45 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
     }
     layout.warnings.push(...part.warnings.map(w => ({ ...w, id: prefix + w.id,
       message: w.message.replace(/第 (\d+) 段/g, (_, index) => label(owner(Number(index) - 1))) })))
-    if (groupIndex === 0) layout.materials.postHeights = part.materials.postHeights
+    if (groupIndex === 0) layout.postHeights = part.postHeights
   })
-  for (const issue of validateIndependentGroups(physicalGroups, site.sections.map(line => line.id), labels)) appendIssue(issues, issue)
   layout.pathDimensions.sort((a, b) => a.index - b.index)
   layout.perimeter = roundSite(flat ? measureDrawing(flat.drawing).reduce((sum, length) => sum + length, 0)
     : measuredLength + site.sections.filter(line => !groupBySection.has(line.id)).reduce((sum, line) => sum + siteLength(line), 0))
-  layout.materials = calculateMaterials(layout.members, layout.pipeSegments, layout.decks, layout.connectors,
-    layout.baseChannels, settings, layout.materials.assemblyPlans, layout.materials.postHeights)
-  return { ...layout, blocks, sections: summaries, issues, canExportMaterials: !issues.some(issue => issue.blocking) }
+  if (!groups.length || !layout.members.length) {
+    const profile = resolveHeightStages(normalizeKernelParameters(settings), [], undefined, 0).profiles[0]
+    layout.postHeights = { theoretical: profile.height.theoretical,
+      inner: profile.support.rowTops[profile.height.innerRow], outer: profile.support.rowTops[profile.height.outerRow] }
+  }
+  const preview: SiteAssembly = { ...layout, blocks, sections: summaries, issues, canExportMaterials: !issues.some(issue => issue.blocking) }
+  return { preview, finish: (resolved: ScaffoldAssembly = preview, affected: readonly string[] = []): SiteAssembly => {
+    const changed = new Set(affected)
+    const additions = completions.filter(item => !changed.has(item.prefix.slice(0, -1))).map(item => item.complete())
+    const retained = (id: string) => changed.has(id.split('/')[0]) || (changed.size > 0 && id.startsWith('transition-'))
+    const final: SiteAssembly = { ...preview, ...resolved,
+      pipeSegments: [...additions.flatMap(part => part.pipeSegments), ...resolved.pipeSegments.filter(pipe => retained(pipe.memberId))],
+      connectors: [...additions.flatMap(part => part.connectors), ...resolved.connectors.filter(connector => retained(connector.memberId))],
+      assemblyPlans: [...additions.flatMap(part => part.assemblyPlans), ...resolved.assemblyPlans.filter(plan => retained(plan.memberId))],
+    }
+    if (changed.size) positionSiteStock(final, blocks, settings.pipeDiameter / 2, transitionEnds)
+    const finalMembers = new Map(final.members.map(member => [member.id, member]))
+    const physical = groups.map(() => ({ checks: [] as PhysicalCheck[], elements: [] as ElementBounds[] }))
+    for (const pipe of final.pipeSegments) {
+      const member = finalMembers.get(pipe.memberId)!
+      const sectionId = site.sections[member.pathSegment ?? -1]?.id, owner = groupBySection.get(sectionId)
+      if (owner !== undefined) physical[owner].checks.push({ kind: 'pipe', sectionId, start: pipe.start, end: pipe.end })
+      for (const scope of independentPipeScopes(pipe, member, site.sections, groupBySection)) if (scope.group !== undefined) {
+        physical[scope.group].elements.push({ bounds: stockBounds(scope.start, scope.end, settings.pipeDiameter / 2), sectionId: scope.sectionId })
+      }
+    }
+    validations.forEach(({ groupIndex, validate }) => validate(physical[groupIndex]))
+    for (const issue of validateIndependentGroups(physicalGroups, site.sections.map(line => line.id), labels)) appendIssue(issues, issue)
+    final.canExportMaterials = !issues.some(issue => issue.blocking)
+    return final
+  } }
+}
+function calculateSiteSpans(...args: Parameters<typeof prepareSiteSpans>): SiteAssembly {
+  return prepareSiteSpans(...args).finish()
 }
 
 /** Target lift number measured from the lowest ground, including independent faces. */
@@ -253,6 +314,9 @@ export function calculateSite(input: Site, settings: ScaffoldParameters, options
   return calculationSession(input, settings, () => calculateScene(input, settings), options.trace)
 }
 function calculateScene(input: Site, settings: ScaffoldParameters): SiteLayout {
+  return publishScaffoldAssembly(assembleSite(input, settings), settings)
+}
+function assembleSite(input: Site, settings: ScaffoldParameters): SiteAssembly {
   const prepared = prepareScene(input, settings)
   const { site, blocks } = prepared
   settings = prepared.parameters
@@ -276,17 +340,16 @@ function calculateScene(input: Site, settings: ScaffoldParameters): SiteLayout {
     ends.push({ axis, boundary, station, roof: Math.max(leftBase, rightBase), towardRoof: Math.sign(roofStation - station), wall: wallIds.has(low.id) })
     transitionEnds.set(index, ends)
   }
-  const spanLayout = calculateSiteSpans({ ...site, sections: spans.map(span => span.line) }, settings, wallIds, transitionEnds, prepared.resolution)
+  const staged = prepareSiteSpans({ ...site, sections: spans.map(span => span.line) }, settings, wallIds, transitionEnds, prepared.resolution)
+  const connected = connectSiteTransitions(staged.preview, spans, staged.preview.sections, transitions, settings)
+  const spanLayout = staged.finish(connected.layout, connected.affected)
+  const result = { ...connected, layout: spanLayout }
   const labels = new Map(site.sections.map((line, i) => [line.id, i + 1]))
   const issues = spanLayout.issues.map(issue => ({ ...mapIssueSources(issue, sourceIds),
     message: issue.message.replace(/第 (\d+) 段/g, (_, index) => `第 ${labels.get(spans[Number(index) - 1]?.sourceId) ?? index} 段`),
   }))
   for (const error of errors) issues.push(sourcedIssue('G02', { code: 'automatic-route', blocking: true, sectionIds: [error.id],
     message: `第 ${labels.get(error.id)} 段${error.message}` }))
-  const result = connectSiteTransitions(spanLayout, spans, spanLayout.sections, transitions, settings)
-  if (result.layout !== spanLayout) {
-    positionSiteStock(result.layout, blocks, settings.pipeDiameter / 2, transitionEnds)
-  }
   for (const { before, after } of result.failed) {
     const ids = [...new Set([before.id, after.id].map(id => sourceIds.get(id) ?? id))]
     issues.push(sourcedIssue('P05', { code: 'unjoined-transition', blocking: true, sectionIds: ids,

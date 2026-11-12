@@ -40,11 +40,17 @@ const run = compilePipeline<Facts, Change>(RULES, HEIGHT_STEPS, (facts, proposal
   return result
 }, { verifyImmutability: VERIFY_RULE_INPUTS })
 
-export function resolveHeightStages(parameters: ScaffoldParameters, segmentCounts: readonly number[], localLifts: readonly number[] | undefined,
+export function startHeightStages(parameters: ScaffoldParameters, segmentCounts: readonly number[], localLifts: readonly number[] | undefined,
   deckLayerOffset: number, trace = false) {
   const counts = [...new Set([parameters.layerCount, ...segmentCounts].map(count => Math.max(1, Math.round(count))))]
-  const result = run({ counts, parameters, localLifts, deckLayerOffset }, { trace })
-  const profiles = counts.map((count, index) => ({ count, height: result.facts.heights![index] as HeightProfile,
-    support: result.facts.supports![index] as SupportProfile, courses: result.facts.courses![index] as GuardCourse[] }))
-  return { profiles, trace: result.trace }
+  const stage = run.start({ counts, parameters, localLifts, deckLayerOffset }, { trace })
+  return { advance: (phase: import('./contracts.ts').Phase) => {
+    const result = stage.advance(phase)
+    return { profiles: counts.map((count, index) => ({ count, height: result.facts.heights![index] as HeightProfile,
+      support: result.facts.supports?.[index] as SupportProfile, courses: result.facts.courses?.[index] as GuardCourse[] })), trace: result.trace }
+  } }
+}
+export function resolveHeightStages(parameters: ScaffoldParameters, segmentCounts: readonly number[], localLifts: readonly number[] | undefined,
+  deckLayerOffset: number, trace = false) {
+  return startHeightStages(parameters, segmentCounts, localLifts, deckLayerOffset, trace).advance(5)
 }

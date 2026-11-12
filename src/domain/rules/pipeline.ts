@@ -1,5 +1,5 @@
 import { traceInvocation, recordRuleTrace } from './diagnostics/session.ts'
-import { RuleFailure, type DeepReadonly, type Proposal, type RuleDefinition, type RuleStep, type Trace } from './contracts.ts'
+import { RuleFailure, type Phase, type DeepReadonly, type Proposal, type RuleDefinition, type RuleStep, type Trace } from './contracts.ts'
 
 /** Freeze only calculation-owned plain data; callers retain ownership of their input. */
 function freeze<T>(value: T): DeepReadonly<T> {
@@ -71,47 +71,59 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
       pending = pending.filter(step => !completed.has(step.id))
     }
   }
-  return (input: F, options: { trace?: boolean } = {}): { facts: DeepReadonly<F>; trace: Trace[] } => {
+  const start = (input: F, options: { trace?: boolean } = {}) => {
     let facts = publish(configuration.snapshot ? configuration.snapshot(input) : cloneFacts(input)), revision = 0
     const trace: Trace[] = [], invocation = traceInvocation()
     const written = new Map<string, { proposal: P; step: string }>()
-    // All writes remain private until the entire calculation succeeds. A thrown
-    // failure never publishes partially updated facts or mutates caller state.
-    for (const batch of batches) {
-      const proposals = new Map<string, P>()
-      for (const step of batch) {
-        const view = Object.fromEntries(step.reads.map(key => [key, (facts as Readonly<F>)[key]])) as DeepReadonly<Partial<F>>
-        let outcome
-        try { outcome = step.evaluate(publish(view) as DeepReadonly<Partial<F>>, revision) }
-        catch (error) {
-          const reason = error instanceof Error ? error.message : String(error)
-          if (invocation !== undefined) recordRuleTrace(invocation, step, revision, 'rejected', [], reason)
-          throw new RuleFailure(step.id, reason)
+    let cursor = 0, lastPhase = -1, failed = false
+    const advance = (phase: Phase): { facts: DeepReadonly<F>; trace: Trace[] } => {
+      if (failed) throw new RuleFailure('stage', 'cannot resume a rejected stage')
+      if (!Number.isInteger(phase) || phase < lastPhase || phase > 9 || phase < 0) throw new RuleFailure('stage', 'invalid or backwards phase advance')
+      try {
+        // All writes remain private until the requested stage succeeds. A thrown
+        // failure never publishes partially updated facts or mutates caller state.
+        while (cursor < batches.length && batches[cursor][0].phase <= phase) {
+          const batch = batches[cursor]
+          const proposals = new Map<string, P>()
+          for (const step of batch) {
+            const view = Object.fromEntries(step.reads.map(key => [key, (facts as Readonly<F>)[key]])) as DeepReadonly<Partial<F>>
+            let outcome
+            try { outcome = step.evaluate(publish(view) as DeepReadonly<Partial<F>>, revision) }
+            catch (error) {
+              const reason = error instanceof Error ? error.message : String(error)
+              if (invocation !== undefined) recordRuleTrace(invocation, step, revision, 'rejected', [], reason)
+              throw new RuleFailure(step.id, reason)
+            }
+            if (invocation !== undefined) recordRuleTrace(invocation, step, revision, outcome.status, outcome.status === 'proposed' ? outcome.proposals.map(proposal => proposal.target) : [], outcome.status === 'not-applicable' || outcome.status === 'rejected' ? outcome.reason : undefined)
+            if (outcome.status === 'rejected') throw new RuleFailure(step.id, outcome.reason)
+            if (options.trace) trace.push({ step: step.id, phase: step.phase, status: outcome.status,
+              ...(outcome.status === 'not-applicable' && { reason: outcome.reason }),
+              targets: outcome.status === 'proposed' ? outcome.proposals.map(p => p.target) : [] })
+            if (outcome.status !== 'proposed') continue
+            for (const proposal of outcome.proposals) {
+              if (!step.kinds.includes(proposal.kind) || !step.targets.includes(proposal.target) || proposal.expectedRevision !== revision || !proposal.target)
+                throw new RuleFailure(step.id, 'unauthorized proposal or stale revision')
+              const existing = written.get(proposal.target)
+              const same = existing && sameValue({ ...existing.proposal, expectedRevision: 0 }, { ...proposal, expectedRevision: 0 })
+              if (existing && !same && !step.refines?.some(relation => relation.step === existing.step
+                && relation.targets.includes(proposal.target) && relation.when(proposal, existing.proposal, view)))
+                throw new RuleFailure(step.id, `conflicting proposals: ${proposal.target}`)
+              proposals.set(proposal.target, proposal)
+              written.set(proposal.target, { proposal, step: step.id })
+            }
+          }
+          if (proposals.size) {
+            try { facts = publish(reduce(facts, [...proposals.values()])) }
+            catch (error) { throw new RuleFailure(batch.map(step => step.id).join('+'), error instanceof Error ? error.message : String(error)) }
+          }
+          revision++; cursor++
         }
-        if (invocation !== undefined) recordRuleTrace(invocation, step, revision, outcome.status, outcome.status === 'proposed' ? outcome.proposals.map(proposal => proposal.target) : [], outcome.status === 'not-applicable' || outcome.status === 'rejected' ? outcome.reason : undefined)
-        if (outcome.status === 'rejected') throw new RuleFailure(step.id, outcome.reason)
-        if (options.trace) trace.push({ step: step.id, phase: step.phase, status: outcome.status,
-          ...(outcome.status === 'not-applicable' && { reason: outcome.reason }),
-          targets: outcome.status === 'proposed' ? outcome.proposals.map(p => p.target) : [] })
-        if (outcome.status !== 'proposed') continue
-        for (const proposal of outcome.proposals) {
-          if (!step.kinds.includes(proposal.kind) || !step.targets.includes(proposal.target) || proposal.expectedRevision !== revision || !proposal.target)
-            throw new RuleFailure(step.id, 'unauthorized proposal or stale revision')
-          const existing = written.get(proposal.target)
-          const same = existing && sameValue({ ...existing.proposal, expectedRevision: 0 }, { ...proposal, expectedRevision: 0 })
-          if (existing && !same && !step.refines?.some(relation => relation.step === existing.step
-            && relation.targets.includes(proposal.target) && relation.when(proposal, existing.proposal, view)))
-            throw new RuleFailure(step.id, `conflicting proposals: ${proposal.target}`)
-          proposals.set(proposal.target, proposal)
-          written.set(proposal.target, { proposal, step: step.id })
-        }
-      }
-      if (proposals.size) {
-        try { facts = publish(reduce(facts, [...proposals.values()])) }
-        catch (error) { throw new RuleFailure(batch.map(step => step.id).join('+'), error instanceof Error ? error.message : String(error)) }
-      }
-      revision++
+        lastPhase = phase
+        return { facts, trace: [...trace] }
+      } catch (error) { failed = true; throw error }
     }
-    return { facts, trace }
+    return { advance, finish: () => advance(9) }
   }
+  const run = (input: F, options: { trace?: boolean } = {}) => start(input, options).finish()
+  return Object.assign(run, { start })
 }

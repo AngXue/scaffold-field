@@ -722,6 +722,8 @@ export const RULES: readonly RuleDefinition[] = [
       "T12",
       "T13",
       "src/domain/rules/validation.test.ts",
+      "src/domain/rules/collisionScopes.test.ts",
+      "src/domain/rules/draft.test.ts",
       "src/domain/site.test.ts",
       "src/domain/scaffold.test.ts"
     ]

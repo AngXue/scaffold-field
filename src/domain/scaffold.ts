@@ -1,13 +1,14 @@
+import type { ScaffoldDraft, ScaffoldAssembly } from './rules/facts/draft.ts'
 import { pathDimensions } from './rules/boundaries/dimensions.ts'
 import { validatePath } from './rules/pathValidation.ts'
 import { zeroLengthWarning, shortBayWarnings, componentWarnings, sweepHeightWarnings } from './rules/policies/pathValidation.ts'
-import { resolvePosts } from './rules/posts.ts'
+import { startPosts } from './rules/posts.ts'
 import { resolveBaseCandidates, resolveSupportingBases } from './rules/bases.ts'
 import { reconcileComponents } from './rules/components.ts'
 import { resolveBands } from './rules/bands.ts'
 import { resolveDecks } from './rules/decks.ts'
-import { resolveFrameRows } from './rules/frameRows.ts'
-import { resolveHeightStages } from './rules/heights.ts'
+import { startFrameRows } from './rules/frameRows.ts'
+import { startHeightStages } from './rules/heights.ts'
 import { resolveTopology } from './rules/topology.ts'
 import { roundDomain as round } from './rules/facts/precision.ts'
 import { normalizeKernelParameters } from './rules/boundaries/parameters.ts'
@@ -17,7 +18,7 @@ export { calculateMaterials } from './rules/materials.ts'
 import { calculateConnections } from './rules/connections.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { assembledLength, postStockWarnings } from './rules/policies/stock.ts'
-import { assembleStockStage } from './rules/stock.ts'
+import { assemblePostsStage, assembleStockStage, resolvePostSequences, type StockAssembly } from './rules/stock.ts'
 import { mergeMemberStage } from './rules/sharedMembers.ts'
 import { MEMBER_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
@@ -421,7 +422,20 @@ export function calculateScaffold(
   segmentLayerCounts?: readonly number[],
   requiredEndPairs: readonly (readonly [boolean, boolean])[] = [],
 ): ScaffoldLayout {
+  return completeScaffoldDraft(createScaffoldDraft(points, segmentLengths, parameters, localLifts, deckLayerOffset, segmentLayerCounts, requiredEndPairs))
+}
+
+export function createScaffoldDraft(
+  points: Point2D[],
+  segmentLengths: number[],
+  parameters: ScaffoldParameters,
+  localLifts?: readonly number[],
+  deckLayerOffset = 0,
+  segmentLayerCounts?: readonly number[],
+  requiredEndPairs: readonly (readonly [boolean, boolean])[] = [],
+): ScaffoldDraft {
   parameters = normalizeKernelParameters(parameters)
+  parameters = { ...parameters, stockLengths: [...parameters.stockLengths] }
   const physical = getPhysicalPoints(points, segmentLengths)
   const members: ScaffoldMember[] = []
   const warnings: LayoutWarning[] = []
@@ -476,18 +490,10 @@ export function calculateScaffold(
   // needs the extra 步距 (and its own 0.3 m) above the top 作业层 to tie those rails
   // to: the 内排 is the row against the building and stops at T. Both are then built
   // from standard tubes, so the post actually bought is never shorter than that.
-  const heightStages = resolveHeightStages(parameters, segmentLayerCounts ?? [], localLifts, deckLayerOffset)
   const layerCount = Math.max(1, Math.round(parameters.layerCount ?? DEFAULT_PARAMETERS.layerCount))
-  const profiles = new Map(heightStages.profiles.map(profile => [profile.count, profile]))
-  const globalProfile = profiles.get(layerCount)!
   const liftElevation = (layer: number) => localLifts?.[layer - 1] ?? round(layer * parameters.liftHeight)
   const topLiftElevation = liftElevation(layerCount)
-  const theoreticalHeight = globalProfile.height.theoretical
-  const { outerRow, innerRow } = globalProfile.height
   const layersAt = (index: number) => Math.max(1, Math.round(segmentLayerCounts?.[index] ?? layerCount))
-  const profileAt = (index: number) => profiles.get(layersAt(index))!
-  const rowTopEdge = (row: number) => globalProfile.support.rowTops[row]
-  const endTopEdge = globalProfile.support.endTop
   // A closed path shares its first and last point, so it has no 临空 end.
   const pathIsClosed = physical.length > 2 &&
     Math.hypot(physical[0][0] - physical[physical.length - 1][0], physical[0][1] - physical[physical.length - 1][1]) < 0.01
@@ -513,9 +519,16 @@ export function calculateScaffold(
   const previousSegment = (index: number) => (index + segmentCount - 1) % segmentCount
   const { mitrePosts } = topology.corners
   const joinedCorners = new Set(topology.corners.joinedCorners)
-  const frame = resolveFrameRows(physical, topology.stations, topology.corners, physical.slice(0, -1).map((_, index) => layersAt(index)), pathIsClosed, parameters)
-  const postPlan = resolvePosts({ rows: frame.rows.map(rows => rows.postRows), heights: frame.rows.map((_, index) => profileAt(index).height),
+  const heightStage = startHeightStages(parameters, segmentLayerCounts ?? [], localLifts, deckLayerOffset)
+  let profiles = new Map(heightStage.advance(3).profiles.map(profile => [profile.count, profile]))
+  const profileAt = (index: number) => profiles.get(layersAt(index))!
+  const theoreticalHeight = profiles.get(layerCount)!.height.theoretical
+  const { outerRow, innerRow } = profiles.get(layerCount)!.height
+  const frameStage = startFrameRows(physical, topology.stations, topology.corners, physical.slice(0, -1).map((_, index) => layersAt(index)), pathIsClosed, parameters)
+  let frame = frameStage.advance(3)
+  const postStage = startPosts({ rows: frame.rows.map(rows => rows.postRows), heights: frame.rows.map((_, index) => profileAt(index).height),
     ends: frame.ends, grid: topology.grid, stations: topology.stations, mitres: topology.corners.mitrePosts, retained: topology.retained }, parameters)
+  let postPlan = postStage.advance(3)
   const postDemands = new Map(postPlan.posts.map(post => [post.key, post])), emittedPosts = new Set<string>()
   const emitPost = (point: Vector3Tuple) => {
     const key = pointKey(point)
@@ -538,6 +551,16 @@ export function calculateScaffold(
     parameters, deckLayerOffset, physical, closed: pathIsClosed, perSegmentCounts: Boolean(segmentLayerCounts) })
   warnings.push(...pathValidation.bands)
   warnings.push(...topology.corners.warnings)
+
+  // Complete every local demand before choosing stock; protection consumes
+  // committed support previews without restarting the earlier package steps.
+  heightStage.advance(4)
+  postPlan = postStage.advance(4)
+  profiles = new Map(heightStage.advance(5).profiles.map(profile => [profile.count, profile]))
+  frame = frameStage.advance(5)
+  const globalProfile = profiles.get(layerCount)!
+  const rowTopEdge = (row: number) => globalProfile.support.rowTops[row]
+  const endTopEdge = globalProfile.support.endTop
 
   for (const mitre of mitrePosts) emitPost(mitre.point)
 
@@ -640,19 +663,43 @@ export function calculateScaffold(
   warnings.push(...sweepHeightWarnings(parameters.sweepBarHeight))
 
   const dimensions = pathDimensions(physical, segmentLengths, parameters)
-  return finishLayout(members, decks, baseChannels, warnings, parameters, postSequences, dimensions, {
-    theoretical: theoreticalHeight,
-    inner: round(rowTopEdge(innerRow)),
-    outer: round(rowTopEdge(outerRow)),
-  })
+  return { members, decks, baseChannels, warnings, parameters, postSequences: Object.fromEntries(postSequences), pathDimensions: dimensions,
+    postHeights: { theoretical: theoreticalHeight, inner: round(rowTopEdge(innerRow)), outer: round(rowTopEdge(outerRow)) } }
+
+}
+
+/** Publish physical entities and quantities only after the logical draft is settled. */
+export function completeScaffoldDraft(draft: ScaffoldDraft, fixedPostsAndBases = false): ScaffoldLayout {
+  return publishScaffoldAssembly(assembleScaffoldDraft(draft, fixedPostsAndBases), draft.parameters)
+}
+export function assembleScaffoldDraft(draft: ScaffoldDraft, fixedPostsAndBases = false, prebuiltPosts?: StockAssembly[]): ScaffoldAssembly {
+  return assembleLayout(draft.members, draft.decks.map(deck => ({ ...deck })), draft.baseChannels.map(base => ({ ...base })), [...draft.warnings], draft.parameters,
+    new Map(Object.entries(draft.postSequences)), draft.pathDimensions.map(dimension => ({ ...dimension })), { ...draft.postHeights }, fixedPostsAndBases, prebuiltPosts)
+}
+
+/** Prepare an assembly scope without selecting horizontal stock or generating fittings. */
+export function prepareScaffoldAssembly(draft: ScaffoldDraft) {
+  const members = mergeMemberStage(draft.members)
+  const baseChannels = resolveSupportingBases(draft.baseChannels, members)
+  const stock = assemblePostsStage(members, draft.postSequences, draft.parameters)
+  return { draft: { ...draft, members, baseChannels, warnings: [...draft.warnings, ...stock.warnings], postSequences: stock.sequences }, posts: stock.posts }
+}
+
+/** Preserve the existing local splice preference pass without allocating horizontal stock or quantities. */
+function prepareComponentDraft(draft: ScaffoldDraft): ScaffoldDraft {
+  const members = mergeMemberStage(draft.members)
+  const bases = resolveSupportingBases(draft.baseChannels, members)
+  const repaired = resolvePostSequences(members, draft.postSequences, draft.parameters)
+  return { ...draft, members, baseChannels: bases, postSequences: repaired.sequences,
+    warnings: [...draft.warnings, ...repaired.warnings] }
 }
 
 /** One assembly/counting pass for all components of the same drawing. */
-function finishLayout(
+function assembleLayout(
   members: ScaffoldMember[], decks: DeckPanel[], baseChannels: BaseChannel[],
   warnings: LayoutWarning[], parameters: ScaffoldParameters, postSequences: Map<string, number[]>,
-  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'], fixedPostsAndBases = false,
-): ScaffoldLayout {
+  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'], fixedPostsAndBases = false, prebuiltPosts?: StockAssembly[],
+): ScaffoldAssembly {
   // Merge collinear shared runs before stock assembly and coupler counting.
   // This keeps all three views on the same physical quantities.
   members = mergeMemberStage(members)
@@ -661,7 +708,7 @@ function finishLayout(
   // never join beams into a longer piece or leave a post without a base.
   if (!fixedPostsAndBases) baseChannels = resolveSupportingBases(baseChannels, members)
 
-  const stock = assembleStockStage(members, Object.fromEntries(postSequences), parameters, fixedPostsAndBases)
+  const stock = assembleStockStage(members, Object.fromEntries(postSequences), parameters, fixedPostsAndBases, prebuiltPosts)
   warnings.push(...stock.warnings)
   const assemblies = stock.assemblies
   const builtPostTops = new Map(assemblies
@@ -687,26 +734,34 @@ function finishLayout(
     connectors,
     baseChannels,
     warnings,
-    materials: calculateMaterials(
-      members,
-      pipeSegments,
-      decks,
-      connectors,
-      baseChannels,
-      parameters,
-      assemblyPlans,
-      postHeights,
-    ),
+    assemblyPlans, postHeights,
   }
 }
 
-/** Rebuild merged lift runs and their fittings while keeping the solved uprights and bases. */
-export function reassembleSiteRuns(layout: ScaffoldLayout, members: ScaffoldMember[], decks: DeckPanel[], settings: ScaffoldParameters) {
+/** O01 is invoked once by the public output boundary, after all geometry is final. */
+export function publishScaffoldAssembly<T extends ScaffoldAssembly>(assembly: T, parameters: ScaffoldParameters) {
+  const { assemblyPlans, postHeights, ...layout } = assembly
+  return { ...layout, materials: calculateMaterials(layout.members, layout.pipeSegments, layout.decks, layout.connectors,
+    layout.baseChannels, parameters, assemblyPlans, postHeights) }
+}
+
+/** Assemble final connected lift runs once, keeping the committed uprights and bases. */
+export function assembleConnectedRuns(layout: ScaffoldAssembly, members: ScaffoldMember[], decks: DeckPanel[], settings: ScaffoldParameters) {
   const posts = new Set(members.filter(member => member.type === 'post').map(member => member.id))
-  const sequences = new Map(layout.materials.assemblyPlans.filter(plan => posts.has(plan.memberId))
-    .map(plan => [plan.memberId, plan.stockLengths]))
-  return finishLayout(members, decks, layout.baseChannels, layout.warnings, settings, sequences,
-    layout.pathDimensions, layout.materials.postHeights, true)
+  const plans = layout.assemblyPlans.filter(plan => posts.has(plan.memberId))
+  const sequences = new Map(plans.map(plan => [plan.memberId, plan.stockLengths]))
+  const pipes = new Map<string, PipeSegment[]>()
+  for (const pipe of layout.pipeSegments) if (posts.has(pipe.memberId)) {
+    const group = pipes.get(pipe.memberId) ?? []
+    // Transition geometry publishes the same millimetre world frame. Preserve
+    // each committed stock choice while expressing its endpoints in that frame.
+    group.push({ ...pipe, id: `S-${pipe.memberId}-${pipe.sequence}`, start: pipe.start.map(value => round(value)) as Vector3Tuple, end: pipe.end.map(value => round(value)) as Vector3Tuple })
+    pipes.set(pipe.memberId, group)
+  }
+  const prebuilt = plans.map(plan => ({ plan: { ...plan, segmentIds: pipes.get(plan.memberId)!.map(pipe => pipe.id) }, segments: pipes.get(plan.memberId)! }))
+  return assembleLayout(members, decks, layout.baseChannels, layout.warnings, settings, sequences,
+    layout.pathDimensions, layout.postHeights, true, prebuilt)
+
 }
 
 export function countMembers(layout: ScaffoldLayout) {
@@ -723,13 +778,27 @@ export function countMembers(layout: ScaffoldLayout) {
  */
 export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
   segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): ScaffoldLayout {
+  return publishScaffoldAssembly(assembleScaffoldPlan(drawing, parameters, localLifts, deckLayerOffset, segmentLayerCounts, preserveDirection, requiredEndPairs), parameters)
+}
+type PlanGeometry = Pick<ScaffoldAssembly, 'members' | 'decks' | 'baseChannels' | 'pathDimensions'> & Partial<Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors'>>
+export type PreparedScaffoldPlan = { draft: ScaffoldDraft; toPlan: <T extends PlanGeometry>(result: T) => T }
+
+export function assembleScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
+  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): ScaffoldAssembly {
+  const prepared = prepareScaffoldPlan(drawing, parameters, localLifts, deckLayerOffset, segmentLayerCounts, preserveDirection, requiredEndPairs)
+  return prepared.toPlan(assembleScaffoldDraft(prepared.draft))
+}
+
+/** Logical plan and its coordinate boundary. Physical stock is intentionally deferred. */
+export function prepareScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
+  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): PreparedScaffoldPlan {
   const paths = drawingPaths(drawing)
   if (preserveDirection) for (const path of paths) {
     if (path.points[0].id !== drawing.segments[path.edgeIndices[0]].start) {
       path.points.reverse(); path.edgeIndices.reverse()
     }
   }
-  if (!paths.length) return calculateScaffold([], [], parameters)
+  if (!paths.length) return { draft: createScaffoldDraft([], [], parameters), toPlan: result => result }
   const origin = drawing.points[0]
   // Transition bridges require both end posts even beside a short corner return.
   const retainedPairs = (path: ReturnType<typeof drawingPaths>[number]): [boolean, boolean][] => path.edgeIndices.map((edge, i) => {
@@ -738,44 +807,47 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   })
   // A normal connected outline needs exactly one domain calculation on mobile.
   if (paths.length === 1) {
-    const path = paths[0], result = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
+    const path = paths[0], draft = createScaffoldDraft(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
       segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path))
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
-    result.members.forEach(m => {
-      m[MEMBER_USES] = transformUses(m, move, use => ({ pathSegment: path.edgeIndices[use.pathSegment] }))
-      m.start = move(m.start); m.end = move(m.end); m.connectionPoints = m.connectionPoints.map(move)
-      if (m.pathSegment !== undefined) m.pathSegment = path.edgeIndices[m.pathSegment]
-      m.cornerJunctions = m.cornerJunctions?.map(i => path.edgeIndices[i])
-    })
-    result.pipeSegments.forEach(p => { p.start = move(p.start); p.end = move(p.end) })
-    result.connectors.forEach(c => { c.position = move(c.position); if (c[CONNECTOR_CONTACT]) c[CONNECTOR_CONTACT] = move(c[CONNECTOR_CONTACT]) })
-    result.decks.forEach(d => {
-      d.corners = d.corners.map(move) as DeckPanel['corners']; d.coverage = d.coverage?.map(face => face.map(move))
-      d.pathSegment = path.edgeIndices[d.pathSegment]
-    })
-    result.baseChannels.forEach(b => { b.start = move(b.start); b.end = move(b.end); b.pathSegment = path.edgeIndices[b.pathSegment] })
-    result.pathDimensions.forEach(d => { d.index = path.edgeIndices[d.index]; d.start = move(d.start); d.end = move(d.end); d.labelPosition = move(d.labelPosition) })
-    result.pathDimensions.sort((a, b) => a.index - b.index)
-    return result
+    const toPlan = <T extends PlanGeometry>(result: T): T => {
+      result.members.forEach(m => {
+        m[MEMBER_USES] = transformUses(m, move, use => ({ pathSegment: path.edgeIndices[use.pathSegment] }))
+        m.start = move(m.start); m.end = move(m.end); m.connectionPoints = m.connectionPoints.map(move)
+        if (m.pathSegment !== undefined) m.pathSegment = path.edgeIndices[m.pathSegment]
+        m.cornerJunctions = m.cornerJunctions?.map(i => path.edgeIndices[i])
+      })
+      result.pipeSegments?.forEach(p => { p.start = move(p.start); p.end = move(p.end) })
+      result.connectors?.forEach(c => { c.position = move(c.position); if (c[CONNECTOR_CONTACT]) c[CONNECTOR_CONTACT] = move(c[CONNECTOR_CONTACT]) })
+      result.decks.forEach(d => {
+        d.corners = d.corners.map(move) as DeckPanel['corners']; d.coverage = d.coverage?.map(face => face.map(move))
+        d.pathSegment = path.edgeIndices[d.pathSegment]
+      })
+      result.baseChannels.forEach(b => { b.start = move(b.start); b.end = move(b.end); b.pathSegment = path.edgeIndices[b.pathSegment] })
+      result.pathDimensions.forEach(d => { d.index = path.edgeIndices[d.index]; d.start = move(d.start); d.end = move(d.end); d.labelPosition = move(d.labelPosition) })
+      result.pathDimensions.sort((a, b) => a.index - b.index)
+      return result
+    }
+    return { draft, toPlan }
   }
   const members: ScaffoldMember[] = [], decks: DeckPanel[] = [], baseChannels: BaseChannel[] = []
   const warnings: LayoutWarning[] = [], dimensions: PathDimension[] = []
   const postSequences = new Map<string, number[]>()
   let postHeights: MaterialResult['postHeights'] | undefined
   paths.forEach((path, component) => {
-    const layout = calculateScaffold(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
-      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path))
-    postHeights ??= layout.materials.postHeights
+    const layout = prepareComponentDraft(createScaffoldDraft(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
+      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path)))
+    postHeights ??= layout.postHeights
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER
     const dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const translate = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     const prefix = `G${component}-`
     const edgeIndex = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
     const postIds = new Set(layout.members.filter(member => member.type === 'post').map(member => member.id))
-    layout.materials.assemblyPlans.forEach(plan => {
-      if (postIds.has(plan.memberId)) postSequences.set(prefix + plan.memberId, plan.stockLengths)
-    })
+    for (const [id, sequence] of Object.entries(layout.postSequences)) {
+      if (postIds.has(id)) postSequences.set(prefix + id, sequence)
+    }
     members.push(...layout.members.map(m => ({ ...m, id: prefix + m.id,
       [MEMBER_USES]: transformUses(m, translate, use => ({ pathSegment: edgeIndex(use.pathSegment)! })),
       start: translate(m.start), end: translate(m.end), connectionPoints: m.connectionPoints.map(translate),
@@ -799,6 +871,6 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   drawing.segments.forEach(s => [s.start, s.end].forEach(id => degrees.set(id, (degrees.get(id) ?? 0) + 1)))
   const reconciled = reconcileComponents(members, decks, baseChannels, Object.fromEntries(postSequences))
   warnings.unshift(...componentWarnings([...degrees.values()], reconciled.overlap))
-  return finishLayout(reconciled.members, reconciled.decks, reconciled.bases, warnings, parameters, new Map(Object.entries(reconciled.sequences)),
-    dimensions.sort((a, b) => a.index - b.index), postHeights!)
+  return { draft: { members: reconciled.members, decks: reconciled.decks, baseChannels: reconciled.bases, warnings, parameters, postSequences: reconciled.sequences,
+    pathDimensions: dimensions.sort((a, b) => a.index - b.index), postHeights: postHeights! }, toPlan: result => result }
 }
