@@ -1,3 +1,4 @@
+import { readProject, projectSnapshot, compatibleDrawing, exportSceneProject, exportOAProject, type StoredProject } from './domain/rules/boundaries/projects'
 import { lazy, Suspense, useMemo, useState } from 'react'
 import {
   Box,
@@ -20,8 +21,7 @@ import { NumberField } from './components/NumberField'
 import { OptionField } from './components/OptionField'
 import { SiteEditor } from './components/SiteEditor'
 import { Badge, Button, EmptyState, IconButton, SectionHeading } from './components/ui'
-import { measureDrawing, type PlanSegment } from './domain/plan'
-import { calculateSite, EMPTY_SITE, legacySiteDrawing, legacySnapshot, readSite, siteFromSnapshot, siteWithTargetLayers, type Site } from './domain/site'
+import { calculateSite, EMPTY_SITE, legacySnapshot, siteFromSnapshot } from './domain/site'
 import type { SiteDemo } from './domain/siteDemos'
 import { restoreParameters } from './domain/project'
 import {
@@ -39,13 +39,11 @@ import { saveTextFile } from './platform/files'
 import { exitFullscreenIfActive } from './platform/fullscreen'
 import { useAndroidBackButton } from './platform/useAndroidBackButton'
 import {
-  calculateScaffoldPlan,
   countMembers,
   DECK_PANEL_ROW_GAP,
   DECK_PANEL_SIZES,
   DEFAULT_PARAMETERS,
   type MaterialAdjustments,
-  type Point2D,
   type ScaffoldParameters,
 } from './domain/scaffold'
 
@@ -58,19 +56,12 @@ const ScaffoldViewer = lazy(() => import('./components/ScaffoldViewer').then((mo
 const PROJECT_KEY = 'scaffold-project'
 const DEFAULT_DEMO_KEY = 'scaffold-default-demo'
 const siteKey = (key: string) => key + '.v07'
-type StoredProject = { scene: Site; parameters: ScaffoldParameters; adjustments: MaterialAdjustments }
 
 function loadProject(key: string): StoredProject | null {
   try {
     const raw = localStorage.getItem(siteKey(key)) ?? localStorage.getItem(key)
     if (!raw) return null
-    const snapshot = JSON.parse(raw) as { scene?: unknown; points?: Point2D[]; segments?: PlanSegment[];
-      parameters?: Partial<ScaffoldParameters>; adjustments?: MaterialAdjustments }
-    const parameters = restoreParameters(snapshot.parameters)
-    const scene = snapshot.scene === undefined && Array.isArray(snapshot.points)
-      ? siteFromSnapshot({ ...snapshot, scene: undefined, parameters })
-      : readSite(snapshot.scene)
-    return scene ? { scene, parameters, adjustments: snapshot.adjustments ?? {} } : null
+    return readProject(raw)
   } catch { return null }
 }
 
@@ -123,7 +114,7 @@ function App() {
   const settings = useMemo(() => ({ ...DEFAULT_PARAMETERS, ...parameters }), [parameters])
 
   const layout = useMemo(() => calculateSite(site, settings), [site, settings])
-  const legacy = useMemo(() => site.blocks.length ? undefined : legacySiteDrawing(siteWithTargetLayers(site, settings, [])), [site, settings])
+  const legacy = useMemo(() => compatibleDrawing(site, settings), [site, settings])
   const counts = countMembers(layout)
 
   const updateParameter = <K extends keyof ScaffoldParameters>(key: K, value: ScaffoldParameters[K]) => {
@@ -161,7 +152,7 @@ function App() {
 
   /** Make the drawing and settings on screen the example the app starts from. */
   const saveAsDefaultDemo = () => {
-    const demo = { version: '0.7', scene: site, parameters: settings, adjustments: {} }
+    const demo = projectSnapshot(site, settings, {})
     try {
       localStorage.setItem(siteKey(DEFAULT_DEMO_KEY), JSON.stringify(demo))
       setDefaultDemo(demo)
@@ -214,7 +205,7 @@ function App() {
 
   const saveProject = () => {
     try {
-      localStorage.setItem(siteKey(PROJECT_KEY), JSON.stringify({ version: '0.7', scene: site, parameters: settings, adjustments }))
+      localStorage.setItem(siteKey(PROJECT_KEY), JSON.stringify(projectSnapshot(site, settings, adjustments)))
       persistHistory(addHistoryRecord(history, currentSnapshot()))
       setSaved(true)
     } catch (error) {
@@ -224,11 +215,8 @@ function App() {
 
   const exportProject = async (oa = false) => {
     if (oa && (!legacy || !layout.canExportMaterials)) return
-    const project = oa && legacy ? (() => {
-      const lengths = measureDrawing(legacy.drawing)
-      const parameters = { ...settings, layerCount: legacy.layers ?? settings.layerCount }
-      return { version: '0.6', ...legacy.drawing, lengths, parameters, adjustments, layout: calculateScaffoldPlan(legacy.drawing, parameters) }
-    })() : { version: '0.7', scene: site, parameters: settings, adjustments, ...(layout.canExportMaterials ? { layout } : {}) }
+    const project = oa ? exportOAProject(site, settings, adjustments, layout) : exportSceneProject(site, settings, adjustments, layout)
+    if (!project) return
     try {
       await saveTextFile({
         fileName: oa ? '架算-OA兼容项目.json' : '架算-场景项目.json',

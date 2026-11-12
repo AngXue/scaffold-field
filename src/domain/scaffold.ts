@@ -1,3 +1,6 @@
+import { pathDimensions } from './rules/boundaries/dimensions.ts'
+import { validatePath } from './rules/pathValidation.ts'
+import { zeroLengthWarning, shortBayWarnings, componentWarnings, sweepHeightWarnings } from './rules/policies/pathValidation.ts'
 import { resolvePosts } from './rules/posts.ts'
 import { resolveBaseCandidates, resolveSupportingBases } from './rules/bases.ts'
 import { reconcileComponents } from './rules/components.ts'
@@ -19,7 +22,6 @@ import { mergeMemberStage } from './rules/sharedMembers.ts'
 import { MEMBER_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
 import { fitGuardrailStock } from './guardrails.ts'
-import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
 
 export type Point2D = {
   id: string
@@ -490,28 +492,8 @@ export function calculateScaffold(
   const pathIsClosed = physical.length > 2 &&
     Math.hypot(physical[0][0] - physical[physical.length - 1][0], physical[0][1] - physical[physical.length - 1][1]) < 0.01
 
-  // Validate the measured path separately from local corner construction.
-  for (let i = 0; i + 1 < physical.length; i++) for (let j = i + 1; j + 1 < physical.length; j++) {
-    const a = physical[i], b = physical[i + 1], c = physical[j], d = physical[j + 1]
-    const u = [b[0] - a[0], b[1] - a[1]], v = [d[0] - c[0], d[1] - c[1]]
-    const cross = (x: number[], y: number[]) => x[0] * y[1] - x[1] * y[0]
-    const delta = [c[0] - a[0], c[1] - a[1]], denominator = cross(u, v)
-    const adjacent = j === i + 1 || (pathIsClosed && i === 0 && j === physical.length - 2)
-    if (Math.abs(denominator) < 1e-8) {
-      const length = Math.hypot(...u)
-      if (length < 0.001 || Math.abs(cross(delta, u)) / length > 0.001) continue
-      const t0 = (delta[0] * u[0] + delta[1] * u[1]) / length
-      const t1 = ((d[0] - a[0]) * u[0] + (d[1] - a[1]) * u[1]) / length
-      if (Math.min(length, Math.max(t0, t1)) - Math.max(0, Math.min(t0, t1)) > 0.001) {
-        warnings.push({ id: `path-overlap-${i}-${j}`, message: `第 ${i + 1}、${j + 1} 段重叠或原路折返，请调整路径。` })
-      }
-    } else if (!adjacent) {
-      const t = cross(delta, v) / denominator, s = cross(delta, u) / denominator
-      if (t >= -1e-8 && t <= 1 + 1e-8 && s >= -1e-8 && s <= 1 + 1e-8) {
-        warnings.push({ id: `path-crossing-${i}-${j}`, message: `第 ${i + 1}、${j + 1} 段自交，交叉处构造未建模，请调整路径。` })
-      }
-    }
-  }
+  const pathValidation = validatePath(physical, pathIsClosed, parameters.width)
+  warnings.push(...pathValidation.path)
 
   // The 横向杆 is a 1.2 m site tube with NO `tubeEndExtension`: the 排距 is narrower,
   // so the tube overhangs both 立杆 by half the surplus (createPipeAssembly centres
@@ -554,17 +536,7 @@ export function calculateScaffold(
   const decks = resolveDecks({ geometry: frame.rows.map((rows, index) => ({ postRows: rows.postRows, stations: topology.stations[index].stations, bands: working[index].map(({ elevation, layer, withDeck }) => ({ elevation, layer, withDeck })) })),
     order: segmentOrder, corners: topology.corners.cornerDecks, counts: physical.slice(0, -1).map((_, index) => layersAt(index)), lifts: localLifts ? [...localLifts] : [],
     parameters, deckLayerOffset, physical, closed: pathIsClosed, perSegmentCounts: Boolean(segmentLayerCounts) })
-  const bands: PlanPolygon[] = physical.slice(0, -1).map((start, i) => {
-    const end = physical[i + 1], length = Math.hypot(end[0] - start[0], end[1] - start[1]) || 1
-    const nx = -(end[1] - start[1]) / length * parameters.width, nz = (end[0] - start[0]) / length * parameters.width
-    return [start, end, [end[0] + nx, end[1] + nz], [start[0] + nx, start[1] + nz]]
-  })
-  const overlappingBands = bands.some((band, i) => bands.some((other, j) => {
-    if (j <= i + 1 || (pathIsClosed && i === 0 && j === segmentCount - 1)) return false
-    const uncovered = subtractCoverage([band], [other]).reduce((sum, piece) => sum + Math.abs(signedArea(piece)), 0)
-    return Math.abs(signedArea(band)) - uncovered > 0.001
-  }))
-  if (overlappingBands) warnings.push({ id: 'scaffold-overlap', message: '非相邻段的架体带重叠：共用直杆已合并、钢笆按覆盖区裁切，请复核重叠区域的搭设布置。' })
+  warnings.push(...pathValidation.bands)
   warnings.push(...topology.corners.warnings)
 
   for (const mitre of mitrePosts) emitPost(mitre.point)
@@ -573,7 +545,7 @@ export function calculateScaffold(
     const guardCourses = profileAt(segmentIndex).courses
     const { segmentLength, bayCount, bayLength } = topology.stations[segmentIndex]
     if (segmentLength <= 0.001) {
-      warnings.push({ id: `zero-length-${segmentIndex}`, message: `第 ${segmentIndex + 1} 段的两个节点重合，请移动节点或删除该路径段。` })
+      warnings.push(zeroLengthWarning(segmentIndex))
       return
     }
     const postRows = frame.rows[segmentIndex].postRows
@@ -632,12 +604,7 @@ export function calculateScaffold(
 
     }
 
-    if (bayLength < parameters.postSpacing * 0.55) {
-      warnings.push({
-        id: `short-bay-${segmentIndex}`,
-        message: `第 ${segmentIndex + 1} 段末跨仅 ${bayLength.toFixed(2)}m，请复核立杆间距。`,
-      })
-    }
+    warnings.push(...shortBayWarnings(segmentIndex, bayLength, parameters.postSpacing))
   })
 
   // A rail the 立杆 cannot reach was dropped rather than floated. The 内侧 row is the
@@ -670,37 +637,10 @@ export function calculateScaffold(
     })
   }
 
-  // JGJ 130-2011 §6.3.2 caps the longitudinal sweep bar at 200 mm above the tube
-  // bottom. The site-confirmed 300 mm default is kept, but it has to be flagged
-  // rather than silently produced.
-  if (parameters.sweepBarHeight > 0.2) {
-    warnings.push({
-      id: 'sweep-bar-height',
-      message: `扫地杆高度 ${parameters.sweepBarHeight} m 超过 JGJ 130-2011 第 6.3.2 条“距钢管底端不大于 200 mm”的规定，请复核。`,
-    })
-  }
+  warnings.push(...sweepHeightWarnings(parameters.sweepBarHeight))
 
-  const pathDimensions: PathDimension[] = physical.slice(0, -1).flatMap((point, index) => {
-    const next = physical[index + 1]
-    const dx = next[0] - point[0]
-    const dz = next[1] - point[1]
-    const distance = Math.hypot(dx, dz)
-    if (distance < 0.001) return []
-    // Row 0 is the path. When row 1 is outside, move past the full row width.
-    const offset = parameters.swapInnerOuter ? parameters.width + 1.2 : -1.2
-    return [{
-      index,
-      length: round(Math.max(0.1, segmentLengths[index] ?? distance)),
-      start: [point[0], 0, point[1]] as Vector3Tuple,
-      end: [next[0], 0, next[1]] as Vector3Tuple,
-      labelPosition: [
-        round((point[0] + next[0]) / 2 - dz / distance * offset),
-        0.015,
-        round((point[1] + next[1]) / 2 + dx / distance * offset),
-      ] as Vector3Tuple,
-    }]
-  })
-  return finishLayout(members, decks, baseChannels, warnings, parameters, postSequences, pathDimensions, {
+  const dimensions = pathDimensions(physical, segmentLengths, parameters)
+  return finishLayout(members, decks, baseChannels, warnings, parameters, postSequences, dimensions, {
     theoretical: theoreticalHeight,
     inner: round(rowTopEdge(innerRow)),
     outer: round(rowTopEdge(outerRow)),
@@ -857,13 +797,8 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   })
   const degrees = new Map<string, number>()
   drawing.segments.forEach(s => [s.start, s.end].forEach(id => degrees.set(id, (degrees.get(id) ?? 0) + 1)))
-  if ([...degrees.values()].some(degree => degree > 2)) warnings.unshift({
-    id: 'branch-junction', message: '图纸含三向或四向交汇点：已合并共点立杆，支路按各自端部估算；交汇处栏杆、钢笆及搭设细节需人工复核。',
-  })
   const reconciled = reconcileComponents(members, decks, baseChannels, Object.fromEntries(postSequences))
-  const overlap = reconciled.overlap
-  if (overlap && !warnings.some(w => w.id === 'branch-junction')) warnings.unshift({ id: 'overlapping-components',
-    message: '独立架段的铺设范围重叠：钢笆覆盖已去重，交汇处立杆、栏杆及搭设细节需人工复核。' })
+  warnings.unshift(...componentWarnings([...degrees.values()], reconciled.overlap))
   return finishLayout(reconciled.members, reconciled.decks, reconciled.bases, warnings, parameters, new Map(Object.entries(reconciled.sequences)),
     dimensions.sort((a, b) => a.index - b.index), postHeights!)
 }

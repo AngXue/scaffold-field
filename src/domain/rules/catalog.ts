@@ -519,12 +519,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "整管余量尽量移出通道；管和对接扣一起移；无法消除的侵入允许保留",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "G.fitGuardrailStock；W.fitSceneGuardrails"
+      "src/domain/rules/placement.ts",
+      "src/domain/rules/policies/placementConstraints.ts",
+      "src/domain/rules/policies/positioner.ts"
     ],
     "cases": [
-      "S7；G测移位／两端受限／避墙"
+      "T10",
+      "T11",
+      "src/domain/rules/placement.test.ts",
+      "src/domain/guardrails.test.ts"
     ]
   },
   {
@@ -590,12 +595,17 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "跨界及墙边整管可沿轴线移动，保留有效段与全部接点；不以余量优化换穿屋",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "T.fitTransitionStock；W.fitStockBesideWalls"
+      "src/domain/rules/placement.ts",
+      "src/domain/rules/policies/placementConstraints.ts",
+      "src/domain/rules/policies/positioner.ts"
     ],
     "cases": [
-      "S7；S测穿屋、G测 wall constraint"
+      "T10",
+      "T11",
+      "src/domain/rules/placement.test.ts",
+      "src/domain/guardrails.test.ts"
     ]
   },
   {
@@ -658,12 +668,21 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "面不可用、轮廓无效、段过短、双排柱脚／底座无足够承托时定位问题，草图可保存",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "S.resolveBlocks/calculateSiteSpans；F"
+      "src/domain/rules/sectionValidation.ts",
+      "src/domain/rules/siteValidation.ts",
+      "src/domain/rules/policies/sectionValidation.ts",
+      "src/domain/rules/policies/siteValidation.ts",
+      "src/domain/rules/policies/blocks.ts"
     ],
     "cases": [
-      "S1/S9；F测、S测 short/missing/footing"
+      "T10",
+      "T12",
+      "T13",
+      "src/domain/rules/validation.test.ts",
+      "src/domain/site.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -671,12 +690,19 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "首层与当地扫地杆冲突时报错；扫地杆超既有高度口径另有提醒",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "S.calculateSiteSpans；K warnings"
+      "src/domain/rules/sectionValidation.ts",
+      "src/domain/rules/policies/sectionValidation.ts",
+      "src/domain/rules/policies/pathValidation.ts"
     ],
     "cases": [
-      "S1/S9；S测 sweep-conflict、K测 sweep"
+      "T10",
+      "T12",
+      "T13",
+      "src/domain/rules/validation.test.ts",
+      "src/domain/site.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -684,12 +710,20 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "实体穿屋、独立架体重叠、接通区碰撞阻断；真实端节点有限接触允许",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "S.pipeEntersBlock/physicalGroups/bridge validation"
+      "src/domain/rules/siteValidation.ts",
+      "src/domain/rules/policies/siteValidation.ts",
+      "src/domain/rules/policies/bridgeValidation.ts",
+      "src/domain/rules/policies/collisionGeometry.ts"
     ],
     "cases": [
-      "S9；S测 invalid/bridge-overlap、E测原图"
+      "T10",
+      "T12",
+      "T13",
+      "src/domain/rules/validation.test.ts",
+      "src/domain/site.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -697,12 +731,19 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "自交、折返、无法处理的短角、未建模支路等按现行提醒；不虚构交叉构造",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "native",
     "source": [
-      "K.calculateScaffold/calculateScaffoldPlan warnings"
+      "src/domain/rules/pathValidation.ts",
+      "src/domain/rules/policies/pathValidation.ts",
+      "src/domain/rules/policies/topology.ts"
     ],
     "cases": [
-      "S2/S9；K测 crossing/short/branch"
+      "T10",
+      "T12",
+      "T13",
+      "src/domain/rules/validation.test.ts",
+      "src/domain/site.test.ts",
+      "src/domain/scaffold.test.ts"
     ]
   },
   {
@@ -746,12 +787,18 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "项目／默认图／历史保留场景及修正；旧图恢复地面；符合条件才导出 OA 0.6",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "boundary",
     "source": [
-      "S.readSite/siteFromSnapshot/legacySiteDrawing；H/J"
+      "src/domain/rules/boundaries/sceneFiles.ts",
+      "src/domain/rules/boundaries/projects.ts",
+      "src/domain/rules/boundaries/history.ts"
     ],
     "cases": [
-      "输入输出适配；S测旧档、H测、J测、网页"
+      "T01",
+      "T14",
+      "src/domain/rules/boundaries/outputs.test.ts",
+      "src/domain/site.test.ts",
+      "src/domain/history.test.ts"
     ]
   },
   {
@@ -759,12 +806,16 @@ export const RULES: readonly RuleDefinition[] = [
     "revision": 1,
     "title": "周长及段号按原测量笔画，自动拆段／桥接不额外加周长；编辑拆组不改变物理语义",
     "status": "active",
-    "implementation": "legacy-adapter",
+    "implementation": "boundary",
     "source": [
-      "S.calculateSite/pathDimensions；K；E"
+      "src/domain/rules/boundaries/dimensions.ts"
     ],
     "cases": [
-      "输出适配；K测 perimeter、E测 split、网页"
+      "T01",
+      "T14",
+      "src/domain/rules/boundaries/outputs.test.ts",
+      "src/domain/site.test.ts",
+      "src/domain/history.test.ts"
     ]
   }
 ]

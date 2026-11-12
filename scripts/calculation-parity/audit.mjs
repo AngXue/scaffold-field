@@ -17,7 +17,7 @@ for (const rule of RULES) {
 }
 const packages = [
   ['scene', 'SCENE_STEPS'], ['routing', 'ROUTING_STEPS'], ['groups', 'GROUP_STEPS'],
-  ['topology', 'TOPOLOGY_STEPS'], ['heights', 'HEIGHT_STEPS'], ['frameRows', 'FRAME_ROW_STEPS'], ['bands', 'BAND_STEPS'], ['decks', 'DECK_STEPS'], ['components', 'COMPONENT_STEPS'], ['posts', 'POST_STEPS'], ['bases', 'BASE_STEPS'], ['transitions', 'TRANSITION_STEPS'], ['guardRemovals', 'GUARD_REMOVAL_STEPS'], ['sharedMembers', 'MERGE_STEPS'], ['stock', 'STOCK_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
+  ['topology', 'TOPOLOGY_STEPS'], ['heights', 'HEIGHT_STEPS'], ['frameRows', 'FRAME_ROW_STEPS'], ['bands', 'BAND_STEPS'], ['decks', 'DECK_STEPS'], ['components', 'COMPONENT_STEPS'], ['posts', 'POST_STEPS'], ['bases', 'BASE_STEPS'], ['transitions', 'TRANSITION_STEPS'], ['guardRemovals', 'GUARD_REMOVAL_STEPS'], ['placement', 'PLACEMENT_STEPS'], ['pathValidation', 'PATH_VALIDATION_STEPS'], ['sectionValidation', 'SECTION_VALIDATION_STEPS'], ['siteValidation', 'SITE_VALIDATION_STEPS'], ['sharedMembers', 'MERGE_STEPS'], ['stock', 'STOCK_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
 ]
 const executed = new Set(), steps = new Set()
 for (const [name, exported] of packages) {
@@ -40,6 +40,10 @@ const project = await import('../../src/domain/project.ts'), parameters = await 
 const scaffold = await import('../../src/domain/scaffold.ts'), adjustments = await import('../../src/domain/rules/boundaries/adjustments.ts')
 assert.equal(project.restoreParameters, parameters.restoreParameters)
 for (const name of ['materialQuantity', 'materialAdjustmentStep', 'stockMaterialRows']) assert.equal(scaffold[name], adjustments[name])
+const site = await import('../../src/domain/site.ts'), files = await import('../../src/domain/rules/boundaries/sceneFiles.ts')
+const history = await import('../../src/domain/history.ts'), historyBoundary = await import('../../src/domain/rules/boundaries/history.ts')
+for (const name of ['readSite', 'siteFromLegacy', 'siteFromSnapshot', 'legacySiteDrawing', 'legacySnapshot', 'drawingFromSections']) assert.equal(site[name], files[name])
+for (const name of ['addHistoryRecord', 'parseHistory', 'serialiseHistory', 'sameSnapshot']) assert.equal(history[name], historyBoundary[name])
 const summary = { rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
   boundaries: RULES.filter(rule => rule.implementation === 'boundary').length,
   adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size, partialRuleOwners: [...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'legacy-adapter'),

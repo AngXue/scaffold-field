@@ -1,3 +1,4 @@
+import { sourcedIssue } from '../facts/issues.ts'
 import { SITE_EPS as EPS } from '../facts/precision.ts'
 import { GROUND, roundSite, type Site, type ResolvedBlock, type SiteIssue } from '../../site.ts'
 import { footprintContains, footprintFromOutline, footprintsOverlap } from '../../siteFootprints.ts'
@@ -10,7 +11,7 @@ export function resolveBlocks(site: Site): { blocks: ResolvedBlock[]; issues: Si
   const failed = new Set<string>()
   const visiting = new Set<string>()
   const fail = (id: string, message: string) => {
-    if (!failed.has(id)) issues.push({ code: 'block-placement', blocking: true, message, sectionIds: [], blockId: id })
+    if (!failed.has(id)) issues.push(sourcedIssue('V01', { code: 'block-placement', blocking: true, message, sectionIds: [], blockId: id }))
     failed.add(id)
   }
   const visit = (id: string): ResolvedBlock | undefined => {
