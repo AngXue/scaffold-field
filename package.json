@@ -17,7 +17,15 @@
     "audit:geometry": "node --experimental-strip-types scripts/geometry-audit/run.ts",
     "test:parity": "node scripts/calculation-parity/run.mjs",
     "audit:rules": "node scripts/calculation-parity/audit.mjs",
-    "bench:rules": "node scripts/calculation-parity/run.mjs --bench"
+    "bench:rules": "node scripts/calculation-parity/run.mjs --bench",
+    "rules:fingerprint": "node scripts/rule-fingerprint.ts",
+    "predev": "npm run rules:fingerprint",
+    "prebuild": "npm run rules:fingerprint",
+    "pretest": "npm run rules:fingerprint",
+    "pretest:parity": "npm run rules:fingerprint",
+    "prebench:rules": "npm run rules:fingerprint",
+    "preaudit:geometry": "npm run rules:fingerprint",
+    "preaudit:rules": "node scripts/rule-fingerprint.ts --check"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

@@ -1,3 +1,4 @@
+import { traceInvocation, recordRuleTrace } from './diagnostics/session.ts'
 import { RuleFailure, type DeepReadonly, type Proposal, type RuleDefinition, type RuleStep, type Trace } from './contracts.ts'
 
 /** Freeze only calculation-owned plain data; callers retain ownership of their input. */
@@ -72,7 +73,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
   }
   return (input: F, options: { trace?: boolean } = {}): { facts: DeepReadonly<F>; trace: Trace[] } => {
     let facts = publish(configuration.snapshot ? configuration.snapshot(input) : cloneFacts(input)), revision = 0
-    const trace: Trace[] = []
+    const trace: Trace[] = [], invocation = traceInvocation()
     const written = new Map<string, { proposal: P; step: string }>()
     // All writes remain private until the entire calculation succeeds. A thrown
     // failure never publishes partially updated facts or mutates caller state.
@@ -82,7 +83,12 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
         const view = Object.fromEntries(step.reads.map(key => [key, (facts as Readonly<F>)[key]])) as DeepReadonly<Partial<F>>
         let outcome
         try { outcome = step.evaluate(publish(view) as DeepReadonly<Partial<F>>, revision) }
-        catch (error) { throw new RuleFailure(step.id, error instanceof Error ? error.message : String(error)) }
+        catch (error) {
+          const reason = error instanceof Error ? error.message : String(error)
+          if (invocation !== undefined) recordRuleTrace(invocation, step, revision, 'rejected', [], reason)
+          throw new RuleFailure(step.id, reason)
+        }
+        if (invocation !== undefined) recordRuleTrace(invocation, step, revision, outcome.status, outcome.status === 'proposed' ? outcome.proposals.map(proposal => proposal.target) : [], outcome.status === 'not-applicable' || outcome.status === 'rejected' ? outcome.reason : undefined)
         if (outcome.status === 'rejected') throw new RuleFailure(step.id, outcome.reason)
         if (options.trace) trace.push({ step: step.id, phase: step.phase, status: outcome.status,
           ...(outcome.status === 'not-applicable' && { reason: outcome.reason }),
@@ -100,7 +106,10 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
           written.set(proposal.target, { proposal, step: step.id })
         }
       }
-      if (proposals.size) facts = publish(reduce(facts, [...proposals.values()]))
+      if (proposals.size) {
+        try { facts = publish(reduce(facts, [...proposals.values()])) }
+        catch (error) { throw new RuleFailure(batch.map(step => step.id).join('+'), error instanceof Error ? error.message : String(error)) }
+      }
       revision++
     }
     return { facts, trace }

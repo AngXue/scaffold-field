@@ -47,6 +47,11 @@ for (const name of ['addHistoryRecord', 'parseHistory', 'serialiseHistory', 'sam
 const summary = { rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
   boundaries: RULES.filter(rule => rule.implementation === 'boundary').length,
   adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size, partialRuleOwners: [...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'legacy-adapter'),
-  scope: 'live package-local DAGs and boundaries; complete global pipeline still pending' }
+  scope: 'live package-local DAGs and boundaries; complete global pipeline still pending',
+  pendingAcceptance: ['global S0-S9 orchestration without compatibility rebuilds', 'stable entity identities and full derivedFrom/replacedBy lineage',
+    'complete T01-T15 combination evidence', 'paired 50/200-segment latency and memory budgets', 'rollback rehearsal and final production acceptance'] }
 console.log(JSON.stringify(summary, null, 2))
-if (process.argv.includes('--complete')) assert.equal(summary.adaptersRemaining, 0, 'Complete migration gate: legacy calculation adapters remain')
+if (process.argv.includes('--complete')) {
+  assert.equal(summary.adaptersRemaining, 0, 'Complete migration gate: legacy calculation adapters remain')
+  assert.equal(summary.pendingAcceptance.length, 0, 'Complete migration gate: native inventory alone does not complete the approved design')
+}

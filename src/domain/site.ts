@@ -1,3 +1,4 @@
+import { calculationSession, type DiagnosedLayout } from './rules/diagnostics/session.ts'
 import { sectionDimension, sourceDimensions, sourcePerimeter } from './rules/boundaries/dimensions.ts'
 import { legacySiteDrawing, drawingFromSections } from './rules/boundaries/sceneFiles.ts'
 export { siteFromLegacy, drawingFromSections, legacySiteDrawing, readSite, siteFromSnapshot, legacySnapshot } from './rules/boundaries/sceneFiles.ts'
@@ -248,7 +249,10 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
 
 
 
-export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLayout {
+export function calculateSite(input: Site, settings: ScaffoldParameters, options: { trace?: boolean } = {}): DiagnosedLayout {
+  return calculationSession(input, settings, () => calculateScene(input, settings), options.trace)
+}
+function calculateScene(input: Site, settings: ScaffoldParameters): SiteLayout {
   const prepared = prepareScene(input, settings)
   const { site, blocks } = prepared
   settings = prepared.parameters

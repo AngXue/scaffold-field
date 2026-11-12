@@ -1,3 +1,5 @@
+import { explainSite } from './domain/rules/diagnostics/explain'
+import { calculateForEditor, CALCULATION_FAILURE } from './domain/rules/diagnostics/editor'
 import { readProject, projectSnapshot, compatibleDrawing, exportSceneProject, exportOAProject, type StoredProject } from './domain/rules/boundaries/projects'
 import { lazy, Suspense, useMemo, useState } from 'react'
 import {
@@ -21,7 +23,7 @@ import { NumberField } from './components/NumberField'
 import { OptionField } from './components/OptionField'
 import { SiteEditor } from './components/SiteEditor'
 import { Badge, Button, EmptyState, IconButton, SectionHeading } from './components/ui'
-import { calculateSite, EMPTY_SITE, legacySnapshot, siteFromSnapshot } from './domain/site'
+import { EMPTY_SITE, legacySnapshot, siteFromSnapshot } from './domain/site'
 import type { SiteDemo } from './domain/siteDemos'
 import { restoreParameters } from './domain/project'
 import {
@@ -113,7 +115,7 @@ function App() {
    */
   const settings = useMemo(() => ({ ...DEFAULT_PARAMETERS, ...parameters }), [parameters])
 
-  const layout = useMemo(() => calculateSite(site, settings), [site, settings])
+  const layout = useMemo(() => calculateForEditor(site, settings), [site, settings])
   const legacy = useMemo(() => compatibleDrawing(site, settings), [site, settings])
   const counts = countMembers(layout)
 
@@ -229,6 +231,13 @@ function App() {
     }
   }
 
+  const exportDiagnostics = async () => {
+    try {
+      await saveTextFile({ fileName: '架算-计算诊断.json', mimeType: 'application/json',
+        contents: JSON.stringify(explainSite(site, settings), null, 2), title: '导出本地计算诊断' })
+    } catch (error) { window.alert(`诊断导出失败：${error instanceof Error ? error.message : String(error)}`) }
+  }
+
   const warnings = layout.warnings.length + layout.issues.filter(issue => issue.blocking).length
 
   return (
@@ -272,6 +281,7 @@ function App() {
               <button className="ui-menu__item" type="button" onClick={() => { void exportProject() }}>导出场景 JSON 0.7</button>
               <button className="ui-menu__item" type="button" disabled={!legacy || !layout.canExportMaterials}
                 onClick={() => { void exportProject(true) }}>导出 OA 兼容 JSON 0.6</button>
+              <button className="ui-menu__item" type="button" onClick={() => { void exportDiagnostics() }}>导出计算诊断</button>
               {!legacy && <small className="ui-menu__note">有体块、辅助线或分段层数时须使用 0.7。</small>}
             </div>
           </details>
@@ -404,6 +414,7 @@ function App() {
                 {layout.canExportMaterials ? layout.pipeSegments.length + ' 根标准管' : '待复核'}
               </Badge>
             </div>
+            {!layout[CALCULATION_FAILURE] && <>
             <div className="summary-grid">
               <div><span>立杆</span><strong>{counts.post}</strong></div>
               <div><span>水平杆</span><strong>{counts.longitudinal}</strong></div>
@@ -415,6 +426,7 @@ function App() {
             </div>
             <div className="utilization-row"><span>钢管利用率</span><strong>{layout.materials.utilization}%</strong></div>
             <div className="utilization-track"><i style={{ width: `${layout.materials.utilization}%` }} /></div>
+            </>}
           </div>
 
           {warnings > 0 && (

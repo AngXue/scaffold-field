@@ -707,7 +707,8 @@ export function SiteEditor({ site, layout, parameters, onChange, onDemo, onReset
           {layout.issues.length > 0 && <div className="site-issues">
             <strong>需要检查的位置</strong>
             {layout.issues.map((issue, i) => <button key={issue.code + i} className={issue.blocking ? 'blocking' : ''}
-              onClick={() => locate(issue.sectionIds[0] ?? issue.blockId ?? '')}>{issue.message} <span>定位</span></button>)}
+              disabled={!issue.sectionIds.length && !issue.blockId}
+              onClick={() => locate(issue.sectionIds[0] ?? issue.blockId ?? '')}>{issue.message} {(issue.sectionIds.length > 0 || issue.blockId) && <span>定位</span>}</button>)}
           </div>}
           <details className="site-demos"><summary>验收 Demo</summary>
             <Select aria-label="验收 Demo" value={demoId} onChange={e => setDemoId(e.currentTarget.value)}
