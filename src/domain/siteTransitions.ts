@@ -1,3 +1,4 @@
+import { MEMBER_USES, memberUses, makeUse, clipUses, hasSource } from './rules/facts/memberUses.ts'
 import { calculateMaterials, deckBetweenStations, reassembleSiteRuns, type DeckPanel, type ScaffoldLayout, type ScaffoldMember, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import { mm, roundSite, type SectionSummary } from './site.ts'
 import type { RoutedSpan, SiteTransition } from './siteRouting.ts'
@@ -27,7 +28,8 @@ export function fitTransitionStock(layout: Pick<ScaffoldLayout, 'members' | 'pip
   }
   for (const member of layout.members) {
     if (member.type !== 'longitudinal' && member.type !== 'guardrail') continue
-    const ends = constraints.get(member.pathSegment ?? -1) ?? []
+    const sources = memberUses(member).map(use => use.pathSegment)
+    const ends = [...new Set(sources.length ? sources : [member.pathSegment ?? -1])].flatMap(index => constraints.get(index) ?? [])
     const axis = mm(member.start[0]) === mm(member.end[0]) ? 2 : 0
     const cross = axis === 0 ? 2 : 0
     if (mm(member.start[cross]) !== mm(member.end[cross])) continue
@@ -61,7 +63,7 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
   const pointMm = (p: Vector3Tuple): Vector3Tuple => [roundSite(p[0]), roundSite(p[1]), roundSite(p[2])]
   const members = layout.members.map(member => {
     const section = member.pathSegment === undefined ? undefined : summaryById.get(spans[member.pathSegment]?.line.id)
-    return { ...member, start: pointMm(member.start), end: pointMm(member.end), connectionPoints: member.connectionPoints.map(pointMm),
+    return { ...member, [MEMBER_USES]: memberUses(member).map(use => ({ ...use, sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId })), start: pointMm(member.start), end: pointMm(member.end), connectionPoints: member.connectionPoints.map(pointMm),
       layer: member.layer && section ? member.layer + section.firstLayer - 1 : member.layer }
   })
   const decks = layout.decks.map(deck => {
@@ -85,7 +87,7 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
     const levels: number[] = []
     const ends = (index: number, station: number) => {
       const own = members.flatMap(member => {
-        if (member.pathSegment !== index || !member.layer || (member.type !== 'longitudinal' && member.type !== 'guardrail')
+        if (!hasSource(member, index) || !member.layer || (member.type !== 'longitudinal' && member.type !== 'guardrail')
           || mm(member.start[cross]) !== mm(member.end[cross])) return []
         const point = member.connectionPoints.find(p => mm(p[along]) === mm(station))
         return point ? [{ member, point }] : []
@@ -102,8 +104,8 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
         && mm(m.start[cross]) === mm(outside) && mm(m.start[1]) === mm(base))
       if (!posts.length) return own
       for (const member of members) {
-        if (member.type !== 'guardrail' || !member.layer || member.pathSegment === undefined
-          || spans[member.pathSegment].line.surfaceId !== line.surfaceId) continue
+        if (member.type !== 'guardrail' || !member.layer
+          || !memberUses(member).some(use => spans[use.pathSegment]?.line.surfaceId === line.surfaceId)) continue
         const point: Vector3Tuple = along === 0 ? [station,member.start[1],outside] : [outside,member.start[1],station]
         if (!posts.some(post => point[1] >= post.start[1] && point[1] <= (postTops.get(post.id) ?? post.end[1]) + 0.001)
           || !member.connectionPoints.some(p => p.every((v,i) => mm(v) === mm(point[i])))
@@ -130,7 +132,8 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
       for (const { from, to } of matches) {
         const start = from.point, end = to.point
         links.push({ id: `transition-${links.length + 1}`, type: from.member.type, layer, pathSegment: left,
-          start, end, length: roundSite(gap), connectionPoints: [start, end] })
+          start, end, length: roundSite(gap), connectionPoints: [start, end],
+          [MEMBER_USES]: [left, right].map(index => ({ ...makeUse(index, from.member.type === 'guardrail' ? 'bridge-guard' : 'bridge-working', start, end, 'P05'), sectionId: spans[index].sourceId, spanId: spans[index].line.id })) })
         if (from.member.type !== 'guardrail') continue
         for (const cap of members) {
           if (cap.type !== 'guardrail' || cap.layer !== layer || mm(cap.start[1]) !== mm(start[1])) continue
@@ -153,8 +156,8 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
     }
     if (levels.length) {
       joined.push({ before: before.id, after: after.id, levels })
-      // Merging the final runs mutates members. Keep the validation envelope
-      // limited to the new bridge, rather than the whole merged roof-side rail.
+      // Keep a separate bridge envelope; final runs may extend far beyond it.
+      // The pure merge also preserves this snapshot for validation.
       bridges.push({ left, right, rails: links.slice(linkStart).map(rail => ({...rail})), decks: panels.slice(panelStart) })
     }
     if (levels.length !== shared.length) failed.push(transition)
@@ -172,12 +175,13 @@ export function connectSiteTransitions(layout: ScaffoldLayout, spans: RoutedSpan
       // Surplus alone is not a remaining rail. Retain a real supported run only.
       if (new Set(points.map(p => mm(p[axis]))).size<2) return []
       const at = (value: number): Vector3Tuple => member.start.map((n,j) => j===axis ? value : n) as Vector3Tuple
-      return [{...member,id:i ? `${member.id}-open-${i}` : member.id,start:at(low),end:at(high),length:roundSite(high-low),connectionPoints:points}]
+      return [{...member,id:i ? `${member.id}-open-${i}` : member.id,start:at(low),end:at(high),length:roundSite(high-low),connectionPoints:points,
+        [MEMBER_USES]: clipUses(member, at(low), at(high), 'P06')}]
     })
   }
   const joinedIndices = new Set(bridges.flatMap(bridge => [bridge.left, bridge.right]))
   const groupOf = (id: string) => id.split('/')[0]
-  const groups = new Set(members.filter(member => joinedIndices.has(member.pathSegment ?? -1) || capCuts.has(member.id)).map(member => groupOf(member.id)))
+  const groups = new Set(members.filter(member => [...joinedIndices].some(index => hasSource(member, index)) || capCuts.has(member.id)).map(member => groupOf(member.id)))
   const affected = (id: string) => groups.has(groupOf(id))
   const rebuilt = reassembleSiteRuns(layout, [...members.filter(member => affected(member.id)).flatMap(openCaps), ...links],
     [...decks.filter(deck => affected(deck.id)), ...panels], settings)

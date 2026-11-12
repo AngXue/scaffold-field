@@ -1,3 +1,4 @@
+import { MEMBER_USES, transformUses, memberUses } from './rules/facts/memberUses.ts'
 import { getSectionLevels } from './rules/policies/levels.ts'
 export { getSectionLevels, defaultSectionLayers, sectionTargetLayer, siteWithTargetLayers } from './rules/policies/levels.ts'
 import { prepareScene } from './rules/scene.ts'
@@ -399,7 +400,8 @@ function calculateSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = 
       footingStations(a,settings.width).filter(pair=>footingStations(b,settings.width).some(other=>pair.every(p=>other.some(q=>Math.hypot(p.x-q.x,p.z-q.z)<EPS))))
         .map(points=>({points,layers:Math.min(a.layers,b.layers)}))))
     const removed = new Set<string>()
-    const members = part.members.map(member => ({ ...member, start: world(member.start), end: world(member.end),
+    const members = part.members.map(member => ({ ...member,
+      [MEMBER_USES]: transformUses(member, world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) })), start: world(member.start), end: world(member.end),
       connectionPoints: member.connectionPoints.map(world), pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) }))
       .filter(member => {
         const sharedCap = member.type === 'guardrail' && sharedStations.some(station => (member.layer ?? Infinity) <= station.layers
@@ -605,7 +607,10 @@ export function calculateSite(input: Site, settings: ScaffoldParameters): SiteLa
     const labelIndex = String(labels.get(span.sourceId)) + (siblings.length > 1 ? `.${siblings.indexOf(span) + 1}` : '')
     return { ...dimension, labelIndex }
   })
-  return { ...result.layout, pathDimensions, blocks, sections: spanLayout.sections, spans, joinedLifts: result.joined, issues,
+  const members = result.layout.members.map(member => ({ ...member,
+    [MEMBER_USES]: memberUses(member).map(use => ({ ...use, sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId })),
+  }))
+  return { ...result.layout, members, pathDimensions, blocks, sections: spanLayout.sections, spans, joinedLifts: result.joined, issues,
     perimeter: roundSite(site.sections.reduce((total, line) => total + siteLength(line), 0)),
     canExportMaterials: !issues.some(issue => issue.blocking) }
 }

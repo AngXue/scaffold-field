@@ -1,3 +1,5 @@
+import { mergeSharedRuns } from './rules/policies/sharedMembers.ts'
+import { MEMBER_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
 import { fitGuardrailStock } from './guardrails.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from './polygons.ts'
@@ -162,6 +164,7 @@ export const CONNECTOR_LABELS: Record<ConnectorType, string> = {
 export const SWEEP_BAR_LAYER = 0
 
 export type ScaffoldMember = {
+  [MEMBER_USES]?: import('./rules/facts/memberUses.ts').MemberUse[]
   id: string
   type: MemberType
   start: Vector3Tuple
@@ -772,40 +775,6 @@ export function calculateMaterials(
 }
 
 /** Co-linear runs are one design member, including a straight drawing split. */
-function mergeSharedRuns(members: ScaffoldMember[]) {
-  const groups = new Map<string, Array<{ member: ScaffoldMember; low: number; high: number }>>()
-  for (const member of members) {
-    if (member.type === 'post') continue
-    let dx = (member.end[0] - member.start[0]) / member.length
-    let dz = (member.end[2] - member.start[2]) / member.length
-    if (dx < -1e-6 || (Math.abs(dx) < 1e-6 && dz < 0)) { dx = -dx; dz = -dz }
-    const key = `${member.type === 'guardrail' ? 'guardrail' : 'horizontal'}:${member.layer}:${member.start[1]}:${dx.toFixed(5)}:${dz.toFixed(5)}:${(-dz * member.start[0] + dx * member.start[2]).toFixed(3)}`
-    const values = [member.start, member.end].map(p => p[0] * dx + p[2] * dz)
-    const group = groups.get(key) ?? []
-    group.push({ member, low: Math.min(...values), high: Math.max(...values) })
-    groups.set(key, group)
-  }
-  const removed = new Set<string>()
-  for (const group of groups.values()) {
-    group.sort((a, b) => a.low - b.low || b.high - a.high)
-    let active = group[0]
-    for (const next of group.slice(1)) {
-      if (next.low > active.high + 0.001) { active = next; continue }
-      const candidates = [active.member.start, active.member.end, next.member.start, next.member.end]
-      candidates.sort((a, b) => a[0] - b[0] || a[2] - b[2])
-      active.member.roles = [...new Set([...(active.member.roles ?? [active.member.type]), ...(next.member.roles ?? [next.member.type])])]
-      if (active.member.roles.includes('longitudinal')) active.member.type = 'longitudinal'
-      active.member.start = candidates[0]
-      active.member.end = candidates.at(-1)!
-      active.member.length = round(vectorDistance(active.member.start, active.member.end))
-      active.member.connectionPoints = [...new Map([...active.member.connectionPoints, ...next.member.connectionPoints].map(p => [pointKey(p), p])).values()]
-      active.high = Math.max(active.high, next.high)
-      removed.add(next.member.id)
-    }
-  }
-  const kept = members.filter(member => !removed.has(member.id))
-  members.splice(0, members.length, ...kept)
-}
 
 function onPlanRun(point: Vector3Tuple, member: ScaffoldMember) {
   const dx = member.end[0] - member.start[0], dz = member.end[2] - member.start[2]
@@ -953,15 +922,18 @@ export function calculateScaffold(
     connectionPoints: Vector3Tuple[] = [start, end],
     startExtension = parameters.tubeEndExtension,
     endExtension = parameters.tubeEndExtension,
+    purpose: MemberPurpose = type === 'guardrail' ? 'side-guard' : type,
   ) => {
     const [physicalStart, physicalEnd] = extendLine(start, end, startExtension, endExtension)
     const length = round(vectorDistance(physicalStart, physicalEnd))
     if (length <= 0.001) return undefined
     const geometryKey = `${type}:${layer}:${[pointKey(physicalStart), pointKey(physicalEnd)].sort().join('|')}`
     const shared = memberByGeometry.get(geometryKey)
-    if (shared) return shared
+    const use = makeUse(pathSegment ?? 0, purpose, physicalStart, physicalEnd, type === 'post' ? 'M01' : type === 'guardrail' ? 'P02' : 'M03')
+    if (shared) { shared[MEMBER_USES] = combineUses(memberUses(shared), [use]); return shared }
     const member: ScaffoldMember = {
       id: `M${memberSequence++}`,
+      [MEMBER_USES]: [use],
       type,
       start: physicalStart,
       end: physicalEnd,
@@ -1438,7 +1410,10 @@ export function calculateScaffold(
       }
     }
     const cornerPost = postByPoint.get(key)
-    if (cornerPost) cornerPost.cornerJunctions = [...(cornerPost.cornerJunctions ?? []), mitre.pathSegment]
+    if (cornerPost) {
+      cornerPost.cornerJunctions = [...(cornerPost.cornerJunctions ?? []), mitre.pathSegment]
+      cornerPost[MEMBER_USES] = combineUses(memberUses(cornerPost), [makeUse(nextSegment(mitre.pathSegment), 'post', cornerPost.start, cornerPost.end, 'G08')])
+    }
     const half = transverseTubeLength / 2
     const channelStart: Vector3Tuple = [
       round(mitre.beamCentre[0] - mitre.normal[0] * half),
@@ -1544,6 +1519,7 @@ export function calculateScaffold(
         const parity = (row + stationOffsets[segmentIndex] + station) % 2
         const existingPost = postByPoint.get(key)
         if (existingPost) {
+          existingPost[MEMBER_USES] = combineUses(memberUses(existingPost), [makeUse(segmentIndex, 'post', point, [point[0], post, point[2]], 'G08')])
           // A shared corner can be the railed row of one path segment and the plain
           // row of another: the taller post is the one that gets built.
           if (existingPost.end[1] < post) {
@@ -1787,7 +1763,7 @@ export function calculateScaffold(
             const innerPoint = postRows[1][station]
             const start: Vector3Tuple = [outerPoint[0], railElevation, outerPoint[2]]
             const end: Vector3Tuple = [innerPoint[0], railElevation, innerPoint[2]]
-            addMember('guardrail', start, end, layer, segmentIndex, [start, end])
+            addMember('guardrail', start, end, layer, segmentIndex, [start, end], parameters.tubeEndExtension, parameters.tubeEndExtension, 'end-guard')
           }
         }
       }
@@ -1989,7 +1965,7 @@ function finishLayout(
 ): ScaffoldLayout {
   // Merge collinear shared runs before stock assembly and coupler counting.
   // This keeps all three views on the same physical quantities.
-  mergeSharedRuns(members)
+  members = mergeSharedRuns(members)
   // A relocated station may now carry a mitre that already had its own beam.
   // Remove a beam only when ALL of its posts are carried by one other beam;
   // never join beams into a longer piece or leave a post without a base.
@@ -2161,6 +2137,7 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     result.members.forEach(m => {
+      m[MEMBER_USES] = transformUses(m, move, use => ({ pathSegment: path.edgeIndices[use.pathSegment] }))
       m.start = move(m.start); m.end = move(m.end); m.connectionPoints = m.connectionPoints.map(move)
       if (m.pathSegment !== undefined) m.pathSegment = path.edgeIndices[m.pathSegment]
       m.cornerJunctions = m.cornerJunctions?.map(i => path.edgeIndices[i])
@@ -2194,6 +2171,7 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
       if (postIds.has(plan.memberId)) postSequences.set(prefix + plan.memberId, plan.stockLengths)
     })
     members.push(...layout.members.map(m => ({ ...m, id: prefix + m.id,
+      [MEMBER_USES]: transformUses(m, translate, use => ({ pathSegment: edgeIndex(use.pathSegment)! })),
       start: translate(m.start), end: translate(m.end), connectionPoints: m.connectionPoints.map(translate),
       pathSegment: edgeIndex(m.pathSegment), cornerJunctions: m.cornerJunctions?.map(index => edgeIndex(index)!),
     })))
@@ -2223,6 +2201,7 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
     if (post.type !== 'post') continue
     const key = pointKey(post.start), existing = posts.get(key)
     if (!existing) { posts.set(key, post); continue }
+    existing[MEMBER_USES] = combineUses(memberUses(existing), memberUses(post))
     if (post.length > existing.length) {
       existing.length = post.length; existing.end = [...post.end]
       postSequences.set(existing.id, postSequences.get(post.id)!)

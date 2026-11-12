@@ -79,3 +79,18 @@ describe('rule pipeline contracts', () => {
     expect(source).toEqual(input())
   })
 })
+
+
+it('preserves and freezes symbol-keyed provenance instead of silently dropping it', () => {
+  const origin = Symbol('origin')
+  const source = { ...input(), [origin]: { intervals: [1, 2] } }
+  const run = compilePipeline([definition], [], (facts: DeepReadonly<typeof source>) => facts as typeof source)
+  const result = run(source).facts
+  expect(result[origin].intervals).toEqual([1, 2])
+  expect(() => (result[origin].intervals as number[]).push(3)).toThrow()
+  expect(source[origin].intervals).toEqual([1, 2])
+})
+it('rejects mutable collection containers instead of offering a false readonly contract', () => {
+  const run = compilePipeline([definition], [], (facts: DeepReadonly<{ mutable: Map<string, number> }>) => facts as { mutable: Map<string, number> })
+  expect(() => run({ mutable: new Map() })).toThrow('plain objects')
+})

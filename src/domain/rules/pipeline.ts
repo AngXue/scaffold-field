@@ -3,10 +3,18 @@ import { RuleFailure, type DeepReadonly, type Proposal, type RuleDefinition, typ
 /** Freeze only calculation-owned plain data; callers retain ownership of their input. */
 function freeze<T>(value: T): DeepReadonly<T> {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-    for (const child of Object.values(value)) freeze(child)
+    for (const key of Reflect.ownKeys(value)) freeze(Reflect.get(value, key))
     Object.freeze(value)
   }
   return value as DeepReadonly<T>
+}
+
+function cloneFacts<T>(value: T): T {
+  if (!value || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(cloneFacts) as T
+  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+    throw new RuleFailure('input', 'facts must use plain objects and arrays')
+  return Object.fromEntries(Reflect.ownKeys(value).map(key => [key, cloneFacts(Reflect.get(value, key))])) as T
 }
 
 /** Compile once. No rule can be activated by a project file or arbitrary priority. */
@@ -46,7 +54,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
     }
   }
   return (input: F, options: { trace?: boolean } = {}): { facts: DeepReadonly<F>; trace: Trace[] } => {
-    let facts = freeze(structuredClone(input)), revision = 0
+    let facts = freeze(cloneFacts(input)), revision = 0
     const trace: Trace[] = []
     const written = new Map<string, { proposal: P; step: string }>()
     // All writes remain private until the entire calculation succeeds. A thrown
