@@ -17,6 +17,7 @@ import { mm, metresFromMm as m, roundSite, SITE_EPS as EPS } from './rules/facts
 import { componentGroups } from './rules/groups.ts'
 import { meetOnPlan, footingStations } from './rules/policies/groups.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
+import { selectFittingPlans, transformFittingPlans } from './rules/facts/fittings.ts'
 import { SemanticIdentities } from './rules/facts/identity.ts'
 import { FRAME_SCOPES, CONSTRUCTION_FRAMES, frameScope, inFrameScopes } from './rules/facts/scopes.ts'
 import { MEMBER_USES, RETIRED_USES, transformUses, memberUses } from './rules/facts/memberUses.ts'
@@ -25,7 +26,7 @@ export { resolveBlocks } from './rules/policies/blocks.ts'
 export { getSectionLevels, defaultSectionLayers, sectionTargetLayer, siteWithTargetLayers } from './rules/policies/levels.ts'
 import { prepareScene } from './rules/scene.ts'
 import { measureDrawing, PIXELS_PER_METER } from './plan.ts'
-import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, publishScaffoldAssembly, finishPreparedScaffoldAssembly, prepareScaffoldPlan, prepareScaffoldAssembly, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
+import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, publishScaffoldAssembly, finishPreparedScaffoldAssembly, completeAssemblyFittings, prepareScaffoldPlan, prepareScaffoldAssembly, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import type { PlanPolygon } from './polygons.ts'
 import { footprintContainsPoint } from './siteFootprints.ts'
 import { positionSiteStock } from './siteWallFit.ts'
@@ -112,11 +113,11 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   // Assembly plans and height labels are draft metadata, not a provisional BOM.
   const layout: ScaffoldAssembly = {
     pathDimensions: [], perimeter: 0, members: [], pipeSegments: [], decks: [], connectors: [], baseChannels: [], warnings: [],
-    [RETIRED_USES]: [], assemblyPlans: [], postHeights: { theoretical: 0, inner: 0, outer: 0 },
+    [RETIRED_USES]: [], fittingPlans: [], assemblyPlans: [], postHeights: { theoretical: 0, inner: 0, outer: 0 },
   }
   const indexById = new Map(site.sections.map((line, index) => [line.id, index]))
   const physicalGroups: PhysicalGroup[] = []
-  const completions: Array<{ scopeId: string; complete: () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans'>; release: () => void }> = []
+  const completions: Array<{ scopeId: string; complete: () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans' | 'fittingPlans'>; release: () => void }> = []
   const validations: Array<{ groupIndex: number; validate: (physical: { checks: PhysicalCheck[]; elements: ElementBounds[] }) => void }> = []
   let measuredLength = 0
   const minimumLength = flat ? 0.01 : MIN_SECTION_LENGTH
@@ -178,7 +179,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       decks: preparation.draft.decks.map(deck => ({ ...deck })), baseChannels: preparation.draft.baseChannels.map(base => ({ ...base })),
       pathDimensions: preparation.draft.pathDimensions.map(dimension => ({ ...dimension })),
       // Only uprights exist physically before the global high/low joins are settled.
-      pipeSegments: preparation.posts.flatMap(post => post.segments.map(pipe => ({ ...pipe }))), connectors: [],
+      pipeSegments: preparation.posts.flatMap(post => post.segments.map(pipe => ({ ...pipe }))), connectors: [], fittingPlans: [],
       assemblyPlans: preparation.posts.map(post => post.plan),
       perimeter: roundSite(preparation.draft.pathDimensions.reduce((sum, dimension) => sum + dimension.length, 0)),
     })
@@ -227,7 +228,8 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
       positionSiteStock({ members, pipeSegments: finalPipes, connectors: finalConnectors, decks: decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,
         coverage: deck.coverage?.map(face => face.map(world)) })) }, blocks, radius, transitionEnds, followsWall)
-      return { pipeSegments: finalPipes.map(pipe => ({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })),
+      const fittingPlans = transformFittingPlans(selectFittingPlans(completed.fittingPlans, id => !removed.has(id), true), world, prefix)
+      return { fittingPlans, pipeSegments: finalPipes.map(pipe => ({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })),
         connectors: finalConnectors.map(c => ({ ...c, id: prefix + c.id, memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })),
         assemblyPlans: completed.assemblyPlans.filter(p => !removed.has(p.memberId)).map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })) }
     } })
@@ -297,7 +299,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   const preview: SiteAssembly = { ...layout, blocks, sections: summaries, issues, canExportMaterials: !issues.some(issue => issue.blocking) }
   return { preview, finish: (resolved: ScaffoldAssembly = preview, affected: readonly string[] = []): SiteAssembly => {
     const changed = new Set(affected)
-    const additions: Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans'>[] = []
+    const additions: Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans' | 'fittingPlans'>[] = []
     completions.reverse()
     while (completions.length) {
       const completion = completions.pop()!
@@ -306,12 +308,14 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     }
     const retainedIds = changed.size ? new Set(resolved.members.filter(member => inFrameScopes(member, changed)).map(member => member.id)) : new Set<string>()
     const retained = (id: string) => retainedIds.has(id)
-    const final: SiteAssembly = { ...preview, ...resolved,
+    let final: SiteAssembly = { ...preview, ...resolved,
+      fittingPlans: [...additions.flatMap(part => part.fittingPlans), ...selectFittingPlans(resolved.fittingPlans, retained)],
       pipeSegments: [...additions.flatMap(part => part.pipeSegments), ...resolved.pipeSegments.filter(pipe => retained(pipe.memberId))],
       connectors: [...additions.flatMap(part => part.connectors), ...resolved.connectors.filter(connector => retained(connector.memberId))],
       assemblyPlans: [...additions.flatMap(part => part.assemblyPlans), ...resolved.assemblyPlans.filter(plan => retained(plan.memberId))],
     }
     if (changed.size) positionSiteStock(final, blocks, settings.pipeDiameter / 2, transitionEnds)
+    final = completeAssemblyFittings(final)
     const finalMembers = new Map(final.members.map(member => [member.id, member]))
     const physical = groups.map(() => ({ checks: [] as PhysicalCheck[], elements: [] as ElementBounds[] }))
     for (const pipe of final.pipeSegments) {

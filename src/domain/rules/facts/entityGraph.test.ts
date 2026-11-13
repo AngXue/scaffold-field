@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { CALCULATION_TRACE } from '../diagnostics/session'
 import { calculateSite, EMPTY_SITE, type Site, type SiteLayout } from '../../site'
 import { DEFAULT_PARAMETERS, type ScaffoldMember, type ScaffoldConnector, type PipeSegment } from '../../scaffold'
 import { SITE_DEMOS } from '../../siteDemos'
@@ -95,7 +96,9 @@ const large = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/performance/
 describe('fixed projects: complete physical graph references', () => {
   it.each([...ordinary, ...large])('%s retains every final material entity including blocked drafts', id => {
     const input = JSON.parse(readFileSync(resolve(root, `fixtures/rules/${large.includes(id) ? 'performance/' : ''}${id}.json`), 'utf8'))
-    const layout = calculateSite(input.scene, input.parameters), graph = buildEntityGraph(input.scene, layout)
+    const layout = calculateSite(input.scene, input.parameters, { trace: true }), graph = buildEntityGraph(input.scene, layout)
+    const events = layout[CALCULATION_TRACE]!, lastPlacement = events.findLastIndex(event => event.step === 'S04.positionStock')
+    for (const [index, event] of events.entries()) if (['C01.actual', 'C02.splices'].includes(event.step)) expect(index).toBeGreaterThan(lastPlacement)
     expect(graph.ledger.entries).toHaveLength(layout.pipeSegments.length + layout.connectors.length + layout.decks.length + layout.baseChannels.length)
     expect(new Set(graph.ledger.entries.map(entry => entry.entityId)).size).toBe(graph.ledger.entries.length)
     const entities = new Set([...graph.pipes, ...graph.connectors, ...graph.decks, ...graph.bases].map(entity => entity.id))

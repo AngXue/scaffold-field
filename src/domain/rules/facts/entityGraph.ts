@@ -1,6 +1,6 @@
 import type { Site, SiteLayout } from '../../site.ts'
 import type { PipeSegment, Vector3Tuple } from '../../scaffold.ts'
-import { contactOf } from './connections.ts'
+import { contactOf, stockContainsContact } from './connections.ts'
 import { memberUses, RETIRED_USES, type MemberUse } from './memberUses.ts'
 import { validateLineage, type LineageRecord, type RangeReplacement } from './lineage.ts'
 import { buildMaterialLedger } from './materialLedger.ts'
@@ -16,13 +16,6 @@ export type ConnectionNode = {
   pipeIds: string[]
 }
 const pointKey = (point: readonly number[]) => point.map(value => Math.round(value * 1000)).join(':')
-function containsContact(pipe: PipeSegment, point: Vector3Tuple) {
-  const vector = pipe.end.map((value, axis) => value - pipe.start[axis])
-  const length = Math.hypot(...vector), direction = vector.map(value => value / length)
-  const along = point.reduce((sum, value, axis) => sum + (value - pipe.start[axis]) * direction[axis], 0)
-  return along >= -0.00501 && along <= length + 0.00501
-    && Math.hypot(...point.map((value, axis) => value - pipe.start[axis] - along * direction[axis])) <= 0.00501
-}
 function uniqueLegacy<T extends { id: string }>(values: readonly T[], kind: string): Map<string, T> {
   const map = new Map(values.map(value => [value.id, value]))
   if (map.size !== values.length) throw new Error(`Duplicate ${kind} ID`)
@@ -129,7 +122,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
       linked = [owned[index - 1], owned[index]]
     } else {
       linked = [connector.memberId, ...(connector.connectedMemberId ? [connector.connectedMemberId] : [])].flatMap(id => {
-        const attached = (pipesByMember.get(id) ?? []).filter(pipe => containsContact(pipe, contact))
+        const attached = (pipesByMember.get(id) ?? []).filter(pipe => stockContainsContact(pipe, contact))
         if (!attached.length) throw new Error(`Tie has no physical stock at contact: ${connector.id} -> ${id}`)
         return attached
       })

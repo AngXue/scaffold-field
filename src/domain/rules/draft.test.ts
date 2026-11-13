@@ -75,3 +75,15 @@ it('completes an unchanged frozen assembly scope without rebuilding its logical 
   output.pipeSegments[0].start[0] += 2
   expect(finishPreparedScaffoldAssembly(prepared)).toEqual(expected)
 })
+
+it.each(['roof', 'corridor', 'aligned', 'adjacent-houses'])('%s commits every fitting after the last stock placement and before physical validation', id => {
+  const demo = SITE_DEMOS.find(demo => demo.id === id)!
+  const layout = calculateSite(demo.site, demo.parameters, { trace: true }), events = layout[CALCULATION_TRACE]!
+  const lastPlacement = events.findLastIndex(event => event.step === 'S04.positionStock')
+  const connections = events.map((event, index) => ['C01.actual', 'C02.splices'].includes(event.step) ? index : -1).filter(index => index >= 0)
+  expect(connections).toHaveLength(2)
+  expect(Math.min(...connections)).toBeGreaterThan(lastPlacement)
+  expect(events.findIndex(event => event.step === 'V01.physicalSupport')).toBeGreaterThan(Math.max(...connections))
+  expect(events.findIndex(event => event.step === 'O01.quantities')).toBeGreaterThan(Math.max(...connections))
+  expect(layout).not.toHaveProperty('fittingPlans')
+})

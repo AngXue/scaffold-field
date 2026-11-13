@@ -1,11 +1,11 @@
 import { roundFixedMillimetre as round } from '../facts/precision.ts'
-import type { ScaffoldMember, ScaffoldConnector, ScaffoldParameters, Vector3Tuple } from '../../scaffold.ts'
+import type { ScaffoldMember, ScaffoldParameters, Vector3Tuple } from '../../scaffold.ts'
 import { Vector } from '../facts/vector.ts'
-import { CONNECTOR_CONTACT } from '../facts/connections.ts'
+import type { CrossContactIntent } from '../facts/fittings.ts'
 
 const pointKey = (point: Vector3Tuple) => point.map(round).join(':')
 
-export function buildCrossConnectors(members: ScaffoldMember[], builtPostTops: Record<string, number>, parameters: Pick<ScaffoldParameters, 'pipeDiameter'>) {
+export function prepareCrossContacts(members: ScaffoldMember[], builtPostTops: Record<string, number>, parameters: Pick<ScaffoldParameters, 'pipeDiameter'>) {
   // Count actual connections, not nominal station points: a corner can remove
   // a post or omit a transverse, while its longitudinal connectionPoints survive.
   const planDistanceToRun = (member: ScaffoldMember, x: number, z: number) => {
@@ -17,9 +17,15 @@ export function buildCrossConnectors(members: ScaffoldMember[], builtPostTops: R
     if (along < -0.001 || along > length + 0.001) return Number.POSITIVE_INFINITY
     return Math.abs((x - member.start[0]) * dz - (z - member.start[2]) * dx) / length
   }
-  const memberAxis = (member: ScaffoldMember): Vector3Tuple =>
-    new Vector(member.end).subtract(new Vector(member.start)).normalize().toTuple()
-  const rawCrossConnectors: ScaffoldConnector[] = []
+  // Many contacts share the same member direction. These internal vectors are
+  // readonly; S8 detaches the public fitting axes when it creates the entities.
+  const axes = new Map<string, Vector3Tuple>()
+  const memberAxis = (member: ScaffoldMember): Vector3Tuple => {
+    let axis = axes.get(member.id)
+    if (!axis) { axis = new Vector(member.end).subtract(new Vector(member.start)).normalize().toTuple(); axes.set(member.id, axis) }
+    return axis
+  }
+  const rawCrossConnectors: CrossContactIntent[] = []
   const connectionKeys = new Set<string>()
   const addCross = (member: ScaffoldMember, other: ScaffoldMember, point: Vector3Tuple) => {
     const key = [member.id, other.id].sort().join(':')
@@ -27,10 +33,9 @@ export function buildCrossConnectors(members: ScaffoldMember[], builtPostTops: R
     connectionKeys.add(key)
     const verticalOffset = (member.type === 'transverse' ? -1 : 1) * parameters.pipeDiameter * 0.65
     rawCrossConnectors.push({
-      id: `C-${member.id}-${other.id}`,
-      type: 'cross',
-      [CONNECTOR_CONTACT]: [...point],
-      position: [point[0], round(point[1] + verticalOffset), point[2]],
+      displayId: `C-${member.id}-${other.id}`,
+      contact: [...point],
+      displayPosition: [point[0], round(point[1] + verticalOffset), point[2]],
       memberId: member.id,
       connectedMemberId: other.id,
       axis: memberAxis(member),
@@ -62,8 +67,8 @@ export function buildCrossConnectors(members: ScaffoldMember[], builtPostTops: R
     }
   }
   const connectorsByPosition = rawCrossConnectors
-    .reduce<Map<string, ScaffoldConnector[]>>((groups, connector) => {
-      const key = pointKey(connector.position)
+    .reduce<Map<string, CrossContactIntent[]>>((groups, connector) => {
+      const key = pointKey(connector.displayPosition)
       groups.set(key, [...(groups.get(key) ?? []), connector])
       return groups
     }, new Map())
@@ -73,7 +78,7 @@ export function buildCrossConnectors(members: ScaffoldMember[], builtPostTops: R
       const offset = (index - (connectorsAtPoint.length - 1) / 2) * parameters.pipeDiameter * 1.4
       return {
         ...connector,
-        position: [round(connector.position[0] + offset), connector.position[1], connector.position[2]] as Vector3Tuple,
+        displayPosition: [round(connector.displayPosition[0] + offset), connector.displayPosition[1], connector.displayPosition[2]] as Vector3Tuple,
       }
     }))
   return crossConnectors

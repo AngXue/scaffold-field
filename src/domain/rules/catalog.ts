@@ -632,8 +632,8 @@ export const RULES: readonly RuleDefinition[] = [
     "status": "active",
     "implementation": "native",
     "source": [
-      "src/domain/rules/policies/stock.ts",
-      "src/domain/rules/stock.ts"
+      "src/domain/rules/connections.ts",
+      "src/domain/rules/facts/fittings.ts"
     ],
     "cases": [
       "T05",

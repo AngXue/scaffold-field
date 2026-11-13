@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { calculateSite } from '../site'
 import { SITE_DEMOS } from '../siteDemos'
 import { DEFAULT_PARAMETERS, type ScaffoldMember } from '../scaffold'
+import { prepareFittingPlan, finishFittings } from './connections'
 import { assembleStockStage } from './stock'
 import { repairPostSplices, assembleHorizontalRuns } from './policies/stock'
 
@@ -14,7 +15,7 @@ describe('stock proposals and real splice contributions', () => {
     const result = assembleStockStage(layout.members, sequences, demo.parameters, true)
     expect(result.assemblies.flatMap(assembly => assembly.segments).map(pipe => ({ ...pipe, id: '' })))
       .toEqual(layout.pipeSegments.map(pipe => ({ ...pipe, id: '' })))
-    expect(result.assemblies.flatMap(assembly => assembly.connectors).map(connector => ({ ...connector, id: '' })))
+    expect(finishFittings(layout.members, result.assemblies.flatMap(assembly => assembly.segments), [{ ...prepareFittingPlan(layout.members, {}, demo.parameters, result.assemblies.flatMap(assembly => assembly.segments)), contacts: [] }]).map(connector => ({ ...connector, id: '' })))
       .toEqual(layout.connectors.filter(connector => connector.type === 'butt').map(connector => ({ ...connector, id: '' })))
     expect(JSON.stringify({ layout, sequences, parameters: demo.parameters })).toBe(original)
   })
@@ -30,9 +31,13 @@ describe('stock proposals and real splice contributions', () => {
     expect(sequences).toEqual(original)
     expect(repaired.sequences['post-1']).not.toEqual(original['post-1'])
     const result = assembleStockStage([...posts, rail], sequences, DEFAULT_PARAMETERS)
+    const plan = { ...prepareFittingPlan([...posts, rail], {}, DEFAULT_PARAMETERS, result.assemblies.flatMap(assembly => assembly.segments)), contacts: [] }
+    const fittings = finishFittings([...posts, rail], result.assemblies.flatMap(assembly => assembly.segments), [plan])
     for (const assembly of result.assemblies) {
-      expect(assembly.connectors).toHaveLength(assembly.segments.length - 1)
-      expect(assembly.connectors.map(connector => connector.position)).toEqual(assembly.segments.slice(1).map(pipe => pipe.start))
+      expect(assembly).not.toHaveProperty('connectors')
+      const connectors = fittings.filter(connector => connector.memberId === assembly.plan.memberId)
+      expect(connectors).toHaveLength(assembly.segments.length - 1)
+      expect(connectors.map(connector => connector.position)).toEqual(assembly.segments.slice(1).map(pipe => pipe.start))
     }
   })
 })

@@ -1,4 +1,5 @@
 import './loader.mjs'
+import { PERFORMANCE_POLICY } from './performance-evidence.mjs'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
@@ -57,13 +58,11 @@ try {
         samples[index].push((performance.now() - start) / batchSize)
       }
       const stats = samples.map(values => { values.sort((a, b) => a - b); return { p50: values[49], p95: values[94] } })
-      // User permitted a small slowdown on 2026-11-13. Sub-ms drawings use
-      // absolute allowances; large drawings retain explicit relative ceilings.
-      const limits = stats[0].p50 < 1 ? { p50: stats[0].p50 + 0.25, p95: stats[0].p95 + 0.5 }
-        : { p50: stats[0].p50 * 1.20, p95: stats[0].p95 * 1.25 }
+      // User-confirmed strict ceiling; measurement protocol and exact parity stay unchanged.
+      const limits = { p50: stats[0].p50 * PERFORMANCE_POLICY.maxRatioExclusive, p95: stats[0].p95 * PERFORMANCE_POLICY.maxRatioExclusive, exclusive: true }
       measurements.push({ id, batchSize, warmupCalculations, inputSha256: fixture.input, old: stats[0], current: stats[1],
         ratioP50: stats[1].p50 / stats[0].p50, ratioP95: stats[1].p95 / stats[0].p95, limits,
-        passed: stats[1].p50 <= limits.p50 && stats[1].p95 <= limits.p95,
+        passed: stats[1].p50 / stats[0].p50 < PERFORMANCE_POLICY.maxRatioExclusive && stats[1].p95 / stats[0].p95 < PERFORMANCE_POLICY.maxRatioExclusive,
         geometry: { sections: input.scene.sections.length, members: currentResult.members.length, pipes: currentResult.pipeSegments.length, decks: currentResult.decks.length } })
       assert.equal(JSON.stringify(input), before, `${id}: benchmark mutated input`)
       const oldMemory = await memory(resolve(temporary, 'src/domain/site.ts'), fixture.path)
@@ -71,12 +70,12 @@ try {
       assert.deepEqual(currentMemory.signature, oldMemory.signature, `${id}: memory worker output differs`)
       const measurement = measurements.at(-1)
       measurement.memory = { method: 'isolated process OS high-water RSS; 10 warmups and 100 calculations with GC before each measured call',
-        old: oldMemory, current: currentMemory, ratioPeakRss: currentMemory.peakRssKiB / oldMemory.peakRssKiB, limitRatio: 1.25,
-        passed: currentMemory.peakRssKiB <= oldMemory.peakRssKiB * 1.25 }
+        old: oldMemory, current: currentMemory, ratioPeakRss: currentMemory.peakRssKiB / oldMemory.peakRssKiB, limitRatio: PERFORMANCE_POLICY.maxRatioExclusive, exclusive: true,
+        passed: currentMemory.peakRssKiB / oldMemory.peakRssKiB < PERFORMANCE_POLICY.maxRatioExclusive }
       measurement.passed &&= measurement.memory.passed
       console.log(JSON.stringify({ completed: id, passed: measurement.passed, ratioP50: measurement.ratioP50, ratioP95: measurement.ratioP95, ratioPeakRss: measurement.memory.ratioPeakRss }))
     }
-    const report = { engineRevision, baseline: manifest.baseline, generatedAt: new Date().toISOString(), node: process.version, platform: process.platform, arch: process.arch, samples: 100,
+    const report = { performancePolicy: PERFORMANCE_POLICY, engineRevision, baseline: manifest.baseline, generatedAt: new Date().toISOString(), node: process.version, platform: process.platform, arch: process.arch, samples: 100,
       scope: 'paired latency and isolated-process peak RSS for small, 50/200-section and multi-elevation projects', measurements }
     writeFileSync(resolve(reportDirectory, 'latency.json'), JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))

@@ -1,6 +1,6 @@
 import { VERIFY_RULE_INPUTS } from './runtime.ts'
-import type { ScaffoldMember, ScaffoldParameters, LayoutWarning, ScaffoldConnector } from '../scaffold.ts'
-import { postStocks, repairPostSplices, createPipeAssembly, spliceConnectorsFor, assembleHorizontalRuns } from './policies/stock.ts'
+import type { ScaffoldMember, ScaffoldParameters, LayoutWarning } from '../scaffold.ts'
+import { postStocks, repairPostSplices, createPipeAssembly, assembleHorizontalRuns } from './policies/stock.ts'
 import { RULES } from './catalog.ts'
 import { compilePipeline } from './pipeline.ts'
 import type { RuleStep, Proposal } from './contracts.ts'
@@ -10,14 +10,13 @@ type Assembly = StockAssembly
 export type StockFacts = {
   members: ScaffoldMember[]; prebuiltPosts?: Assembly[]; sequences: Record<string, number[]>; parameters: ScaffoldParameters; fixed: boolean
   inventory?: number[]; repaired?: { sequences: Record<string, number[]>; warnings: LayoutWarning[] }
-  posts?: Assembly[]; horizontals?: Assembly[]; splices?: Record<string, ScaffoldConnector[]>
+  posts?: Assembly[]; horizontals?: Assembly[]
 }
 type StockProposal = Proposal & (
   | { kind: 'SelectPostInventory'; target: 'inventory'; value: number[] }
   | { kind: 'RepairPostSplices'; target: 'repaired'; value: NonNullable<StockFacts['repaired']> }
   | { kind: 'AssemblePosts'; target: 'posts'; value: Assembly[] }
   | { kind: 'AssembleHorizontals'; target: 'horizontals'; value: Assembly[] }
-  | { kind: 'ConnectStockJoints'; target: 'splices'; value: Record<string, ScaffoldConnector[]> }
 )
 export const STOCK_STEPS: RuleStep<StockFacts, StockProposal>[] = [
   { id: 'S02.inventory', ruleId: 'S02', phase: 4, after: [], reads: ['parameters'], kinds: ['SelectPostInventory'], targets: ['inventory'],
@@ -54,14 +53,7 @@ export const STOCK_STEPS: RuleStep<StockFacts, StockProposal>[] = [
   { id: 'S01.horizontals', ruleId: 'S01', phase: 6, after: ['S01.posts'], reads: ['members', 'parameters', 'repaired'], kinds: ['AssembleHorizontals'], targets: ['horizontals'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'AssembleHorizontals', target: 'horizontals', expectedRevision: revision,
       value: assembleHorizontalRuns(facts.members as ScaffoldMember[], facts.parameters as ScaffoldParameters, facts.repaired!.sequences as Record<string, number[]>) }] }) },
-  { id: 'C02.splices', ruleId: 'C02', phase: 8, after: ['S01.horizontals'], reads: ['members', 'posts', 'horizontals'], kinds: ['ConnectStockJoints'], targets: ['splices'],
-    evaluate: (facts, revision) => {
-      const members = new Map((facts.members as ScaffoldMember[]).map(member => [member.id, member]))
-      const value = Object.fromEntries([...(facts.posts as Assembly[]), ...(facts.horizontals as Assembly[])].map(assembly =>
-        [assembly.plan.memberId, spliceConnectorsFor(members.get(assembly.plan.memberId)!, assembly.segments)]))
-      return { status: 'proposed', proposals: [{ kind: 'ConnectStockJoints', target: 'splices', expectedRevision: revision, value }] }
-    },
-  },
+
 ]
 const reduceStock = (facts: import('./contracts.ts').DeepReadonly<StockFacts>, proposals: readonly StockProposal[]): StockFacts => {
   let result = { ...facts } as StockFacts
@@ -69,7 +61,6 @@ const reduceStock = (facts: import('./contracts.ts').DeepReadonly<StockFacts>, p
     case 'SelectPostInventory':
       if (proposal.value.some(length => Math.abs(length - 5) <= 0.001)) throw new Error('Forbidden post stock proposal')
       result = { ...result, inventory: proposal.value }; break
-    case 'ConnectStockJoints': result = { ...result, splices: proposal.value }; break
     case 'RepairPostSplices': result = { ...result, repaired: proposal.value }; break
     case 'AssemblePosts':
     case 'AssembleHorizontals': {
@@ -117,8 +108,7 @@ export function assembleStockStage(members: ScaffoldMember[], sequences: Record<
   const assemblies = members.map(member => {
     const assembly = byId.get(member.id)!
     return { segments: assembly.segments.map(pipe => ({ ...pipe, start: [...pipe.start], end: [...pipe.end] })),
-      connectors: facts.splices![member.id].map(connector => ({ ...connector, position: [...connector.position], axis: connector.axis && [...connector.axis] })),
-      plan: { ...assembly.plan, stockLengths: [...assembly.plan.stockLengths], segmentIds: [...assembly.plan.segmentIds] } } as Assembly & { connectors: ScaffoldConnector[] }
+      plan: { ...assembly.plan, stockLengths: [...assembly.plan.stockLengths], segmentIds: [...assembly.plan.segmentIds] } } as Assembly
   })
   return { assemblies, warnings: facts.repaired!.warnings as LayoutWarning[] }
 }

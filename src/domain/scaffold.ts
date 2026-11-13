@@ -15,11 +15,12 @@ import { normalizeKernelParameters } from './rules/boundaries/parameters.ts'
 export { materialQuantity, materialAdjustmentStep, stockMaterialRows } from './rules/boundaries/adjustments.ts'
 import { calculateMaterials } from './rules/materials.ts'
 export { calculateMaterials } from './rules/materials.ts'
-import { calculateConnections } from './rules/connections.ts'
+import { prepareFittingPlan, finishFittings } from './rules/connections.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { assembledLength, postStockWarnings } from './rules/policies/stock.ts'
 import { assemblePostsStage, assembleStockStage, resolvePostSequences, type StockAssembly } from './rules/stock.ts'
 import { mergeMemberStage } from './rules/sharedMembers.ts'
+import { transformFittingPlans } from './rules/facts/fittings.ts'
 import { FRAME_SCOPES, CONSTRUCTION_FRAMES } from './rules/facts/scopes.ts'
 import { MEMBER_USES, RETIRED_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
@@ -728,12 +729,9 @@ function assembleLayout(
     .filter((assembly) => assembly.segments[0]?.type === 'post')
     .map((assembly) => [assembly.plan.memberId, Math.max(...assembly.segments.map((segment) => segment.end[1]))]))
 
-  const crossConnectors = calculateConnections(members, Object.fromEntries(builtPostTops), parameters)
   const pipeSegments = assemblies.flatMap((assembly) => assembly.segments)
-  const connectors = [
-    ...crossConnectors,
-    ...assemblies.flatMap((assembly) => assembly.connectors),
-  ]
+  const fittingPlans = [prepareFittingPlan(members, Object.fromEntries(builtPostTops), parameters, pipeSegments)]
+  const connectors: ScaffoldConnector[] = []
   const assemblyPlans = assemblies.map((assembly) => assembly.plan)
   fitGuardrailStock({ members, pipeSegments, connectors, decks })
 
@@ -747,13 +745,21 @@ function assembleLayout(
     connectors,
     baseChannels,
     warnings,
-    assemblyPlans, postHeights,
+    assemblyPlans, fittingPlans, postHeights,
   }
+}
+
+/** Complete a detached S8 product; a second call cannot append duplicate fittings. */
+export function completeAssemblyFittings<T extends ScaffoldAssembly>(assembly: T): T {
+  if (!assembly.fittingPlans.length) return assembly
+  return { ...assembly, connectors: finishFittings(assembly.members, assembly.pipeSegments, assembly.fittingPlans), fittingPlans: [] }
 }
 
 /** O01 is invoked once by the public output boundary, after all geometry is final. */
 export function publishScaffoldAssembly<T extends ScaffoldAssembly>(assembly: T, parameters: ScaffoldParameters) {
-  const { assemblyPlans, postHeights, ...layout } = assembly
+  const completed = completeAssemblyFittings(assembly)
+  const { assemblyPlans, postHeights, fittingPlans, ...layout } = completed
+  void fittingPlans
   return { ...layout, materials: calculateMaterials(layout.members, layout.pipeSegments, layout.decks, layout.connectors,
     layout.baseChannels, parameters, assemblyPlans, postHeights) }
 }
@@ -793,7 +799,7 @@ export function calculateScaffoldPlan(drawing: PlanDrawing, parameters: Scaffold
   segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): ScaffoldLayout {
   return publishScaffoldAssembly(assembleScaffoldPlan(drawing, parameters, localLifts, deckLayerOffset, segmentLayerCounts, preserveDirection, requiredEndPairs), parameters)
 }
-type PlanGeometry = Pick<ScaffoldAssembly, 'members' | 'decks' | 'baseChannels' | 'pathDimensions'> & Partial<Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors'>>
+type PlanGeometry = Pick<ScaffoldAssembly, 'members' | 'decks' | 'baseChannels' | 'pathDimensions'> & Partial<Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'fittingPlans'>>
 export type PreparedScaffoldPlan = { draft: ScaffoldDraft; toPlan: <T extends PlanGeometry>(result: T) => T }
 
 export function assembleScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
@@ -831,6 +837,7 @@ export function prepareScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldPa
         if (m.pathSegment !== undefined) m.pathSegment = path.edgeIndices[m.pathSegment]
         m.cornerJunctions = m.cornerJunctions?.map(i => path.edgeIndices[i])
       })
+      if (result.fittingPlans) result.fittingPlans = transformFittingPlans(result.fittingPlans, move)
       result.pipeSegments?.forEach(p => { p.start = move(p.start); p.end = move(p.end) })
       result.connectors?.forEach(c => { c.position = move(c.position); if (c[CONNECTOR_CONTACT]) c[CONNECTOR_CONTACT] = move(c[CONNECTOR_CONTACT]) })
       result.decks.forEach(d => {

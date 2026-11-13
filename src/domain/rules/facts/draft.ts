@@ -1,3 +1,4 @@
+import type { FittingPlan } from './fittings.ts'
 import type { ScaffoldMember, DeckPanel, BaseChannel, LayoutWarning, ScaffoldParameters, PathDimension, MaterialResult, ScaffoldLayout, PipeAssemblyPlan } from '../../scaffold.ts'
 /** Logical construction product. It deliberately has no pipes, fittings or material totals. */
 export type ScaffoldDraft = {
@@ -13,6 +14,7 @@ export type ScaffoldDraft = {
 
 /** Physical entities before the sole final contribution ledger is published. */
 export type ScaffoldAssembly = Omit<ScaffoldLayout, 'materials'> & {
+  fittingPlans: FittingPlan[]
   assemblyPlans: PipeAssemblyPlan[]
   postHeights: MaterialResult['postHeights']
 }

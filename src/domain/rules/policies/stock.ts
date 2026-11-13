@@ -1,5 +1,5 @@
 import { roundFixedMillimetre as round } from '../facts/precision.ts'
-import { DEFAULT_PARAMETERS, SPLICE_STAGGER, type ScaffoldMember, type ScaffoldParameters, type Vector3Tuple, type LayoutWarning, type PipeSegment, type ScaffoldConnector, type PipeAssemblyPlan } from '../../scaffold.ts'
+import { DEFAULT_PARAMETERS, SPLICE_STAGGER, type ScaffoldMember, type ScaffoldParameters, type Vector3Tuple, type LayoutWarning, type PipeSegment, type PipeAssemblyPlan } from '../../scaffold.ts'
 import { Vector } from '../facts/vector.ts'
 
 const vectorDistance = (a: Vector3Tuple, b: Vector3Tuple) => Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])
@@ -256,14 +256,6 @@ export function postStockWarnings(parameters: ScaffoldParameters): LayoutWarning
   return parameters.stockLengths.every(stock => Math.abs(stock - 5) < 0.001) ? [{
     id: 'post-stock-unavailable', message: '库存只有禁用于立柱的 5 m 规格：立柱暂按默认非 5 m 库存估算，请补充可用规格后复核。',
   }] : []
-}
-
-/** C02: each actual stock joint contributes one sleeve at its physical seam. */
-export function spliceConnectorsFor(member: ScaffoldMember, segments: PipeSegment[]): ScaffoldConnector[] {
-  const direction = new Vector(member.end).subtract(new Vector(member.start)).normalize().toTuple()
-  return segments.slice(1).map((segment, index) => ({
-    id: `C-${member.id}-splice-${index + 1}`, type: 'butt', position: [...segment.start], memberId: member.id, axis: direction,
-  }))
 }
 
 /** S01: request-local reuse only; stock order, overlap and selection objectives are unchanged. */
