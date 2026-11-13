@@ -176,7 +176,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         return ends.some(end => mm(end.station) === mm((end.axis === 0 ? point.x : point.y) / PIXELS_PER_METER))
       }) as [boolean, boolean]
     })
-    const construction = startScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall, requiredEndPairs)
+    const construction = startScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall, requiredEndPairs, scopeId)
     return { group, groupIndex, scopeId, scope, base, surface, followsWall, swapInnerOuter, drawing, owner, construction }
   })
   // A later frame must never restart local topology/demands after an earlier
@@ -195,7 +195,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         const working = context.construction.working()
         const world = ([x, y, z]: Vector3Tuple): Vector3Tuple => [x + drawing.points[0].x / PIXELS_PER_METER, roundSite(y + base), z + drawing.points[0].y / PIXELS_PER_METER]
         const pathIndex = (path: number | undefined) => indexById.get(owner(path))!
-        members.push(...working.members.map(member => ({ ...member, id: prefix + member.id, [FRAME_SCOPES]: scope,
+        members.push(...working.members.map(member => ({ ...member, [FRAME_SCOPES]: scope,
           [MEMBER_USES]: transformUses(member, world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) })),
           start: world(member.start), end: world(member.end), connectionPoints: member.connectionPoints.map(world),
           pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) })))
@@ -208,17 +208,17 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       const posts: ScaffoldLayout['pipeSegments'] = []
       for (const context of groupPlans) {
         if (!context) continue
-        const { drawing, base, groupIndex } = context, prefix = `R${groupIndex + 1}/`
+        const { drawing, base } = context
         const world = ([x, y, z]: Vector3Tuple): Vector3Tuple => [x + drawing.points[0].x / PIXELS_PER_METER, roundSite(y + base), z + drawing.points[0].y / PIXELS_PER_METER]
         posts.push(...context.construction.working().posts!.flatMap(post => post.segments.map(pipe => ({ ...pipe,
-          id: prefix + pipe.id, memberId: prefix + pipe.memberId, start: world(pipe.start), end: world(pipe.end) }))))
+          start: world(pipe.start), end: world(pipe.end) }))))
       }
       preparedTransitions = commitTransitionPosts(transitionWork!, posts)
     }
     if (phase === 5) for (const context of groupPlans) {
       if (!context) continue
       const prefix = `R${context.groupIndex + 1}/`
-      for (const [id, alias] of context.construction.working().aliases!) transitionAliases.set(prefix + id, prefix + alias)
+      for (const [id, alias] of context.construction.working().aliases!) transitionAliases.set(id, prefix + alias)
     }
   }
   groupPlans.forEach(context => {

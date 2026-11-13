@@ -1,3 +1,5 @@
+import { ConstructionIdentities, constructionAlias } from './rules/facts/constructionIdentity.ts'
+import type { SemanticValue } from './rules/facts/identity.ts'
 import { CONSTRUCTION_PHASES, startConstruction, type ConstructionPhase } from './rules/construction.ts'
 import { COMMITTED_UPRIGHTS, type ScaffoldDraft, type ScaffoldAssembly } from './rules/facts/draft.ts'
 import { mergeSharedRuns } from './rules/policies/sharedMembers.ts'
@@ -440,7 +442,7 @@ type WorkingConstruction = {
 }
 function startScaffoldDraft(...args: Parameters<typeof createScaffoldDraft>) {
   const state: { working?: WorkingConstruction } = {}
-  return { ...startConstruction(constructScaffoldDraft(args[0], args[1], args[2], args[3], args[4], args[5], args[6], state)),
+  return { ...startConstruction(constructScaffoldDraft(args[0], args[1], args[2], args[3], args[4], args[5], args[6], state, args[7])),
     working: () => {
       if (!state.working) throw new Error('Working demand requested before S3')
       return state.working
@@ -448,8 +450,8 @@ function startScaffoldDraft(...args: Parameters<typeof createScaffoldDraft>) {
 }
 export function createScaffoldDraft(points: Point2D[], segmentLengths: number[], parameters: ScaffoldParameters,
   localLifts?: readonly number[], deckLayerOffset = 0, segmentLayerCounts?: readonly number[],
-  requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): ScaffoldDraft {
-  return startScaffoldDraft(points, segmentLengths, parameters, localLifts, deckLayerOffset, segmentLayerCounts, requiredEndPairs).finish()
+  requiredEndPairs: readonly (readonly [boolean, boolean])[] = [], sourceKeys?: readonly SemanticValue[]): ScaffoldDraft {
+  return startScaffoldDraft(points, segmentLengths, parameters, localLifts, deckLayerOffset, segmentLayerCounts, requiredEndPairs, sourceKeys).finish()
 }
 
 function* constructScaffoldDraft(
@@ -461,6 +463,7 @@ function* constructScaffoldDraft(
   segmentLayerCounts?: readonly number[],
   requiredEndPairs: readonly (readonly [boolean, boolean])[] = [],
   state: { working?: WorkingConstruction } = {},
+  sourceKeys?: readonly SemanticValue[],
 ): Generator<ConstructionPhase, ScaffoldDraft, void> {
   yield 2
   parameters = normalizeKernelParameters(parameters)
@@ -469,7 +472,7 @@ function* constructScaffoldDraft(
   const members: ScaffoldMember[] = []
   const warnings: LayoutWarning[] = []
   warnings.push(...postStockWarnings(parameters))
-  let memberSequence = 1
+  const identities = new ConstructionIdentities(sourceKeys ?? [points.map(point => [point.x, point.y]), segmentLengths], localLifts, deckLayerOffset)
   // Compatibility labels follow the historical interleaved display order. Actual
   // construction instead commits working members/posts before any protection.
   let displaySlot = 0, displayPart = 0
@@ -497,7 +500,7 @@ function* constructScaffoldDraft(
     use.rules = [...new Set([...use.rules, ...rules])]
     if (shared) { shared[MEMBER_USES] = combineUses(memberUses(shared), [use]); return shared }
     const member: ScaffoldMember = {
-      id: `M${memberSequence++}`,
+      id: identities.member(type, layer, physicalStart, physicalEnd),
       [MEMBER_USES]: [use],
       type,
       start: physicalStart,
@@ -686,15 +689,15 @@ function* constructScaffoldDraft(
   })
   const aliases = new Map(members.map((member, index) => [member.id, `M${index + 1}`]))
   state.working.aliases = aliases
-  for (const member of members) member.id = aliases.get(member.id)!
-  const renameSequences = (sequences: Record<string, number[]>) => Object.fromEntries(Object.entries(sequences).map(([id, sequence]) => [aliases.get(id)!, sequence]))
+  for (const member of members) member.id = constructionAlias(aliases, member.id)
+  const renameSequences = (sequences: Record<string, number[]>) => Object.fromEntries(Object.entries(sequences).map(([id, sequence]) => [constructionAlias(aliases, id), sequence]))
   const posts = committed.posts.map(post => {
-    const memberId = aliases.get(post.plan.memberId)!
+    const memberId = constructionAlias(aliases, post.plan.memberId)
     const segments = post.segments.map(pipe => ({ ...pipe, memberId, id: `S-${memberId}-${pipe.sequence}` }))
     return { segments, plan: { ...post.plan, memberId, segmentIds: segments.map(pipe => pipe.id) } }
   })
   const committedWarnings = committed.warnings.map(warning => ({ ...warning, id: warning.id.startsWith('splice-stagger-')
-    ? `splice-stagger-${aliases.get(warning.id.slice('splice-stagger-'.length))!}` : warning.id }))
+    ? `splice-stagger-${constructionAlias(aliases, warning.id.slice('splice-stagger-'.length))}` : warning.id }))
 
   // A rail the 立杆 cannot reach was dropped rather than floated. The 内侧 row is the
   // short one on purpose (it is the row against the building), so an open end's top
@@ -874,19 +877,19 @@ export function assembleScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldP
 export type PlanWorkingProduct = Pick<ScaffoldDraft, 'members' | 'decks' | 'baseChannels'> & { posts?: StockAssembly[]; aliases?: Map<string, string> }
 export function startScaffoldPlan(...args: Parameters<typeof prepareScaffoldPlan>) {
   const state: { working?: PlanWorkingProduct } = {}
-  return { ...startConstruction(constructScaffoldPlan(args[0], args[1], args[2], args[3], args[4], args[5], args[6], state)),
+  return { ...startConstruction(constructScaffoldPlan(args[0], args[1], args[2], args[3], args[4], args[5], args[6], state, args[7])),
     working: () => {
       if (!state.working) throw new Error('Plan work requested before S3')
       return state.working
     } }
 }
 export function prepareScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
-  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): PreparedScaffoldPlan {
-  return startScaffoldPlan(drawing, parameters, localLifts, deckLayerOffset, segmentLayerCounts, preserveDirection, requiredEndPairs).finish()
+  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = [], identityScope?: string): PreparedScaffoldPlan {
+  return startScaffoldPlan(drawing, parameters, localLifts, deckLayerOffset, segmentLayerCounts, preserveDirection, requiredEndPairs, identityScope).finish()
 }
 function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
   segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = [],
-  state: { working?: PlanWorkingProduct } = {}): Generator<ConstructionPhase, PreparedScaffoldPlan, void> {
+  state: { working?: PlanWorkingProduct } = {}, identityScope?: string): Generator<ConstructionPhase, PreparedScaffoldPlan, void> {
   yield 2
   const paths = drawingPaths(drawing)
   if (preserveDirection) for (const path of paths) {
@@ -912,7 +915,12 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
     return path.points[i].id === drawing.segments[edge].start ? [pair[0], pair[1]] : [pair[1], pair[0]]
   })
   const constructions = paths.map(path => startScaffoldDraft(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
-    segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path)))
+    segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path),
+    [identityScope ?? null, path.edgeIndices.map(index => {
+      const edge = drawing.segments[index]
+      const start = drawing.points.find(point => point.id === edge.start)!, end = drawing.points.find(point => point.id === edge.end)!
+      return [edge.id, [start.x, start.y], [end.x, end.y]] as const
+    }).sort((a, b) => a[0].localeCompare(b[0]))]))
   let componentDemands: ReturnType<typeof reconcileComponents> | undefined
   let componentStock: ReturnType<typeof assemblePostsStage> | undefined
   for (const phase of CONSTRUCTION_PHASES) {
@@ -925,7 +933,7 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
         const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
         const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
         const edge = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
-        members.push(...mergeSharedRuns(working.members).map(member => ({ ...member, id: prefix + member.id,
+        members.push(...mergeSharedRuns(working.members).map(member => ({ ...member,
           [MEMBER_USES]: transformUses(member, move, use => ({ pathSegment: edge(use.pathSegment)! })),
           start: move(member.start), end: move(member.end), connectionPoints: member.connectionPoints.map(move),
           pathSegment: edge(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(index => edge(index)!),
@@ -942,8 +950,7 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
       } else state.working = { members, decks, baseChannels: bases }
     }
     if (paths.length > 1 && phase === 4) {
-      const sequences = Object.fromEntries(constructions.flatMap((construction, component) =>
-        Object.entries(construction.working().committed!.sequences).map(([id, sequence]) => [`G${component}-${id}`, sequence])))
+      const sequences = Object.fromEntries(constructions.flatMap(construction => Object.entries(construction.working().committed!.sequences)))
       for (const member of componentDemands!.members) if (member.type === 'post') {
         sequences[member.id] = sequences[componentDemands!.sequenceOwners[member.id]]
       }
@@ -959,7 +966,7 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
     }
     if (phase === 5) state.working!.aliases = new Map(constructions.flatMap((construction, component) => {
       const prefix = paths.length > 1 ? `G${component}-` : ''
-      return [...construction.working().aliases!].map(([id, alias]) => [prefix + id, prefix + alias] as const)
+      return [...construction.working().aliases!].map(([id, alias]) => [id, prefix + alias] as const)
     }))
   }
   // A normal connected outline needs exactly one domain calculation on mobile.
@@ -1014,21 +1021,21 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
   const degrees = new Map<string, number>()
   drawing.segments.forEach(s => [s.start, s.end].forEach(id => degrees.set(id, (degrees.get(id) ?? 0) + 1)))
   const aliases = new Map<string, string>(constructions.flatMap((construction, component) =>
-    [...construction.working().aliases!].map(([id, alias]) => [`G${component}-${id}`, `G${component}-${alias}`] as const)))
+    [...construction.working().aliases!].map(([id, alias]) => [id, `G${component}-${alias}`] as const)))
   const sharedPosts = new Map<string, ScaffoldMember>(componentDemands!.members.filter(member => member.type === 'post').map(member => {
-    const id = aliases.get(member.id)!
+    const id = constructionAlias(aliases, member.id)
     return [id, { ...member, id }] as const
   }))
   const finalMembers = members.filter(member => member.type !== 'post' || sharedPosts.has(member.id))
     .map(member => member.type === 'post' ? sharedPosts.get(member.id)! : member)
-  const sequences = Object.fromEntries(Object.entries(componentStock!.sequences).map(([id, sequence]) => [aliases.get(id)!, sequence]))
+  const sequences = Object.fromEntries(Object.entries(componentStock!.sequences).map(([id, sequence]) => [constructionAlias(aliases, id), sequence]))
   const posts = componentStock!.posts.map(post => {
-    const memberId = aliases.get(post.plan.memberId)!
+    const memberId = constructionAlias(aliases, post.plan.memberId)
     const segments = post.segments.map(pipe => ({ ...pipe, memberId, id: `S-${memberId}-${pipe.sequence}` }))
     return { segments, plan: { ...post.plan, memberId, segmentIds: segments.map(pipe => pipe.id) } }
   })
   const stockWarnings = componentStock!.warnings.map(warning => ({ ...warning, id: warning.id.startsWith('splice-stagger-')
-    ? `splice-stagger-${aliases.get(warning.id.slice('splice-stagger-'.length))!}` : warning.id }))
+    ? `splice-stagger-${constructionAlias(aliases, warning.id.slice('splice-stagger-'.length))}` : warning.id }))
   warnings.unshift(...componentWarnings([...degrees.values()], componentDemands!.overlap))
   return { draft: { members: finalMembers, decks: componentDemands!.decks, baseChannels: componentDemands!.bases, warnings, parameters, postSequences: sequences,
     [COMMITTED_UPRIGHTS]: { posts, sequences, warnings: stockWarnings },

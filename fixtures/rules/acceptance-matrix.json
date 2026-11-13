@@ -1035,6 +1035,31 @@
           "file": "src/domain/rules/transitions.test.ts",
           "title": "staged transition intent survives display alias restoration without selecting different geometry",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/constructionIdentity.test.ts",
+          "title": "native demand keys ignore traversal labels and the order of independent paths",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/constructionIdentity.test.ts",
+          "title": "native keys separate equal local geometry belonging to different source frames",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/constructionIdentity.test.ts",
+          "title": "S4 stock plans use native keys and the compatibility boundary restores every reference",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/constructionIdentity.test.ts",
+          "title": "semantic demand keys preserve role, lift, coordinates and scope without rounding",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/constructionIdentity.test.ts",
+          "title": "missing display aliases fail instead of publishing undefined member or pipe references",
+          "count": 1
         }
       ]
     },
