@@ -1,5 +1,6 @@
 import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import type { ScaffoldMember } from '../../scaffold.ts'
+import { FRAME_SCOPES, combinedScopes } from '../facts/scopes.ts'
 import { MEMBER_USES, memberUses, combineUses } from '../facts/memberUses.ts'
 
 const vectorDistance = (a: number[], b: number[]) => Math.hypot(...a.map((n, i) => n - b[i]))
@@ -28,6 +29,8 @@ export function mergeSharedRuns(members: ScaffoldMember[]) {
       if (next.low > active.high + 0.001) { active = next; continue }
       const candidates = [active.member.start, active.member.end, next.member.start, next.member.end]
       candidates.sort((a, b) => a[0] - b[0] || a[2] - b[2])
+      const scopes = combinedScopes(active.member, next.member)
+      if (scopes) active.member[FRAME_SCOPES] = scopes
       active.member[MEMBER_USES] = combineUses(memberUses(active.member), memberUses(next.member)).map(use => ({ ...use, rules: [...new Set([...use.rules, 'M08'])] }))
       active.member.roles = [...new Set([...(active.member.roles ?? [active.member.type]), ...(next.member.roles ?? [next.member.type])])]
       if (active.member.roles.includes('longitudinal')) active.member.type = 'longitudinal'

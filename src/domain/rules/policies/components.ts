@@ -1,4 +1,5 @@
 import type { ScaffoldMember, DeckPanel, BaseChannel, Vector3Tuple } from '../../scaffold.ts'
+import { FRAME_SCOPES, combinedScopes } from '../facts/scopes.ts'
 import { MEMBER_USES, combineUses, memberUses } from '../facts/memberUses.ts'
 import { roundDomain as round } from '../facts/precision.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from '../../polygons.ts'
@@ -11,6 +12,8 @@ export function sharedComponentPosts(candidates: readonly ScaffoldMember[], sour
     if (post.type !== 'post') continue
     const key = pointKey(post.start), existing = posts.get(key)
     if (!existing) { posts.set(key, post); continue }
+    const scopes = combinedScopes(existing, post)
+    if (scopes) existing[FRAME_SCOPES] = scopes
     existing[MEMBER_USES] = combineUses(memberUses(existing), memberUses(post))
     if (post.length > existing.length) {
       existing.length = post.length; existing.end = [...post.end]

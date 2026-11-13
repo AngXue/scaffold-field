@@ -20,6 +20,7 @@ import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { assembledLength, postStockWarnings } from './rules/policies/stock.ts'
 import { assemblePostsStage, assembleStockStage, resolvePostSequences, type StockAssembly } from './rules/stock.ts'
 import { mergeMemberStage } from './rules/sharedMembers.ts'
+import { FRAME_SCOPES, CONSTRUCTION_FRAMES } from './rules/facts/scopes.ts'
 import { MEMBER_USES, RETIRED_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
 import { fitGuardrailStock } from './guardrails.ts'
@@ -133,6 +134,7 @@ export const CONNECTOR_LABELS: Record<ConnectorType, string> = {
 export const SWEEP_BAR_LAYER = 0
 
 export type ScaffoldMember = {
+  [FRAME_SCOPES]?: readonly string[]
   [MEMBER_USES]?: import('./rules/facts/memberUses.ts').MemberUse[]
   id: string
   type: MemberType
@@ -160,6 +162,7 @@ export type PipeSegment = {
 }
 
 export type DeckPanel = {
+  [FRAME_SCOPES]?: readonly string[]
   id: string
   corners: [Vector3Tuple, Vector3Tuple, Vector3Tuple, Vector3Tuple]
   /** Visible, non-overlapping cut faces belonging to this one purchased panel. */
@@ -294,6 +297,7 @@ export type PathDimension = {
 }
 
 export type ScaffoldLayout = {
+  [CONSTRUCTION_FRAMES]?: import('./rules/facts/scopes.ts').ConstructionFrame[]
   [RETIRED_USES]?: import('./rules/facts/memberUses.ts').RetiredUse[]
   /** Measured path only: an open path has no implied closing edge. */
   pathDimensions: PathDimension[]

@@ -3,10 +3,11 @@ import { DEFAULT_PARAMETERS, type ScaffoldMember, type Vector3Tuple, type PipeSe
 import type { SiteSection, SectionSummary } from '../site'
 import { resolveTransitions } from './transitions'
 import { actualPostTops } from './policies/transitions'
+import { FRAME_SCOPES } from './facts/scopes'
 import { MEMBER_USES, makeUse, memberUses } from './facts/memberUses'
 
 const rail = (id: string, type: ScaffoldMember['type'], start: Vector3Tuple, end: Vector3Tuple, pathSegment: number): ScaffoldMember => ({
-  id, type, start, end, pathSegment, layer: 1, length: Math.hypot(...end.map((value, i) => value - start[i])), connectionPoints: [start, end],
+  [FRAME_SCOPES]: [`frame-${pathSegment}`], id, type, start, end, pathSegment, layer: 1, length: Math.hypot(...end.map((value, i) => value - start[i])), connectionPoints: [start, end],
   [MEMBER_USES]: [makeUse(pathSegment, type === 'guardrail' ? 'side-guard' : type, start, end, 'P02')],
 })
 const input = () => {
@@ -52,4 +53,27 @@ it('reads physical post tops independently of horizontal tubes and tube directio
     { id: 'p2', memberId: 'post', type: 'post', start: [0, 6.4, 0], end: [0, 3, 0] },
     { id: 'other', memberId: 'horizontal', type: 'longitudinal', start: [0, 10, 0], end: [2, 10, 0] }] as PipeSegment[]
   expect(actualPostTops(pipes)).toEqual({ post: 6.4 })
+})
+
+it('selects transition scopes independently of member and deck display ID prefixes', () => {
+  const source = input()
+  const isolated = rail('R1/unrelated', 'longitudinal', [10, 1.88, 0], [11, 1.88, 0], 2)
+  source.members.push(isolated)
+  const deck = { id: 'R1/unrelated-deck', [FRAME_SCOPES]: ['frame-2'], pathSegment: 2, layer: 1, area: 0.75,
+    corners: [[10, 1.88, 0], [11, 1.88, 0], [11, 1.88, 0.75], [10, 1.88, 0.75]] as import('../scaffold').DeckPanel['corners'] }
+  const result = resolveTransitions({ ...source, decks: [deck] })
+  expect(result.opened!.groups.sort()).toEqual(['frame-0', 'frame-1'])
+  expect(result.opened!.members.some(member => member.id === isolated.id)).toBe(false)
+  expect(result.opened!.decks.some(item => item.id === deck.id)).toBe(false)
+  expect(result.plan.links.every(member => member[FRAME_SCOPES]?.join(',') === 'frame-0,frame-1')).toBe(true)
+  const renamed = resolveTransitions({ ...source, members: source.members.map((member, index) => ({ ...member, id: `label-${index}` })), decks: [{ ...deck, id: 'label-deck' }] })
+  expect(renamed.opened!.groups).toEqual(result.opened!.groups)
+  const geometry = (members: ScaffoldMember[]) => members.map(({ type, start, end }) => ({ type, start, end }))
+  expect(geometry(renamed.opened!.members)).toEqual(geometry(result.opened!.members))
+  expect(renamed.opened!.decks).toEqual([])
+})
+it('rejects a missing committed scope instead of guessing a physical group from a display label', () => {
+  const source = input()
+  delete source.members[0][FRAME_SCOPES]
+  expect(() => resolveTransitions(source)).toThrow('Missing committed construction frame scope')
 })

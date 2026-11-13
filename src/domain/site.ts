@@ -17,6 +17,8 @@ import { mm, metresFromMm as m, roundSite, SITE_EPS as EPS } from './rules/facts
 import { componentGroups } from './rules/groups.ts'
 import { meetOnPlan, footingStations } from './rules/policies/groups.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
+import { SemanticIdentities } from './rules/facts/identity.ts'
+import { FRAME_SCOPES, CONSTRUCTION_FRAMES, frameScope, inFrameScopes } from './rules/facts/scopes.ts'
 import { MEMBER_USES, RETIRED_USES, transformUses, memberUses } from './rules/facts/memberUses.ts'
 import { resolveBlocks } from './rules/policies/blocks.ts'
 export { resolveBlocks } from './rules/policies/blocks.ts'
@@ -114,7 +116,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   }
   const indexById = new Map(site.sections.map((line, index) => [line.id, index]))
   const physicalGroups: PhysicalGroup[] = []
-  const completions: Array<{ prefix: string; complete: () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans'>; release: () => void }> = []
+  const completions: Array<{ scopeId: string; complete: () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans'>; release: () => void }> = []
   const validations: Array<{ groupIndex: number; validate: (physical: { checks: PhysicalCheck[]; elements: ElementBounds[] }) => void }> = []
   let measuredLength = 0
   const minimumLength = flat ? 0.01 : MIN_SECTION_LENGTH
@@ -126,6 +128,8 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   for (const issue of inputs.issues) appendIssue(issues, issue)
   const eligible = new Set(summaries.filter(summary => summary.length >= minimumLength).map(summary => summary.id))
   const groups = componentGroups(site.sections.filter(s => eligible.has(s.id)), wallIds, settings.width)
+  const scopeIdentities = new SemanticIdentities()
+  layout[CONSTRUCTION_FRAMES] = groups.map(group => ({ id: frameScope(scopeIdentities, group), spanIds: group.map(section => section.id) }))
   const groupBySection = new Map(groups.flatMap((group, i) => group.map(s => [s.id, i] as const)))
   for (let i = 0; i < site.sections.length; i++) for (let j = i + 1; j < site.sections.length; j++) {
     const a = site.sections[i], b = site.sections[j]
@@ -134,6 +138,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     }
   }
   groups.forEach((group, groupIndex) => {
+    const scopeId = layout[CONSTRUCTION_FRAMES]![groupIndex].id, scope = [scopeId]
     const section = group.reduce((highest, line) => line.layers > highest.layers ? line : highest)
     const summary = summaries.find(item => item.id === section.id)!
     const base = summary.base, surface = blocks.find(block => block.id === section.surfaceId)
@@ -211,7 +216,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     const pending = { value: { preparation, toPlan: plan.toPlan, members, decks: part.decks } as {
       preparation: typeof preparation; toPlan: typeof plan.toPlan; members: typeof members; decks: typeof part.decks;
     } | undefined }
-    completions.push({ prefix, release: () => { pending.value = undefined }, complete: () => {
+    completions.push({ scopeId, release: () => { pending.value = undefined }, complete: () => {
       const { preparation, toPlan, members, decks } = pending.value!
       const physical = finishPreparedScaffoldAssembly(preparation)
       // Logical world geometry was committed above. Only new physical records
@@ -228,7 +233,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     } })
     for (const member of members) {
       if (member.type === 'post') checks.push({ kind: 'post', sectionId: memberOwners.get(member.id)!, point: member.start })
-      layout.members.push({ ...member, id: prefix + member.id })
+      layout.members.push({ ...member, [FRAME_SCOPES]: scope, id: prefix + member.id })
     }
     for (const beam of part.baseChannels) {
       const start = world(beam.start), end = world(beam.end)
@@ -253,7 +258,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       const polygons = (coverage ?? [corners]).map(face => face.map(([x, , z]) => [x, z] as [number, number]))
       checks.push({ kind: 'deck', sectionId: owner(deck.pathSegment), elevation: corners[0][1], polygons })
       elements.push({ sectionId: owner(deck.pathSegment), deck: polygons, bounds: deckBounds(coverage?.flat() ?? corners) })
-      layout.decks.push({ ...deck, id: prefix + deck.id, corners, coverage, pathSegment: pathIndex(deck.pathSegment) })
+      layout.decks.push({ ...deck, [FRAME_SCOPES]: scope, id: prefix + deck.id, corners, coverage, pathSegment: pathIndex(deck.pathSegment) })
     }
     validations.push({ groupIndex, validate: physical => {
       checks.push(...physical.checks)
@@ -296,10 +301,11 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     completions.reverse()
     while (completions.length) {
       const completion = completions.pop()!
-      try { if (!changed.has(completion.prefix.slice(0, -1))) additions.push(completion.complete()) }
+      try { if (!changed.has(completion.scopeId)) additions.push(completion.complete()) }
       finally { completion.release() }
     }
-    const retained = (id: string) => changed.has(id.split('/')[0]) || (changed.size > 0 && id.startsWith('transition-'))
+    const retainedIds = changed.size ? new Set(resolved.members.filter(member => inFrameScopes(member, changed)).map(member => member.id)) : new Set<string>()
+    const retained = (id: string) => retainedIds.has(id)
     const final: SiteAssembly = { ...preview, ...resolved,
       pipeSegments: [...additions.flatMap(part => part.pipeSegments), ...resolved.pipeSegments.filter(pipe => retained(pipe.memberId))],
       connectors: [...additions.flatMap(part => part.connectors), ...resolved.connectors.filter(connector => retained(connector.memberId))],

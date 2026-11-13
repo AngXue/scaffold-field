@@ -4,6 +4,7 @@ import { contactOf } from './connections.ts'
 import { memberUses, RETIRED_USES, type MemberUse } from './memberUses.ts'
 import { validateLineage, type LineageRecord, type RangeReplacement } from './lineage.ts'
 import { buildMaterialLedger } from './materialLedger.ts'
+import { CONSTRUCTION_FRAMES, FRAME_SCOPES } from './scopes.ts'
 import { canonicalPoints, SemanticIdentities } from './identity.ts'
 
 export type ConnectionNode = {
@@ -49,6 +50,17 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   })
   const spanByLegacy = new Map(spans.map(span => [span.legacyId, span]))
   if (sourceIds.size !== sources.length || spanByLegacy.size !== spans.length) throw new Error('Duplicate source or support span ID')
+  const frames = (layout[CONSTRUCTION_FRAMES] ?? []).map(frame => publish({ id: frame.id, spanIds: frame.spanIds.map(id => {
+    const span = spanByLegacy.get(id)
+    if (!span) throw new Error(`Dangling construction frame span: ${id}`)
+    return span.id
+  }).sort() }))
+  const frameIds = new Set(frames.map(frame => frame.id))
+  const frameReferences = (entity: { [FRAME_SCOPES]?: readonly string[] }) => {
+    const result = [...(entity[FRAME_SCOPES] ?? [])].sort()
+    if (result.some(id => !frameIds.has(id))) throw new Error('Dangling construction frame reference')
+    return result
+  }
   uniqueLegacy(layout.members, 'logical member')
   const ranges = new Map<string, { id: string; spanId: string; sourceId: string; purpose: MemberUse['purpose']; start: Vector3Tuple; end: Vector3Tuple; rules: string[] }>()
   const replacements = new Map<string, RangeReplacement>()
@@ -80,7 +92,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
     return publish({ id: ids.of('member', [[...new Set(member.roles ?? [member.type])].sort(), member.layer ?? null,
       canonicalPoints([member.start, member.end]), canonicalPoints(member.connectionPoints), origins]),
-      legacyId: member.id, type: member.type, uses, useIds: [...new Set(useIds)].sort(), nodeIds: [] as string[], sourceIds: [...new Set(origins.map(origin => origin[0]))].sort(),
+      legacyId: member.id, type: member.type, frameIds: frameReferences(member), uses, useIds: [...new Set(useIds)].sort(), nodeIds: [] as string[], sourceIds: [...new Set(origins.map(origin => origin[0]))].sort(),
       spanIds: [...new Set(origins.map(origin => origin[1]))].sort() })
   })
   const retired = [...new Map((layout[RETIRED_USES] ?? []).map(record => {
@@ -178,7 +190,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     return span
   }
   const decks = layout.decks.map(deck => publish({ id: ids.of('deck', [spanFor(deck.pathSegment).id, deck.layer, canonicalPoints(deck.corners)]),
-    legacyId: deck.id, spanIds: [spanFor(deck.pathSegment).id], sourceIds: [spanFor(deck.pathSegment).sourceId] }))
+    legacyId: deck.id, frameIds: frameReferences(deck), spanIds: [spanFor(deck.pathSegment).id], sourceIds: [spanFor(deck.pathSegment).sourceId] }))
   const bases = layout.baseChannels.map(base => publish({ id: ids.of('base', [spanFor(base.pathSegment).id, canonicalPoints([base.start, base.end])]),
     legacyId: base.id, spanIds: [spanFor(base.pathSegment).id], sourceIds: [spanFor(base.pathSegment).sourceId] }))
   const ledger = buildMaterialLedger(layout)
@@ -202,6 +214,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   }
   sources.forEach(source => derive(source.id, 'source'))
   spans.forEach(span => derive(span.id, 'span', [span.sourceId]))
+  frames.forEach(frame => derive(frame.id, 'frame', frame.spanIds))
   ranges.forEach(range => derive(range.id, 'use', [range.spanId]))
   for (const replacement of replacements.values()) {
     lineage.get(replacement.after)!.derivedFrom.push(replacement.before)
@@ -211,7 +224,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     derive(record.id, 'removed-use', [record.useId])
     lineage.get(record.useId)!.replacedBy.push(record.id)
   })
-  members.forEach(member => derive(member.id, 'member', member.useIds))
+  members.forEach(member => derive(member.id, 'member', [...member.useIds, ...member.frameIds]))
   pipes.forEach(pipe => derive(pipe.id, 'pipe', [pipe.memberId]))
   nodes.forEach(node => derive(node.id, 'node', node.memberIds))
   const connectorNodes = new Map(nodes.flatMap(node => node.connectorIds.map(id => [id, node.id] as const)))
@@ -226,7 +239,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   validateLineage([...lineage.values()])
   const ordered = <T extends { id: string }>(values: T[]) => values.sort((a, b) => a.id.localeCompare(b.id))
   return { identityVersion: 1, lineageScope: 'final entities, retained interval replacements and removed guard purposes; intermediate merged entity identities pending',
-    retired: ordered(retired),
+    frames: ordered(frames), retired: ordered(retired),
     ranges: ordered([...ranges.values()]), replacements: [...replacements.values()].sort((a, b) => a.before.localeCompare(b.before) || a.after.localeCompare(b.after)),
     lineage: ordered([...lineage.values()]), sources: ordered(sources), spans: ordered(spans), nodes: ordered(nodes), members: ordered(members),
     pipes: ordered(pipes), connectors: ordered(connectors), decks: ordered(decks), bases: ordered(bases), ledger: { ...ledger, entries: ordered(entries) } }

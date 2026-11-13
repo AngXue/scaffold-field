@@ -1,3 +1,4 @@
+import { FRAME_SCOPES, combinedScopes, requiredScopes, inFrameScopes } from '../facts/scopes.ts'
 import { MEMBER_USES, memberUses, makeUse, clipUses, hasSource, type RetiredUse } from '../facts/memberUses.ts'
 import { deckBetweenStations } from './decks.ts'
 import type { DeckPanel, ScaffoldMember, ScaffoldParameters, Vector3Tuple, PipeSegment } from '../../scaffold.ts'
@@ -88,7 +89,7 @@ export function planTransitions(geometry: TransitionGeometry, tops: Record<strin
       levels.push(elevation)
       for (const { from, to } of matches) {
         const start = from.point, end = to.point
-        links.push({ id: `transition-${links.length + 1}`, type: from.member.type, layer, pathSegment: left,
+        links.push({ [FRAME_SCOPES]: combinedScopes(from.member, to.member), id: `transition-${links.length + 1}`, type: from.member.type, layer, pathSegment: left,
           start, end, length: roundSite(gap), connectionPoints: [start, end],
           [MEMBER_USES]: [left, right].map(index => ({ ...makeUse(index, from.member.type === 'guardrail' ? 'bridge-guard' : 'bridge-working', start, end, 'P05'), sectionId: spans[index].sourceId, spanId: spans[index].line.id })) })
         if (from.member.type !== 'guardrail') continue
@@ -108,7 +109,8 @@ export function planTransitions(geometry: TransitionGeometry, tops: Record<strin
         const sides = [rails[0], rails.at(-1)!]
         const from: [Vector3Tuple, Vector3Tuple] = [sides[0].from.point, sides[1].from.point]
         const to: [Vector3Tuple, Vector3Tuple] = [sides[0].to.point, sides[1].to.point]
-        panels.push(...deckBetweenStations(from, to, layer, left, `transition-deck-${left}-${right}-${layer}`, settings))
+        panels.push(...deckBetweenStations(from, to, layer, left, `transition-deck-${left}-${right}-${layer}`, settings)
+          .map(panel => ({ ...panel, [FRAME_SCOPES]: combinedScopes(...rails.flatMap(rail => [rail.from.member, rail.to.member])) })))
       }
     }
     if (levels.length) {
@@ -154,10 +156,8 @@ export function openTransitionCaps(geometry: TransitionGeometry, plan: Transitio
     return remaining
   }
   const joinedIndices = new Set(bridges.flatMap(bridge => [bridge.left, bridge.right]))
-  const groupOf = (id: string) => id.split('/')[0]
-  const groups = new Set(members.filter(member => [...joinedIndices].some(index => hasSource(member, index)) || capCuts.has(member.id)).map(member => groupOf(member.id)))
-  const affected = (id: string) => groups.has(groupOf(id))
-  return { groups: [...groups], members: [...members.filter(member => affected(member.id)).flatMap(openCaps), ...links],
-    decks: [...decks.filter(deck => affected(deck.id)), ...panels], retired }
+  const groups = new Set(members.filter(member => [...joinedIndices].some(index => hasSource(member, index)) || capCuts.has(member.id)).flatMap(member => [...requiredScopes(member)]))
+  return { groups: [...groups], members: [...members.filter(member => inFrameScopes(member, groups)).flatMap(openCaps), ...links],
+    decks: [...decks.filter(deck => inFrameScopes(deck, groups)), ...panels], retired }
 
 }

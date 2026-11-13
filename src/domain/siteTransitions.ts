@@ -1,3 +1,4 @@
+import { inFrameScopes } from './rules/facts/scopes.ts'
 import { RETIRED_USES } from './rules/facts/memberUses.ts'
 import type { ScaffoldAssembly } from './rules/facts/draft.ts'
 import { positionStock } from './rules/placement.ts'
@@ -22,11 +23,13 @@ export function connectSiteTransitions(layout: ScaffoldAssembly, spans: RoutedSp
   const { plan, opened } = resolveTransitions({ members: layout.members, decks: layout.decks, posts: layout.pipeSegments.filter(pipe => pipe.type === 'post'), spans, summaries, transitions, settings })
   const { joined, failed, bridges } = plan
   if (!opened) return { layout, joined, failed, bridges, affected: [] as string[] }
-  const groups = new Set(opened.groups), affected = (id: string) => groups.has(id.split('/')[0])
+  const groups = new Set(opened.groups)
+  const affectedIds = new Set(layout.members.filter(member => inFrameScopes(member, groups)).map(member => member.id))
+  const affected = (id: string) => affectedIds.has(id)
   const assembled = assembleConnectedRuns(layout, opened.members, opened.decks, settings)
   const combinedMembers = [...layout.members.filter(member => !affected(member.id)), ...assembled.members]
   const pipes = [...layout.pipeSegments.filter(pipe => !affected(pipe.memberId)), ...assembled.pipeSegments]
-  const combinedDecks = [...layout.decks.filter(deck => !affected(deck.id)), ...assembled.decks]
+  const combinedDecks = [...layout.decks.filter(deck => !inFrameScopes(deck, groups)), ...assembled.decks]
   const fittings = [...layout.connectors.filter(connector => !affected(connector.memberId)), ...assembled.connectors]
   const plans = [...layout.assemblyPlans.filter(plan => !affected(plan.memberId)), ...assembled.assemblyPlans]
   return { layout: { ...layout, [RETIRED_USES]: [...(layout[RETIRED_USES] ?? []), ...opened.retired], members: combinedMembers, pipeSegments: pipes, decks: combinedDecks, connectors: fittings, assemblyPlans: plans }, joined, failed, bridges, affected: [...groups] }

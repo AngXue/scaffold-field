@@ -29,6 +29,8 @@ try {
     assert.deepEqual(diagnostic.input.scene, input.scene)
     const graph = diagnostic.graph
     assert.equal(graph.identityVersion, 1)
+    const frames = new Set(graph.frames.map(frame => frame.id))
+    assert(frames.size > 0 && graph.members.every(member => member.frameIds.length > 0 && member.frameIds.every(id => frames.has(id))))
     assert.equal(graph.pipes.length, 731)
     assert.equal(graph.ledger.entries.filter(entry => entry.category === 'cross').length, 1485)
     assert.equal(graph.ledger.entries.filter(entry => entry.category === 'butt').length, 222)
