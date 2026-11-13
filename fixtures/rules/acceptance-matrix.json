@@ -179,7 +179,32 @@
         },
         {
           "file": "src/domain/scaffold.test.ts",
-          "title": "keeps closed geometry and stock quantities independent of the drawing start",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (rectangle-in)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (rectangle-out)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (closed-l)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (closed-notch)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (odd-bays)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (user-short-returns)",
           "count": 1
         },
         {
@@ -1120,6 +1145,21 @@
           "file": "src/domain/rules/facts/stockHistory.test.ts",
           "title": "physical graph rejects stock histories with missing demand roots, cyclic moves or conflicting reused identities",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/posts.test.ts",
+          "title": "initial shared-post history retains each real height before reconciliation and cannot rewrite the shorter demand",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/posts.test.ts",
+          "title": "initial post demand identities isolate source frames while remaining deterministic for the same frame",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/posts.test.ts",
+          "title": "mitre demand history retains the two adjacent faces before publishing their common post",
+          "count": 1
         }
       ]
     },
@@ -1298,7 +1338,32 @@
         },
         {
           "file": "src/domain/scaffold.test.ts",
-          "title": "keeps closed geometry and stock quantities independent of the drawing start",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (rectangle-in)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (rectangle-out)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (closed-l)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (closed-notch)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (odd-bays)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start (user-short-returns)",
           "count": 1
         },
         {

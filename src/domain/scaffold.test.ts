@@ -179,7 +179,7 @@ describe('calculateScaffold', () => {
     expect(outward.materials.deckCount).toBe(160)
   })
 
-  it('keeps closed geometry and stock quantities independent of the drawing start', () => {
+  it.each(['rectangle-in', 'rectangle-out', 'closed-l', 'closed-notch', 'odd-bays', 'user-short-returns'])('keeps closed geometry and stock quantities independent of the drawing start (%s)', id => {
     const canonical = (shape: Shape, layout: ScaffoldLayout) => {
       const point = (p: number[]) => [p[0] + shape.points[0][0], p[1], p[2] + shape.points[0][1]].map(n => (Math.round((n + 1e-8) * 1000) / 1000).toFixed(3)).join(',')
       return {
@@ -190,16 +190,14 @@ describe('calculateScaffold', () => {
         connectors: layout.materials.connectorSummary,
       }
     }
-    for (const id of ['rectangle-in', 'rectangle-out', 'closed-l', 'closed-notch', 'odd-bays', 'user-short-returns']) {
-      const shape = SHAPES.find(s => s.id === id)!
-      const expected = canonical(shape, orthogonal(id))
-      const vertices = shape.points.slice(0, -1)
-      for (let index = 1; index < vertices.length; index++) {
-        const rotated = [...vertices.slice(index), ...vertices.slice(0, index)]
-        const changed = { ...shape, points: [...rotated, rotated[0]] }
-        const input = planInput(changed)
-        expect(canonical(changed, calculateScaffold(input.points, input.lengths, REFERENCE_PARAMETERS)), `${id}:${index}`).toEqual(expected)
-      }
+    const shape = SHAPES.find(s => s.id === id)!
+    const expected = canonical(shape, orthogonal(id))
+    const vertices = shape.points.slice(0, -1)
+    for (let index = 1; index < vertices.length; index++) {
+      const rotated = [...vertices.slice(index), ...vertices.slice(0, index)]
+      const changed = { ...shape, points: [...rotated, rotated[0]] }
+      const input = planInput(changed)
+      expect(canonical(changed, calculateScaffold(input.points, input.lengths, REFERENCE_PARAMETERS)), `${id}:${index}`).toEqual(expected)
     }
   })
 

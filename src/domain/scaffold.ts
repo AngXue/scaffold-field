@@ -1,5 +1,5 @@
 import { STOCK_HISTORY, stockHistoryTransformer } from './rules/facts/stockHistory.ts'
-import { MEMBER_HISTORY, memberBirth, historyTransformer, type MemberHistory } from './rules/facts/memberHistory.ts'
+import { MEMBER_HISTORY, memberBirth, memberPublication, historyTransformer, type MemberHistory } from './rules/facts/memberHistory.ts'
 import { ConstructionIdentities, constructionAlias } from './rules/facts/constructionIdentity.ts'
 import type { SemanticValue } from './rules/facts/identity.ts'
 import { CONSTRUCTION_PHASES, startConstruction, type ConstructionPhase } from './rules/construction.ts'
@@ -568,7 +568,7 @@ function* constructScaffoldDraft(
   const { outerRow, innerRow } = profiles.get(layerCount)!.height
   const frameStage = startFrameRows(physical, topology.stations, topology.corners, physical.slice(0, -1).map((_, index) => layersAt(index)), pathIsClosed, parameters)
   let frame = frameStage.advance(3)
-  const postStage = startPosts({ rows: frame.rows.map(rows => rows.postRows), heights: frame.rows.map((_, index) => profileAt(index).height),
+  const postStage = startPosts({ identityScope: identities.scope, rows: frame.rows.map(rows => rows.postRows), heights: frame.rows.map((_, index) => profileAt(index).height),
     ends: frame.ends, grid: topology.grid, stations: topology.stations, mitres: topology.corners.mitrePosts, retained: topology.retained }, parameters)
   let postPlan = postStage.advance(3)
   const postDemands = new Map(postPlan.posts.map(post => [post.key, post])), emittedPosts = new Set<string>()
@@ -580,6 +580,7 @@ function* constructScaffoldDraft(
     const member = addMember('post', post.point, end, undefined, post.pathSegment, [post.point, end], 0, 0)
     if (!member) return
     member[MEMBER_USES] = post.uses
+    member[MEMBER_HISTORY] = memberPublication(member, post[MEMBER_HISTORY]!, member.id)
     if (post.cornerJunctions) member.cornerJunctions = post.cornerJunctions
     emittedPosts.add(key)
   }
@@ -667,7 +668,7 @@ function* constructScaffoldDraft(
   })
 
   baseChannels = resolveSupportingBases(baseChannels, members)
-  for (const member of members) member[MEMBER_HISTORY] = memberBirth(member, member.id)
+  for (const member of members) member[MEMBER_HISTORY] ??= memberBirth(member, member.id)
   state.working = { members, decks, baseChannels }
   yield 4
   heightStage.advance(4)

@@ -33,6 +33,8 @@ try {
     assert(frames.size > 0 && graph.members.every(member => member.frameIds.length > 0 && member.frameIds.every(id => frames.has(id))))
     const construction = new Map(graph.construction.map(node => [node.id, node]))
     assert(graph.members.every(member => construction.has(member.constructionId)))
+    assert(graph.construction.some(node => node.operation === 'emit'))
+    assert(graph.construction.some(node => node.id.startsWith('post-demand:')))
     for (const kind of ['merge', 'clip', 'connect', 'purpose-removal']) assert(graph.construction.some(node => node.operation === kind))
     assert(graph.construction.every(node => node.parentIds.every(id => construction.has(id))))
     assert(graph.retired.every(record => construction.get(record.constructionId)?.operation === 'purpose-removal'))

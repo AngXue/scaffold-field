@@ -1,5 +1,7 @@
-import type { Vector3Tuple, ScaffoldParameters } from '../../scaffold.ts'
-import { makeUse, combineUses, type MemberUse } from '../facts/memberUses.ts'
+import { MEMBER_HISTORY, memberBirth, memberChange, type MemberHistory } from '../facts/memberHistory.ts'
+import { SemanticIdentities } from '../facts/identity.ts'
+import type { Vector3Tuple, ScaffoldParameters, ScaffoldMember } from '../../scaffold.ts'
+import { MEMBER_USES, makeUse, combineUses, type MemberUse } from '../facts/memberUses.ts'
 import { roundDomain as round } from '../facts/precision.ts'
 import { postHeightAt, type HeightProfile } from './heights.ts'
 import type { CornerTopology, StationGrid, AlignedStations } from './topology.ts'
@@ -7,22 +9,38 @@ import type { EndBoundary } from './protectionRanges.ts'
 import { chooseStockLengths, neighbourStockSequence, postStocks } from './stock.ts'
 
 export const postPointKey = (point: readonly number[]) => point.map(value => round(value)).join(':')
-export type PostDemand = { key: string; point: Vector3Tuple; top: number; pathSegment: number; parity: number; uses: MemberUse[]; cornerJunctions?: number[] }
-export type PostInput = { rows: Vector3Tuple[][][]; heights: HeightProfile[]; ends: EndBoundary[]; grid: StationGrid;
+export type PostDemand = { [MEMBER_HISTORY]?: MemberHistory; key: string; point: Vector3Tuple; top: number; pathSegment: number; parity: number; uses: MemberUse[]; cornerJunctions?: number[] }
+export type PostInput = { identityScope?: string; rows: Vector3Tuple[][][]; heights: HeightProfile[]; ends: EndBoundary[]; grid: StationGrid;
   stations: AlignedStations; mitres: CornerTopology['mitrePosts']; retained: boolean[][] }
 /** G08 reconciles all demands before emission, preserving the original first-owner and height/parity decisions. */
 export function resolvePostDemands(input: PostInput): PostDemand[] {
   const posts = new Map<string, PostDemand>()
-  const create = (point: Vector3Tuple, top: number, pathSegment: number, parity: number): PostDemand => ({ key: postPointKey(point), point: [...point], top,
-    pathSegment, parity, uses: [makeUse(pathSegment, 'post', point, [point[0], top, point[2]], 'M01')] })
+  const identities = new SemanticIdentities()
+  const asMember = (post: PostDemand): ScaffoldMember => ({ id: post.key, type: 'post', start: post.point,
+    end: [post.point[0],post.top,post.point[2]], length: post.top - post.point[1], connectionPoints: [post.point,[post.point[0],post.top,post.point[2]]],
+    pathSegment: post.pathSegment, [MEMBER_USES]: post.uses })
+  const create = (point: Vector3Tuple, top: number, pathSegment: number, parity: number): PostDemand => {
+    const post: PostDemand = { key: postPointKey(point), point: [...point], top, pathSegment, parity,
+      uses: [makeUse(pathSegment, 'post', point, [point[0], top, point[2]], 'M01')] }
+    const id = identities.of('post-demand', [input.identityScope ?? null, pathSegment, point, top, parity])
+    post[MEMBER_HISTORY] = memberBirth(asMember(post), id)
+    return post
+  }
+  const reconcile = (post: PostDemand, parents: MemberHistory[]) => {
+    post[MEMBER_HISTORY] = memberChange(asMember(post), parents, 'G08', 'merge')
+  }
   const next = (index: number) => (index + 1) % input.grid.segmentCount
   for (const mitre of input.mitres) {
     const top = Math.max(postHeightAt(input.heights[mitre.pathSegment], 1, false), postHeightAt(input.heights[next(mitre.pathSegment)], 1, false))
     const key = postPointKey(mitre.point)
+    const incoming = create(mitre.point, postHeightAt(input.heights[mitre.pathSegment], 1, false), mitre.pathSegment, mitre.parity)
+    const outgoing = create(mitre.point, postHeightAt(input.heights[next(mitre.pathSegment)], 1, false), next(mitre.pathSegment), mitre.parity)
+    const prior = posts.get(key)?.[MEMBER_HISTORY]
     if (!posts.has(key)) posts.set(key, create(mitre.point, top, mitre.pathSegment, mitre.parity))
     const post = posts.get(key)!
     post.cornerJunctions = [...(post.cornerJunctions ?? []), mitre.pathSegment]
     post.uses = combineUses(post.uses, [makeUse(next(mitre.pathSegment), 'post', post.point, [post.point[0], post.top, post.point[2]], 'G08')])
+    reconcile(post, [...(prior ? [prior] : []), incoming[MEMBER_HISTORY]!, outgoing[MEMBER_HISTORY]!])
   }
   for (const segment of input.grid.segmentOrder) {
     if (input.stations[segment].segmentLength <= 0.001) continue
@@ -35,8 +53,10 @@ export function resolvePostDemands(input: PostInput): PostDemand[] {
         const existing = posts.get(key)
         if (!existing) posts.set(key, create(point, top, segment, parity))
         else {
+          const ancestors = [existing[MEMBER_HISTORY]!, create(point, top, segment, parity)[MEMBER_HISTORY]!]
           existing.uses = combineUses(existing.uses, [makeUse(segment, 'post', point, [point[0], top, point[2]], 'G08')])
           if (existing.top < top) { existing.top = top; existing.parity = parity }
+          reconcile(existing, ancestors)
         }
       }
     }

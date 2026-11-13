@@ -8,7 +8,7 @@ import { canonicalPoints, SemanticIdentities } from './identity.ts'
 export const MEMBER_HISTORY = Symbol('scaffold.memberHistory')
 export type MemberHistory = {
   readonly id: string
-  readonly operation: 'demand' | 'merge' | 'clip' | 'connect' | 'purpose-removal'
+  readonly operation: 'demand' | 'emit' | 'merge' | 'clip' | 'connect' | 'purpose-removal'
   readonly rules: readonly string[]
   readonly type: MemberType
   readonly roles: readonly MemberType[]
@@ -37,6 +37,13 @@ export function memberBirth(member: ScaffoldMember, nativeId?: string): MemberHi
     start: [...member.start] as Vector3Tuple, end: [...member.end] as Vector3Tuple, parents: [], uses })
 }
 export function historyOf(member: ScaffoldMember): MemberHistory { return member[MEMBER_HISTORY] ?? memberBirth(member) }
+
+/** Publish a native member from already-resolved local demands. */
+export function memberPublication(member: ScaffoldMember, parent: MemberHistory, nativeId: string): MemberHistory {
+  const birth = memberBirth(member, nativeId)
+  if (birth.id === parent.id) throw new Error('Member publication cannot depend on itself')
+  return freeze({ ...birth, operation: 'emit', parents: [parent] })
+}
 
 /** A change gets its own identity. No producer edits a published parent record. */
 export function memberChange(member: ScaffoldMember, inputs: readonly MemberHistory[], rule: string,

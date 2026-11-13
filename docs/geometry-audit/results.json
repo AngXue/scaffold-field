@@ -1,6 +1,6 @@
 {
   "date": "2026-11-13",
-  "sourceHash": "72b6b67e677a9dcabae3ca797c98ecefa5e045abb6f0c057754d2c0bd4d5a767",
+  "sourceHash": "2e8bb56bdbf68ef9b43f582ee0056a2243555ed10b93316735d749c822a0cce4",
   "sourceFiles": [
     {
       "path": "guardrails.ts",
@@ -80,7 +80,7 @@
     },
     {
       "path": "rules/diagnostics/build.ts",
-      "sha256": "90393fbea510519aae0129c8d7c18ccf20e71d54868675acb2fe41c0fddf6cf3"
+      "sha256": "d446f6a04e28db3342eeb827ec5e6f6db130b005fe1d98eee9ce643349b70124"
     },
     {
       "path": "rules/diagnostics/editor.ts",
@@ -136,7 +136,7 @@
     },
     {
       "path": "rules/facts/memberHistory.ts",
-      "sha256": "554a7142256e399a8f37c62ed6cab0fea9454265238fb3ae951f7449d1a70056"
+      "sha256": "082cca469ffb687f33ce32c74b118a43665a8d6e79feb007242685b06b53bb13"
     },
     {
       "path": "rules/facts/memberUses.ts",
@@ -272,7 +272,7 @@
     },
     {
       "path": "rules/policies/posts.ts",
-      "sha256": "c79ec073d4d8b6eafa15932ab950e3852aa09605293ffc0cf170676b7610875e"
+      "sha256": "540d41fd4752be6f2f5f4e774154e1e921ba2b14cafbb5e95e77c6a5c4149eda"
     },
     {
       "path": "rules/policies/protectionRanges.ts",
@@ -348,7 +348,7 @@
     },
     {
       "path": "scaffold.ts",
-      "sha256": "ba0dfe1ca0027b471bd797e0bc09a4ebde3ed95bf7270a13e4b3351def709871"
+      "sha256": "ce8f8941007f437c34a4eedcf2b5eb57b24d1d8a1da90012c9c366fb7c036187"
     },
     {
       "path": "site.ts",

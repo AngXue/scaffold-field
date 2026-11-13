@@ -108,6 +108,12 @@ describe('fixed projects: complete physical graph references', () => {
       if (node.operation === 'demand') expect(node.useIds.length, id).toBeGreaterThan(0)
       if (node.operation === 'merge') expect(node.parentIds.length, id).toBeGreaterThanOrEqual(2)
     }
+    const ancestry = (key: string): string[] => [key, ...construction.get(key)!.parentIds.flatMap(ancestry)]
+    for (const post of graph.members.filter(member => member.type === 'post')) {
+      const ancestors = ancestry(post.constructionId!).map(key => construction.get(key)!)
+      expect(ancestors.some(node => node.operation === 'emit'), id).toBe(true)
+      expect(ancestors.some(node => node.id.startsWith('post-demand:')), id).toBe(true)
+    }
     const stockVersions = new Map(graph.stockConstruction.map(node => [node.id, node]))
     const selections = new Map(graph.stockSelections.map(choice => [choice.id, choice]))
     for (const pipe of graph.pipes) {
@@ -123,7 +129,9 @@ describe('fixed projects: complete physical graph references', () => {
     expect(graph.ledger.entries.every(entry => entities.has(entry.entityId) && entry.sourceIds.length > 0)).toBe(true)
     const members = new Set(graph.members.map(member => member.id)), pipes = new Set(graph.pipes.map(pipe => pipe.id))
     expect(graph.nodes.every(node => node.memberIds.every(id => members.has(id)) && node.pipeIds.every(id => pipes.has(id)))).toBe(true)
-  })
+  // This includes development input freezing, complete ancestry and per-entity assertions.
+  // Production latency and RSS have their separate paired threefold gate.
+  }, 30000)
 })
 
 it.each([1, 2])('explains S1 upper bridges and the removed B2 caps without losing neighbouring protection (%s courses)', guardrailRailCount => {
