@@ -6,6 +6,7 @@ import { signedArea, subtractCoverage, type PlanPolygon } from '../../polygons.t
 const pointKey = (point: Vector3Tuple) => point.map(value => round(value)).join(':')
 export function sharedComponentPosts(candidates: readonly ScaffoldMember[], sourceSequences: Readonly<Record<string, number[]>>) {
   const members = candidates.map(member => ({ ...member })), sequences = { ...sourceSequences }
+  const sequenceOwners = Object.fromEntries(candidates.filter(member => member.type === 'post').map(member => [member.id, member.id]))
   const posts = new Map<string, ScaffoldMember>()
   for (let i = members.length - 1; i >= 0; i--) {
     const post = members[i]
@@ -18,11 +19,12 @@ export function sharedComponentPosts(candidates: readonly ScaffoldMember[], sour
     if (post.length > existing.length) {
       existing.length = post.length; existing.end = [...post.end]
       sequences[existing.id] = sequences[post.id]
+      sequenceOwners[existing.id] = sequenceOwners[post.id]
     }
     members.splice(i, 1)
   }
 
-  return { members, sequences }
+  return { members, sequences, sequenceOwners }
 }
 export function uniqueComponentBases(candidates: readonly BaseChannel[]): BaseChannel[] {
   const baseChannels = [...candidates]

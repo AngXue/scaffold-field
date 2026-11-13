@@ -1,4 +1,6 @@
-import type { ScaffoldDraft, ScaffoldAssembly } from './rules/facts/draft.ts'
+import { CONSTRUCTION_PHASES, startConstruction, type ConstructionPhase } from './rules/construction.ts'
+import { COMMITTED_UPRIGHTS, type ScaffoldDraft, type ScaffoldAssembly } from './rules/facts/draft.ts'
+import { mergeSharedRuns } from './rules/policies/sharedMembers.ts'
 import { pathDimensions } from './rules/boundaries/dimensions.ts'
 import { validatePath } from './rules/pathValidation.ts'
 import { zeroLengthWarning, shortBayWarnings, componentWarnings, sweepHeightWarnings } from './rules/policies/pathValidation.ts'
@@ -431,7 +433,26 @@ export function calculateScaffold(
   return completeScaffoldDraft(createScaffoldDraft(points, segmentLengths, parameters, localLifts, deckLayerOffset, segmentLayerCounts, requiredEndPairs))
 }
 
-export function createScaffoldDraft(
+type WorkingConstruction = {
+  members: ScaffoldMember[]; decks: DeckPanel[]; baseChannels: BaseChannel[]
+  committed?: ReturnType<typeof assemblePostsStage>
+  aliases?: Map<string, string>
+}
+function startScaffoldDraft(...args: Parameters<typeof createScaffoldDraft>) {
+  const state: { working?: WorkingConstruction } = {}
+  return { ...startConstruction(constructScaffoldDraft(args[0], args[1], args[2], args[3], args[4], args[5], args[6], state)),
+    working: () => {
+      if (!state.working) throw new Error('Working demand requested before S3')
+      return state.working
+    } }
+}
+export function createScaffoldDraft(points: Point2D[], segmentLengths: number[], parameters: ScaffoldParameters,
+  localLifts?: readonly number[], deckLayerOffset = 0, segmentLayerCounts?: readonly number[],
+  requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): ScaffoldDraft {
+  return startScaffoldDraft(points, segmentLengths, parameters, localLifts, deckLayerOffset, segmentLayerCounts, requiredEndPairs).finish()
+}
+
+function* constructScaffoldDraft(
   points: Point2D[],
   segmentLengths: number[],
   parameters: ScaffoldParameters,
@@ -439,7 +460,9 @@ export function createScaffoldDraft(
   deckLayerOffset = 0,
   segmentLayerCounts?: readonly number[],
   requiredEndPairs: readonly (readonly [boolean, boolean])[] = [],
-): ScaffoldDraft {
+  state: { working?: WorkingConstruction } = {},
+): Generator<ConstructionPhase, ScaffoldDraft, void> {
+  yield 2
   parameters = normalizeKernelParameters(parameters)
   parameters = { ...parameters, stockLengths: [...parameters.stockLengths] }
   const physical = getPhysicalPoints(points, segmentLengths)
@@ -447,6 +470,10 @@ export function createScaffoldDraft(
   const warnings: LayoutWarning[] = []
   warnings.push(...postStockWarnings(parameters))
   let memberSequence = 1
+  // Compatibility labels follow the historical interleaved display order. Actual
+  // construction instead commits working members/posts before any protection.
+  let displaySlot = 0, displayPart = 0
+  const displayOrder = new Map<ScaffoldMember, [number, number]>()
   const memberByGeometry = new Map<string, ScaffoldMember>()
 
   const addMember = (
@@ -481,6 +508,7 @@ export function createScaffoldDraft(
       pathSegment,
     }
     members.push(member)
+    displayOrder.set(member, [displaySlot, displayPart++])
     memberByGeometry.set(geometryKey, member)
     return member
   }
@@ -525,6 +553,7 @@ export function createScaffoldDraft(
   const previousSegment = (index: number) => (index + segmentCount - 1) % segmentCount
   const { mitrePosts } = topology.corners
   const joinedCorners = new Set(topology.corners.joinedCorners)
+  yield 3
   const heightStage = startHeightStages(parameters, segmentLayerCounts ?? [], localLifts, deckLayerOffset)
   let profiles = new Map(heightStage.advance(3).profiles.map(profile => [profile.count, profile]))
   const profileAt = (index: number) => profiles.get(layersAt(index))!
@@ -545,10 +574,9 @@ export function createScaffoldDraft(
     if (!member) return
     member[MEMBER_USES] = post.uses
     if (post.cornerJunctions) member.cornerJunctions = post.cornerJunctions
-    postSequences.set(member.id, postPlan.sequences[key])
     emittedPosts.add(key)
   }
-  const baseChannels = resolveBaseCandidates({ rows: frame.rows.map(rows => rows.postRows), stations: topology.stations,
+  let baseChannels = resolveBaseCandidates({ rows: frame.rows.map(rows => rows.postRows), stations: topology.stations,
     corners: topology.corners, order: segmentOrder, transverseTubeLength })
   const working = resolveBands(frame.rows.map((rows, index) => ({ rows, bayCount: topology.stations[index].bayCount,
     joinedStart: joinedCorners.has(previousSegment(index)), joinedEnd: joinedCorners.has(index), lifts: profileAt(index).height.lifts })), parameters, deckLayerOffset)
@@ -558,20 +586,10 @@ export function createScaffoldDraft(
   warnings.push(...pathValidation.bands)
   warnings.push(...topology.corners.warnings)
 
-  // Complete every local demand before choosing stock; protection consumes
-  // committed support previews without restarting the earlier package steps.
-  heightStage.advance(4)
-  postPlan = postStage.advance(4)
-  profiles = new Map(heightStage.advance(5).profiles.map(profile => [profile.count, profile]))
-  frame = frameStage.advance(5)
-  const globalProfile = profiles.get(layerCount)!
-  const rowTopEdge = (row: number) => globalProfile.support.rowTops[row]
-  const endTopEdge = globalProfile.support.endTop
-
+  const guardEmissions: Array<() => void> = []
   for (const mitre of mitrePosts) emitPost(mitre.point)
 
   segmentOrder.forEach((segmentIndex) => {
-    const guardCourses = profileAt(segmentIndex).courses
     const { segmentLength, bayCount, bayLength } = topology.stations[segmentIndex]
     if (segmentLength <= 0.001) {
       warnings.push(zeroLengthWarning(segmentIndex))
@@ -592,49 +610,91 @@ export function createScaffoldDraft(
       for (const member of band.members) addMember(member.type, member.start, member.end, layer, segmentIndex,
         member.connectionPoints, member.startExtension, member.endExtension, member.type, band.layer === SWEEP_BAR_LAYER ? ['M04'] : ['M03'])
 
-      // 作业层 protection. These are ADDITIONAL members, never a substitute for the
-      // ordinary longitudinal rows: JGJ 130-2011 §4.1.2 puts 栏杆 in 构配件自重, a
-      // different bucket from 架体结构自重.
-      //
-      // A decked lift is a 作业层 and gets its rails; a deckless lift gets only the
-      // two normal longitudinal rows — except the top lift, which always carries the
-      // 架顶栏杆, i.e. the first rail of the selected set.
-      const course = guardCourses[layer - 1]
-      // 防护栏杆 sit on the 外排 and nowhere else: §7.3.12(1) mandates the 外立杆, and
-      // the row against the building is regulated as a gap to it. There is no
-      // parameter that changes this — only `swapInnerOuter`, which says WHICH side of
-      // the drawing the building is on.
-      if (course?.enabled) {
-        for (const label of course.side.above) railsAboveRow[outerRow].add(label)
-        for (const label of course.end.above) railsAboveEnd.add(label)
-        const range = frame.guards[segmentIndex][layer - 1]
-        const { clipStart, clipEnd, points: kept } = range
-        for (const { elevation: railElevation } of course.side.usable) {
-          const points = kept.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
-          if (points.length >= 2) addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points,
-            clipStart ? 0 : parameters.tubeEndExtension, clipEnd ? 0 : parameters.tubeEndExtension, 'side-guard',
-            ['P01', 'P07', ...(clipStart || clipEnd ? ['P03'] : [])])
-        }
+      const slot = ++displaySlot
+      guardEmissions.push(() => {
+        displaySlot = slot; displayPart = 0
+        // 作业层 protection. These are ADDITIONAL members, never a substitute for the
+        // ordinary longitudinal rows: JGJ 130-2011 §4.1.2 puts 栏杆 in 构配件自重, a
+        // different bucket from 架体结构自重.
+        //
+        // A decked lift is a 作业层 and gets its rails; a deckless lift gets only the
+        // two normal longitudinal rows — except the top lift, which always carries the
+        // 架顶栏杆, i.e. the first rail of the selected set.
+        const course = profileAt(segmentIndex).courses[layer - 1]
+        // 防护栏杆 sit on the 外排 and nowhere else: §7.3.12(1) mandates the 外立杆, and
+        // the row against the building is regulated as a gap to it. There is no
+        // parameter that changes this — only `swapInnerOuter`, which says WHICH side of
+        // the drawing the building is on.
+        if (course?.enabled) {
+          for (const label of course.side.above) railsAboveRow[outerRow].add(label)
+          for (const label of course.end.above) railsAboveEnd.add(label)
+          const range = frame.guards[segmentIndex][layer - 1]
+          const { clipStart, clipEnd, points: kept } = range
+          for (const { elevation: railElevation } of course.side.usable) {
+            const points = kept.map((point) => [point[0], railElevation, point[2]] as Vector3Tuple)
+            if (points.length >= 2) addMember('guardrail', points[0], points[points.length - 1], layer, segmentIndex, points,
+              clipStart ? 0 : parameters.tubeEndExtension, clipEnd ? 0 : parameters.tubeEndExtension, 'side-guard',
+              ['P01', 'P07', ...(clipStart || clipEnd ? ['P03'] : [])])
+          }
 
 
-        // 端部防护 returns across an open end. Both of that station's posts are built to
-        // the railed height (nothing is against a wall at an end), so the return is
-        // checked against that height rather than against the shorter inner row.
-        for (const { elevation: railElevation } of course.end.usable) {
-          for (const station of range.endStations) {
-            const outerPoint = postRows[0][station]
-            const innerPoint = postRows[1][station]
-            const start: Vector3Tuple = [outerPoint[0], railElevation, outerPoint[2]]
-            const end: Vector3Tuple = [innerPoint[0], railElevation, innerPoint[2]]
-            addMember('guardrail', start, end, layer, segmentIndex, [start, end], parameters.tubeEndExtension, parameters.tubeEndExtension, 'end-guard', ['P01', 'P07'])
+          // 端部防护 returns across an open end. Both of that station's posts are built to
+          // the railed height (nothing is against a wall at an end), so the return is
+          // checked against that height rather than against the shorter inner row.
+          for (const { elevation: railElevation } of course.end.usable) {
+            for (const station of range.endStations) {
+              const outerPoint = postRows[0][station]
+              const innerPoint = postRows[1][station]
+              const start: Vector3Tuple = [outerPoint[0], railElevation, outerPoint[2]]
+              const end: Vector3Tuple = [innerPoint[0], railElevation, innerPoint[2]]
+              addMember('guardrail', start, end, layer, segmentIndex, [start, end], parameters.tubeEndExtension, parameters.tubeEndExtension, 'end-guard', ['P01', 'P07'])
+            }
           }
         }
-      }
+      })
+      displaySlot++; displayPart = 0
 
     }
 
     warnings.push(...shortBayWarnings(segmentIndex, bayLength, parameters.postSpacing))
   })
+
+  baseChannels = resolveSupportingBases(baseChannels, members)
+  state.working = { members, decks, baseChannels }
+  yield 4
+  heightStage.advance(4)
+  postPlan = postStage.advance(4)
+  for (const member of members) if (member.type === 'post') postSequences.set(member.id, postPlan.sequences[pointKey(member.start)])
+  // The existing stagger policy uses only posts and first-lift working ties.
+  // Merge that adjacency projection with the same pure interval algorithm; this
+  // does not publish horizontal stock or a protection-dependent member merge.
+  const adjacency = mergeSharedRuns(members.filter(member => member.type === 'post' || member.layer === 1))
+  const committed = assemblePostsStage(adjacency, Object.fromEntries(postSequences), parameters)
+  state.working.committed = committed
+
+  yield 5
+  profiles = new Map(heightStage.advance(5).profiles.map(profile => [profile.count, profile]))
+  frame = frameStage.advance(5)
+  const globalProfile = profiles.get(layerCount)!
+  const rowTopEdge = (row: number) => globalProfile.support.rowTops[row]
+  const endTopEdge = globalProfile.support.endTop
+  for (const emit of guardEmissions) emit()
+
+  members.sort((a, b) => {
+    const left = displayOrder.get(a)!, right = displayOrder.get(b)!
+    return left[0] - right[0] || left[1] - right[1]
+  })
+  const aliases = new Map(members.map((member, index) => [member.id, `M${index + 1}`]))
+  state.working.aliases = aliases
+  for (const member of members) member.id = aliases.get(member.id)!
+  const renameSequences = (sequences: Record<string, number[]>) => Object.fromEntries(Object.entries(sequences).map(([id, sequence]) => [aliases.get(id)!, sequence]))
+  const posts = committed.posts.map(post => {
+    const memberId = aliases.get(post.plan.memberId)!
+    const segments = post.segments.map(pipe => ({ ...pipe, memberId, id: `S-${memberId}-${pipe.sequence}` }))
+    return { segments, plan: { ...post.plan, memberId, segmentIds: segments.map(pipe => pipe.id) } }
+  })
+  const committedWarnings = committed.warnings.map(warning => ({ ...warning, id: warning.id.startsWith('splice-stagger-')
+    ? `splice-stagger-${aliases.get(warning.id.slice('splice-stagger-'.length))!}` : warning.id }))
 
   // A rail the 立杆 cannot reach was dropped rather than floated. The 内侧 row is the
   // short one on purpose (it is the row against the building), so an open end's top
@@ -669,7 +729,8 @@ export function createScaffoldDraft(
   warnings.push(...sweepHeightWarnings(parameters.sweepBarHeight))
 
   const dimensions = pathDimensions(physical, segmentLengths, parameters)
-  return { members, decks, baseChannels, warnings, parameters, postSequences: Object.fromEntries(postSequences), pathDimensions: dimensions,
+  return { members, decks, baseChannels, warnings, parameters, postSequences: renameSequences(Object.fromEntries(postSequences)), pathDimensions: dimensions,
+    [COMMITTED_UPRIGHTS]: { posts, sequences: renameSequences(committed.sequences), warnings: committedWarnings },
     postHeights: { theoretical: theoreticalHeight, inner: round(rowTopEdge(innerRow)), outer: round(rowTopEdge(outerRow)) } }
 
 }
@@ -679,6 +740,7 @@ export function completeScaffoldDraft(draft: ScaffoldDraft, fixedPostsAndBases =
   return publishScaffoldAssembly(assembleScaffoldDraft(draft, fixedPostsAndBases), draft.parameters)
 }
 export function assembleScaffoldDraft(draft: ScaffoldDraft, fixedPostsAndBases = false, prebuiltPosts?: StockAssembly[]): ScaffoldAssembly {
+  if (!fixedPostsAndBases && !prebuiltPosts && draft[COMMITTED_UPRIGHTS]) return finishPreparedScaffoldAssembly(prepareScaffoldAssembly(draft))
   return assembleLayout(draft.members, draft.decks.map(deck => ({ ...deck })), draft.baseChannels.map(base => ({ ...base })), [...draft.warnings], draft.parameters,
     new Map(Object.entries(draft.postSequences)), draft.pathDimensions.map(dimension => ({ ...dimension })), { ...draft.postHeights }, fixedPostsAndBases, prebuiltPosts)
 }
@@ -686,8 +748,8 @@ export function assembleScaffoldDraft(draft: ScaffoldDraft, fixedPostsAndBases =
 /** Prepare an assembly scope without selecting horizontal stock or generating fittings. */
 export function prepareScaffoldAssembly(draft: ScaffoldDraft) {
   const members = mergeMemberStage(draft.members)
-  const baseChannels = resolveSupportingBases(draft.baseChannels, members)
-  const stock = assemblePostsStage(members, draft.postSequences, draft.parameters)
+  const baseChannels = draft[COMMITTED_UPRIGHTS] ? draft.baseChannels : resolveSupportingBases(draft.baseChannels, members)
+  const stock = draft[COMMITTED_UPRIGHTS] ?? assemblePostsStage(members, draft.postSequences, draft.parameters)
   return { draft: { ...draft, members, baseChannels, warnings: [...draft.warnings, ...stock.warnings], postSequences: stock.sequences }, posts: stock.posts }
 }
 
@@ -701,9 +763,9 @@ export function finishPreparedScaffoldAssembly(prepared: ReturnType<typeof prepa
 
 /** Preserve the existing local splice preference pass without allocating horizontal stock or quantities. */
 function prepareComponentDraft(draft: ScaffoldDraft): ScaffoldDraft {
-  const members = mergeMemberStage(draft.members)
-  const bases = resolveSupportingBases(draft.baseChannels, members)
-  const repaired = resolvePostSequences(members, draft.postSequences, draft.parameters)
+  const members = mergeSharedRuns(draft.members)
+  const bases = draft[COMMITTED_UPRIGHTS] ? draft.baseChannels : resolveSupportingBases(draft.baseChannels, members)
+  const repaired = draft[COMMITTED_UPRIGHTS] ?? resolvePostSequences(members, draft.postSequences, draft.parameters)
   return { ...draft, members, baseChannels: bases, postSequences: repaired.sequences,
     warnings: [...draft.warnings, ...repaired.warnings] }
 }
@@ -809,25 +871,75 @@ export function assembleScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldP
 }
 
 /** Logical plan and its coordinate boundary. Physical stock is intentionally deferred. */
-export function prepareScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
-  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): PreparedScaffoldPlan {
+export function startScaffoldPlan(...args: Parameters<typeof constructScaffoldPlan>) {
+  return startConstruction(constructScaffoldPlan(...args))
+}
+export function prepareScaffoldPlan(...args: Parameters<typeof constructScaffoldPlan>): PreparedScaffoldPlan {
+  return startScaffoldPlan(...args).finish()
+}
+function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
+  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): Generator<ConstructionPhase, PreparedScaffoldPlan, void> {
+  yield 2
   const paths = drawingPaths(drawing)
   if (preserveDirection) for (const path of paths) {
     if (path.points[0].id !== drawing.segments[path.edgeIndices[0]].start) {
       path.points.reverse(); path.edgeIndices.reverse()
     }
   }
-  if (!paths.length) return { draft: createScaffoldDraft([], [], parameters), toPlan: result => result }
+  if (!paths.length) {
+    const empty = startScaffoldDraft([], [], parameters)
+    for (const phase of CONSTRUCTION_PHASES) {
+      if (phase !== 2) yield phase
+      empty.advance(phase)
+    }
+    return { draft: empty.finish(), toPlan: result => result }
+  }
   const origin = drawing.points[0]
   // Transition bridges require both end posts even beside a short corner return.
   const retainedPairs = (path: ReturnType<typeof drawingPaths>[number]): [boolean, boolean][] => path.edgeIndices.map((edge, i) => {
     const pair = requiredEndPairs[edge] ?? [false, false]
     return path.points[i].id === drawing.segments[edge].start ? [pair[0], pair[1]] : [pair[1], pair[0]]
   })
+  const constructions = paths.map(path => startScaffoldDraft(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
+    segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path)))
+  let componentDemands: ReturnType<typeof reconcileComponents> | undefined
+  let componentStock: ReturnType<typeof assemblePostsStage> | undefined
+  for (const phase of CONSTRUCTION_PHASES) {
+    if (phase !== 2) yield phase
+    for (const construction of constructions) construction.advance(phase)
+    if (paths.length > 1 && phase === 3) {
+      const members: ScaffoldMember[] = [], decks: DeckPanel[] = [], bases: BaseChannel[] = []
+      paths.forEach((path, component) => {
+        const working = constructions[component].working(), prefix = `G${component}-`
+        const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
+        const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
+        const edge = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
+        members.push(...mergeSharedRuns(working.members).map(member => ({ ...member, id: prefix + member.id,
+          [MEMBER_USES]: transformUses(member, move, use => ({ pathSegment: edge(use.pathSegment)! })),
+          start: move(member.start), end: move(member.end), connectionPoints: member.connectionPoints.map(move),
+          pathSegment: edge(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(index => edge(index)!),
+        })))
+        decks.push(...working.decks.map(deck => ({ ...deck, id: prefix + deck.id, corners: deck.corners.map(move) as DeckPanel['corners'],
+          coverage: deck.coverage?.map(face => face.map(move)), pathSegment: edge(deck.pathSegment)!,
+        })))
+        bases.push(...working.baseChannels.map(base => ({ ...base, id: prefix + base.id, start: move(base.start), end: move(base.end), pathSegment: edge(base.pathSegment)! })))
+      })
+      componentDemands = reconcileComponents(members, decks, bases, {})
+      componentDemands.bases = resolveSupportingBases(componentDemands.bases, componentDemands.members)
+    }
+    if (paths.length > 1 && phase === 4) {
+      const sequences = Object.fromEntries(constructions.flatMap((construction, component) =>
+        Object.entries(construction.working().committed!.sequences).map(([id, sequence]) => [`G${component}-${id}`, sequence])))
+      for (const member of componentDemands!.members) if (member.type === 'post') {
+        sequences[member.id] = sequences[componentDemands!.sequenceOwners[member.id]]
+      }
+      const adjacency = mergeSharedRuns(componentDemands!.members.filter(member => member.type === 'post' || member.layer === 1))
+      componentStock = assemblePostsStage(adjacency, sequences, parameters)
+    }
+  }
   // A normal connected outline needs exactly one domain calculation on mobile.
   if (paths.length === 1) {
-    const path = paths[0], draft = createScaffoldDraft(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
-      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path))
+    const path = paths[0], draft = constructions[0].finish()
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     const toPlan = <T extends PlanGeometry>(result: T): T => {
@@ -851,34 +963,21 @@ export function prepareScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldPa
     }
     return { draft, toPlan }
   }
-  const members: ScaffoldMember[] = [], decks: DeckPanel[] = [], baseChannels: BaseChannel[] = []
+  const members: ScaffoldMember[] = []
   const warnings: LayoutWarning[] = [], dimensions: PathDimension[] = []
-  const postSequences = new Map<string, number[]>()
   let postHeights: MaterialResult['postHeights'] | undefined
   paths.forEach((path, component) => {
-    const layout = prepareComponentDraft(createScaffoldDraft(path.points, measurePath(path.points, localLifts ? 3 : 2), parameters, localLifts, deckLayerOffset,
-      segmentLayerCounts && path.edgeIndices.map(index => segmentLayerCounts[index]), retainedPairs(path)))
+    const layout = prepareComponentDraft(constructions[component].finish())
     postHeights ??= layout.postHeights
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER
     const dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const translate = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     const prefix = `G${component}-`
     const edgeIndex = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
-    const postIds = new Set(layout.members.filter(member => member.type === 'post').map(member => member.id))
-    for (const [id, sequence] of Object.entries(layout.postSequences)) {
-      if (postIds.has(id)) postSequences.set(prefix + id, sequence)
-    }
     members.push(...layout.members.map(m => ({ ...m, id: prefix + m.id,
       [MEMBER_USES]: transformUses(m, translate, use => ({ pathSegment: edgeIndex(use.pathSegment)! })),
       start: translate(m.start), end: translate(m.end), connectionPoints: m.connectionPoints.map(translate),
       pathSegment: edgeIndex(m.pathSegment), cornerJunctions: m.cornerJunctions?.map(index => edgeIndex(index)!),
-    })))
-    decks.push(...layout.decks.map(deck => ({ ...deck, id: prefix + deck.id,
-      corners: deck.corners.map(translate) as DeckPanel['corners'], coverage: deck.coverage?.map(face => face.map(translate)),
-      pathSegment: edgeIndex(deck.pathSegment)!,
-    })))
-    baseChannels.push(...layout.baseChannels.map(beam => ({ ...beam, id: prefix + beam.id,
-      start: translate(beam.start), end: translate(beam.end), pathSegment: edgeIndex(beam.pathSegment)!,
     })))
     dimensions.push(...layout.pathDimensions.map(d => ({ ...d, index: edgeIndex(d.index)!,
       start: translate(d.start), end: translate(d.end), labelPosition: translate(d.labelPosition),
@@ -889,8 +988,25 @@ export function prepareScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldPa
   })
   const degrees = new Map<string, number>()
   drawing.segments.forEach(s => [s.start, s.end].forEach(id => degrees.set(id, (degrees.get(id) ?? 0) + 1)))
-  const reconciled = reconcileComponents(members, decks, baseChannels, Object.fromEntries(postSequences))
-  warnings.unshift(...componentWarnings([...degrees.values()], reconciled.overlap))
-  return { draft: { members: reconciled.members, decks: reconciled.decks, baseChannels: reconciled.bases, warnings, parameters, postSequences: reconciled.sequences,
+  const aliases = new Map<string, string>(constructions.flatMap((construction, component) =>
+    [...construction.working().aliases!].map(([id, alias]) => [`G${component}-${id}`, `G${component}-${alias}`] as const)))
+  const sharedPosts = new Map<string, ScaffoldMember>(componentDemands!.members.filter(member => member.type === 'post').map(member => {
+    const id = aliases.get(member.id)!
+    return [id, { ...member, id }] as const
+  }))
+  const finalMembers = members.filter(member => member.type !== 'post' || sharedPosts.has(member.id))
+    .map(member => member.type === 'post' ? sharedPosts.get(member.id)! : member)
+  const sequences = Object.fromEntries(Object.entries(componentStock!.sequences).map(([id, sequence]) => [aliases.get(id)!, sequence]))
+  const posts = componentStock!.posts.map(post => {
+    const memberId = aliases.get(post.plan.memberId)!
+    const segments = post.segments.map(pipe => ({ ...pipe, memberId, id: `S-${memberId}-${pipe.sequence}` }))
+    return { segments, plan: { ...post.plan, memberId, segmentIds: segments.map(pipe => pipe.id) } }
+  })
+  const stockWarnings = componentStock!.warnings.map(warning => ({ ...warning, id: warning.id.startsWith('splice-stagger-')
+    ? `splice-stagger-${aliases.get(warning.id.slice('splice-stagger-'.length))!}` : warning.id }))
+  warnings.unshift(...componentWarnings([...degrees.values()], componentDemands!.overlap))
+  return { draft: { members: finalMembers, decks: componentDemands!.decks, baseChannels: componentDemands!.bases, warnings, parameters, postSequences: sequences,
+    [COMMITTED_UPRIGHTS]: { posts, sequences, warnings: stockWarnings },
     pathDimensions: dimensions.sort((a, b) => a.index - b.index), postHeights: postHeights! }, toPlan: result => result }
+
 }

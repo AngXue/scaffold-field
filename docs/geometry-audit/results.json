@@ -1,6 +1,6 @@
 {
   "date": "2026-11-13",
-  "sourceHash": "ce16f0288c813136c02d8b14e1856efa2cb851bad342c1974b660f8c753e554a",
+  "sourceHash": "2371f32878cbdafcc03d91a20543c3db24f07a690011e3a7431e0f9ab6f6b4ff",
   "sourceFiles": [
     {
       "path": "guardrails.ts",
@@ -28,7 +28,7 @@
     },
     {
       "path": "rules/bases.ts",
-      "sha256": "e89f0813d2894de4f60fb422cb38e03269bcc528ca234879505873a53fba26d8"
+      "sha256": "9d178d34a90925aa2eaaba6dd3434e79e75f2d4626ed0ec0fe547b1883b83355"
     },
     {
       "path": "rules/boundaries/adjustments.ts",
@@ -60,11 +60,15 @@
     },
     {
       "path": "rules/components.ts",
-      "sha256": "40972765f0daa9c855e2ee58cd2c2a74ca4d7463d34fd9f3d410eebff97cd2fd"
+      "sha256": "bfe8f8f71c47268adbb8eb46f363713a2a7a0567ecbc49226187f80377e6e85a"
     },
     {
       "path": "rules/connections.ts",
       "sha256": "4a5169508d945a8062f9d8d8406fd715d007687d1b5bb76a0c72a2457c533f56"
+    },
+    {
+      "path": "rules/construction.ts",
+      "sha256": "e8a187fbf22c83f5bf2911c4ac5f7889781a54b074547fc9eb5ae25f4d8c77fb"
     },
     {
       "path": "rules/contracts.ts",
@@ -76,7 +80,7 @@
     },
     {
       "path": "rules/diagnostics/build.ts",
-      "sha256": "83c51169fb81b055c2cf91bfb5fb1409217f66489a5e1c2667ef0a00b9188de6"
+      "sha256": "c702a7f197b7ac58666e73cb02420b0b7cbf36a256e07bac86d1e04de3ec7472"
     },
     {
       "path": "rules/diagnostics/editor.ts",
@@ -100,7 +104,7 @@
     },
     {
       "path": "rules/facts/draft.ts",
-      "sha256": "d2c249a1f885bf0b7c16d541b6a2c4f6769e2791633734aff39eb63c16f61a44"
+      "sha256": "018e62d865e641d70d16f6c7c537753730bdcb056e37bf71651c64989874fdd8"
     },
     {
       "path": "rules/facts/entityGraph.ts",
@@ -204,7 +208,7 @@
     },
     {
       "path": "rules/policies/components.ts",
-      "sha256": "4c3453e21e1d274c450aa6d22b090db69d9b54519e21a4e93073e1e23ab07f7e"
+      "sha256": "6495ec4223b2c01d9c2f1687ee259aef8085288f5eb810f8e895dc433161dd0c"
     },
     {
       "path": "rules/policies/connections.ts",
@@ -332,11 +336,11 @@
     },
     {
       "path": "scaffold.ts",
-      "sha256": "4d235a82d519feff21fbfb55b6dd5f7819f18bc3381fc7d137ba07ca1f85c261"
+      "sha256": "faa2927fb2d5587942be973dd0a1568a3f53f79da0b2acf8ab283194b99dbd6e"
     },
     {
       "path": "site.ts",
-      "sha256": "170a7f10c228996d23fc3ce2399cc636705e0d7cc2122401db44f1f59fbbfb92"
+      "sha256": "4a510d7d459717525554dcf93fc524c3aadc4e2ee3a093acfb39689ea3b280cd"
     },
     {
       "path": "siteAlignment.ts",

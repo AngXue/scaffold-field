@@ -1,7 +1,10 @@
+import type { StockAssembly } from '../stock.ts'
 import type { FittingPlan } from './fittings.ts'
 import type { ScaffoldMember, DeckPanel, BaseChannel, LayoutWarning, ScaffoldParameters, PathDimension, MaterialResult, ScaffoldLayout, PipeAssemblyPlan } from '../../scaffold.ts'
-/** Logical construction product. It deliberately has no pipes, fittings or material totals. */
+export const COMMITTED_UPRIGHTS = Symbol('scaffold.committedUprights')
+/** Logical construction product with an internal committed S4 upright handoff. No public pipe collection, fittings or material totals. */
 export type ScaffoldDraft = {
+  [COMMITTED_UPRIGHTS]?: { posts: StockAssembly[]; sequences: Record<string, number[]>; warnings: LayoutWarning[] }
   members: ScaffoldMember[]
   decks: DeckPanel[]
   baseChannels: BaseChannel[]

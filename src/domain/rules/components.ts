@@ -35,5 +35,5 @@ export function reconcileComponents(members: ScaffoldMember[], decks: DeckPanel[
   const { facts } = run({ members, decks, bases, sequences })
   return { members: facts.shared!.members.map(member => ({ ...member })) as ScaffoldMember[],
     decks: facts.coverage!.decks.map(deck => ({ ...deck })) as DeckPanel[], bases: facts.uniqueBases!.map(base => ({ ...base })) as BaseChannel[],
-    sequences: facts.shared!.sequences as Record<string, number[]>, overlap: facts.coverage!.overlap }
+    sequenceOwners: facts.shared!.sequenceOwners as Record<string, string>, sequences: facts.shared!.sequences as Record<string, number[]>, overlap: facts.coverage!.overlap }
 }

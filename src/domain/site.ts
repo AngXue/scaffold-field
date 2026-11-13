@@ -1,3 +1,4 @@
+import { CONSTRUCTION_PHASES } from './rules/construction.ts'
 import type { ScaffoldAssembly } from './rules/facts/draft.ts'
 import { resolveHeightStages } from './rules/heights.ts'
 import { normalizeKernelParameters } from './rules/boundaries/parameters.ts'
@@ -26,7 +27,7 @@ export { resolveBlocks } from './rules/policies/blocks.ts'
 export { getSectionLevels, defaultSectionLayers, sectionTargetLayer, siteWithTargetLayers } from './rules/policies/levels.ts'
 import { prepareScene } from './rules/scene.ts'
 import { measureDrawing, PIXELS_PER_METER } from './plan.ts'
-import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, publishScaffoldAssembly, finishPreparedScaffoldAssembly, completeAssemblyFittings, prepareScaffoldPlan, prepareScaffoldAssembly, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
+import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, publishScaffoldAssembly, finishPreparedScaffoldAssembly, completeAssemblyFittings, startScaffoldPlan, prepareScaffoldAssembly, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import type { PlanPolygon } from './polygons.ts'
 import { footprintContainsPoint } from './siteFootprints.ts'
 import { positionSiteStock } from './siteWallFit.ts'
@@ -138,7 +139,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       addIssue('independent-junction', [a.id, b.id], `${label(a.id)}与${label(b.id)}条件不同，交界各自估算，请复核。`, false)
     }
   }
-  groups.forEach((group, groupIndex) => {
+  const groupPlans = groups.map((group, groupIndex) => {
     const scopeId = layout[CONSTRUCTION_FRAMES]![groupIndex].id, scope = [scopeId]
     const section = group.reduce((highest, line) => line.layers > highest.layers ? line : highest)
     const summary = summaries.find(item => item.id === section.id)!
@@ -172,7 +173,16 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         return ends.some(end => mm(end.station) === mm((end.axis === 0 ? point.x : point.y) / PIXELS_PER_METER))
       }) as [boolean, boolean]
     })
-    const plan = prepareScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall, requiredEndPairs)
+    const construction = startScaffoldPlan(drawing, { ...settings, layerCount: section.layers, swapInnerOuter }, flat ? undefined : localLifts, deckLayerOffset, variedLayers, followsWall, requiredEndPairs)
+    return { group, groupIndex, scopeId, scope, base, surface, followsWall, swapInnerOuter, drawing, owner, construction }
+  })
+  // A later frame must never restart local topology/demands after an earlier
+  // frame has already selected stock or protection. Nested paths use the same barriers.
+  for (const phase of CONSTRUCTION_PHASES) for (const context of groupPlans) context?.construction.advance(phase)
+  groupPlans.forEach(context => {
+    if (!context) return
+    const { group, groupIndex, scopeId, scope, base, surface, followsWall, swapInnerOuter, drawing, owner } = context
+    const plan = context.construction.finish()
     const preparation = prepareScaffoldAssembly(plan.draft)
     const part: ScaffoldAssembly = plan.toPlan({ ...preparation.draft,
       members: preparation.draft.members.map(member => ({ ...member })),

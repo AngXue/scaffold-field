@@ -970,6 +970,36 @@
           "file": "src/domain/rules/stock.test.ts",
           "title": "request-local stock memoization equals uncached selection and cannot leak across inventories or overlaps",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/construction.test.ts",
+          "title": "constructor barriers do not publish a future draft or replay a completed stage",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/construction.test.ts",
+          "title": "failed constructors cannot resume or publish a partial product",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/construction.test.ts",
+          "title": "a constructor cannot hide a backwards or repeated phase inside a forward advance",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/construction.test.ts",
+          "title": "disconnected paths in a legacy drawing cross local construction barriers together",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/construction.test.ts",
+          "title": "corridor: all physical frames finish local station and demand stages before any frame advances",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/construction.test.ts",
+          "title": "adjacent-houses: all physical frames finish local station and demand stages before any frame advances",
+          "count": 1
         }
       ]
     },
