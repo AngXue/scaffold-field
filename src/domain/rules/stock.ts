@@ -26,34 +26,46 @@ export const STOCK_STEPS: RuleStep<StockFacts, StockProposal>[] = [
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'RepairPostSplices', target: 'repaired', expectedRevision: revision,
       value: facts.fixed ? { sequences: facts.sequences as Record<string, number[]>, warnings: [] }
         : repairPostSplices(facts.members as ScaffoldMember[], facts.sequences as Record<string, number[]>, facts.parameters as ScaffoldParameters) }] }) },
-  { id: 'S01.posts', ruleId: 'S01', phase: 4, after: ['S03.repair'], reads: ['members', 'parameters', 'inventory', 'repaired', 'prebuiltPosts'], kinds: ['AssemblePosts'], targets: ['posts'],
+  { id: 'S01.posts', ruleId: 'S01', phase: 4, after: ['S03.repair'], reads: ['members', 'parameters', 'inventory', 'repaired'], kinds: ['AssemblePosts'], targets: ['posts'],
     evaluate: (facts, revision) => {
-      const existing = new Map((facts.prebuiltPosts as Assembly[] | undefined)?.map(assembly => [assembly.plan.memberId, assembly]))
-      const value = (facts.members as ScaffoldMember[]).filter(member => member.type === 'post').map(member => {
-        const fixed = existing.get(member.id)
-        if (fixed) {
-          const sequence = facts.repaired!.sequences[member.id]
-          if (fixed.plan.requiredLength !== member.length || fixed.plan.stockLengths.length !== sequence?.length
-            || fixed.plan.stockLengths.some((length, index) => length !== sequence[index]))
-            throw new Error('Committed post stock no longer matches the logical demand')
-          const pipes = fixed.segments
-          if (pipes.length !== fixed.plan.stockLengths.length || !pipes.length
-            || pipes.some((pipe, index) => pipe.memberId !== member.id || pipe.stockLength !== fixed.plan.stockLengths[index]
-              || pipe.id !== fixed.plan.segmentIds[index] || pipe.type !== 'post'
-              || Math.abs(Math.hypot(...pipe.end.map((value, axis) => value - pipe.start[axis])) - pipe.stockLength) > 0.001
-              || [pipe.start, pipe.end].some(point => [0, 2].some(axis => Math.abs(point[axis] - member.start[axis]) > 0.001)))
-            || Math.abs(pipes[0].start[1] - member.start[1]) > 0.001 || pipes.at(-1)!.end[1] < member.end[1] - 0.001)
-            throw new Error('Committed post geometry no longer matches its stock or support')
-          return fixed
-        }
-        return createPipeAssembly(member, facts.inventory as number[], facts.parameters!.spliceOverlap!, facts.repaired!.sequences[member.id] as number[] | undefined)
-      })
+      const value = (facts.members as ScaffoldMember[]).filter(member => member.type === 'post').map(member =>
+        createPipeAssembly(member, facts.inventory as number[], facts.parameters!.spliceOverlap!, facts.repaired!.sequences[member.id] as number[] | undefined))
       return { status: 'proposed', proposals: [{ kind: 'AssemblePosts', target: 'posts', expectedRevision: revision, value }] }
     } },
   { id: 'S01.horizontals', ruleId: 'S01', phase: 6, after: ['S01.posts'], reads: ['members', 'parameters', 'repaired'], kinds: ['AssembleHorizontals'], targets: ['horizontals'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'AssembleHorizontals', target: 'horizontals', expectedRevision: revision,
       value: assembleHorizontalRuns(facts.members as ScaffoldMember[], facts.parameters as ScaffoldParameters, facts.repaired!.sequences as Record<string, number[]>) }] }) },
 
+]
+/** A committed S4 product may be checked at S6, never reselected or rebuilt. */
+function verifyCommittedPost(member: ScaffoldMember, fixed: Assembly, sequence: readonly number[] | undefined) {
+  if (fixed.plan.requiredLength !== member.length || fixed.plan.stockLengths.length !== sequence?.length
+    || fixed.plan.stockLengths.some((length, index) => length !== sequence[index]))
+    throw new Error('Committed post stock no longer matches the logical demand')
+  const pipes = fixed.segments
+  if (pipes.length !== fixed.plan.stockLengths.length || !pipes.length
+    || pipes.some((pipe, index) => pipe.memberId !== member.id || pipe.stockLength !== fixed.plan.stockLengths[index]
+      || pipe.id !== fixed.plan.segmentIds[index] || pipe.type !== 'post'
+      || Math.abs(Math.hypot(...pipe.end.map((value, axis) => value - pipe.start[axis])) - pipe.stockLength) > 0.001
+      || [pipe.start, pipe.end].some(point => [0, 2].some(axis => Math.abs(point[axis] - member.start[axis]) > 0.001)))
+    || Math.abs(pipes[0].start[1] - member.start[1]) > 0.001 || pipes.at(-1)!.end[1] < member.end[1] - 0.001)
+    throw new Error('Committed post geometry no longer matches its stock or support')
+}
+export const COMMITTED_STOCK_STEPS: RuleStep<StockFacts, StockProposal>[] = [
+  { id: 'S01.acceptPosts', ruleId: 'S01', phase: 6, after: [], reads: ['members', 'prebuiltPosts', 'repaired'], kinds: ['AssemblePosts'], targets: ['posts'],
+    evaluate: (facts, revision) => {
+      const committed = facts.prebuiltPosts as Assembly[]
+      const existing = new Map(committed.map(assembly => [assembly.plan.memberId, assembly]))
+      if (existing.size !== committed.length) throw new Error('Duplicate committed upright')
+      const value = (facts.members as ScaffoldMember[]).filter(member => member.type === 'post').map(member => {
+        const fixed = existing.get(member.id)
+        if (!fixed) throw new Error('Missing committed upright; S6 cannot choose or build one')
+        verifyCommittedPost(member, fixed, facts.repaired!.sequences[member.id])
+        return fixed
+      })
+      return { status: 'proposed', proposals: [{ kind: 'AssemblePosts', target: 'posts', expectedRevision: revision, value }] }
+    } },
+  { ...STOCK_STEPS.find(step => step.id === 'S01.horizontals')!, id: 'S01.committedHorizontals', after: ['S01.acceptPosts'] },
 ]
 const reduceStock = (facts: import('./contracts.ts').DeepReadonly<StockFacts>, proposals: readonly StockProposal[]): StockFacts => {
   let result = { ...facts } as StockFacts
@@ -76,12 +88,15 @@ const reduceStock = (facts: import('./contracts.ts').DeepReadonly<StockFacts>, p
 }
 const configuration = { verifyImmutability: VERIFY_RULE_INPUTS,
   snapshot: (input: StockFacts): StockFacts => !VERIFY_RULE_INPUTS ? input : ({ ...input, parameters: { ...input.parameters, stockLengths: [...input.parameters.stockLengths] },
+    repaired: input.repaired && { sequences: Object.fromEntries(Object.entries(input.repaired.sequences).map(([id, sequence]) => [id, [...sequence]])),
+      warnings: input.repaired.warnings.map(warning => ({ ...warning })) },
     prebuiltPosts: input.prebuiltPosts?.map(assembly => ({ plan: { ...assembly.plan, stockLengths: [...assembly.plan.stockLengths], segmentIds: [...assembly.plan.segmentIds] },
       segments: assembly.segments.map(pipe => ({ ...pipe, start: [...pipe.start], end: [...pipe.end] })) })),
     sequences: Object.fromEntries(Object.entries(input.sequences).map(([id, sequence]) => [id, [...sequence]])),
     members: input.members.map(member => ({ ...member, start: [...member.start], end: [...member.end], connectionPoints: member.connectionPoints.map(point => [...point]) })) }),
 }
 const run = compilePipeline<StockFacts, StockProposal>(RULES, STOCK_STEPS, reduceStock, configuration)
+const runCommitted = compilePipeline<StockFacts, StockProposal>(RULES, COMMITTED_STOCK_STEPS, reduceStock, configuration)
 const runPosts = compilePipeline<StockFacts, StockProposal>(RULES, STOCK_STEPS.filter(step => step.phase === 4), reduceStock, configuration)
 const runPostPreferences = compilePipeline<StockFacts, StockProposal>(RULES, STOCK_STEPS.filter(step => ['S02.inventory', 'S03.repair'].includes(step.id)), reduceStock, configuration)
 /** Commit only upright stock. Horizontal stock and every fitting wait for final geometry. */
@@ -101,7 +116,10 @@ export function assembleStockStage(members: ScaffoldMember[], sequences: Record<
   if (!members.length) return { assemblies: [], warnings: [] }
   // Stock consumes geometry and ties, not a second copy of the provenance graph.
   const demands = members.map(({ id, type, start, end, length, layer, connectionPoints }) => ({ id, type, start, end, length, layer, connectionPoints }))
-  const { facts } = run({ members: demands, sequences, parameters, fixed, prebuiltPosts })
+  if (prebuiltPosts && !fixed) throw new Error('Committed upright inputs cannot request reselection')
+  const { facts } = prebuiltPosts
+    ? runCommitted({ members: demands, sequences, parameters, fixed: true, prebuiltPosts, repaired: { sequences, warnings: [] } })
+    : run({ members: demands, sequences, parameters, fixed })
   const byId = new Map([...facts.posts!, ...facts.horizontals!].map(assembly => [assembly.plan.memberId, assembly]))
   // The single positioning policy owns these detached mutable pipe records.
   // The committed stock choice remains immutable.

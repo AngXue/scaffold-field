@@ -49,8 +49,8 @@ it('settles corridor connections before selecting horizontal stock and measures 
   const layout = calculateSite(demo.site, demo.parameters, { trace: true })
   const events = layout[CALCULATION_TRACE]!
   const at = (step: string) => events.findIndex(event => event.step === step && event.status === 'proposed')
-  expect(events.filter(event => event.step === 'S01.horizontals')).toHaveLength(1)
-  expect(at('S01.horizontals')).toBeGreaterThan(at('P06.openCaps'))
+  expect(events.filter(event => event.step === 'S01.committedHorizontals')).toHaveLength(1)
+  expect(at('S01.committedHorizontals')).toBeGreaterThan(at('P06.openCaps'))
   expect(at('P06.openCaps')).toBeGreaterThan(at('P07.actualPostTops'))
   expect(at('V01.physicalSupport')).toBeGreaterThan(events.findLastIndex(event => event.step === 'S04.positionStock'))
   expect(at('O01.quantities')).toBeGreaterThan(at('V03.bridgeCollisions'))
@@ -86,4 +86,13 @@ it.each(['roof', 'corridor', 'aligned', 'adjacent-houses'])('%s commits every fi
   expect(events.findIndex(event => event.step === 'V01.physicalSupport')).toBeGreaterThan(Math.max(...connections))
   expect(events.findIndex(event => event.step === 'O01.quantities')).toBeGreaterThan(Math.max(...connections))
   expect(layout).not.toHaveProperty('fittingPlans')
+})
+
+it.each(['roof', 'corridor', 'adjacent-houses'])('%s consumes committed posts without returning to the S4 stock rules', id => {
+  const demo = SITE_DEMOS.find(demo => demo.id === id)!
+  const events = calculateSite(demo.site, demo.parameters, { trace: true })[CALCULATION_TRACE]!
+  const handoff = events.findIndex(event => event.step === 'S01.acceptPosts')
+  expect(handoff).toBeGreaterThan(0)
+  expect(events.slice(handoff).filter(event => ['S02.inventory', 'S03.repair', 'S01.posts'].includes(event.step))).toEqual([])
+  expect(events.filter(event => event.step === 'S01.horizontals')).toEqual([])
 })

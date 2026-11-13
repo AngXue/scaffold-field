@@ -4,7 +4,7 @@ import { SITE_DEMOS } from '../siteDemos'
 import { DEFAULT_PARAMETERS, type ScaffoldMember } from '../scaffold'
 import { prepareFittingPlan, finishFittings } from './connections'
 import { assembleStockStage } from './stock'
-import { repairPostSplices, assembleHorizontalRuns } from './policies/stock'
+import { repairPostSplices, assembleHorizontalRuns, createPipeAssembly } from './policies/stock'
 
 describe('stock proposals and real splice contributions', () => {
   it('reassembles fixed posts without changing prior committed sequences or geometry', () => {
@@ -50,4 +50,14 @@ it('request-local stock memoization equals uncached selection and cannot leak ac
     const parameters = { ...DEFAULT_PARAMETERS, stockLengths, spliceOverlap }
     expect(assembleHorizontalRuns(members, parameters, {}, true)).toEqual(assembleHorizontalRuns(members, parameters, {}, false))
   }
+})
+
+it('S6 cannot rebuild a missing committed post, accept duplicate stock, or silently change its chosen sequence', () => {
+  const post: ScaffoldMember = { id: 'P', type: 'post', start: [0, 0, 0], end: [0, 9.7, 0], length: 9.7, connectionPoints: [] }
+  const assembly = createPipeAssembly(post, [6, 4], 0, [6, 4]), sequences = { P: [6, 4] }
+  expect(() => assembleStockStage([post], sequences, DEFAULT_PARAMETERS, true, [])).toThrow('Missing committed upright')
+  expect(() => assembleStockStage([post], sequences, DEFAULT_PARAMETERS, true, [assembly, assembly])).toThrow('Duplicate committed upright')
+  expect(() => assembleStockStage([post], sequences, DEFAULT_PARAMETERS, false, [assembly])).toThrow('cannot request reselection')
+  const illegal = createPipeAssembly(post, [5], 0, [5, 5])
+  expect(() => assembleStockStage([post], { P: [5, 5] }, DEFAULT_PARAMETERS, true, [illegal])).toThrow('Forbidden post stock assembly')
 })

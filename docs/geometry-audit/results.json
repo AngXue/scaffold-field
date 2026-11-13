@@ -1,6 +1,6 @@
 {
   "date": "2026-11-13",
-  "sourceHash": "f8e0deacfa68b675c33144a72c20dc271ffce4fc47dee8c8e183dea222ac9e1e",
+  "sourceHash": "fdc8485185bdb98a503c2c56a369333baff00b97ed1ca7c33c0bb37ea59ef6b9",
   "sourceFiles": [
     {
       "path": "guardrails.ts",
@@ -76,7 +76,7 @@
     },
     {
       "path": "rules/diagnostics/build.ts",
-      "sha256": "82daf39711c5d64adb9ba95ddcd870e0fe5add9bc1da20ac2e02146d54278e72"
+      "sha256": "b6d5e03eb2435372d715c5debd596cf39918601c16043049387bfefb553c23c5"
     },
     {
       "path": "rules/diagnostics/editor.ts",
@@ -320,7 +320,7 @@
     },
     {
       "path": "rules/stock.ts",
-      "sha256": "4a26822dd42474a08c1c8e4e333a97b9bbd660d7064941ed501db9199296082a"
+      "sha256": "c0fe2e201617d67f3b5580c18c18283c427200d49ee972af6d725e515ab08a38"
     },
     {
       "path": "rules/topology.ts",
