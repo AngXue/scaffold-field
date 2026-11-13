@@ -1,3 +1,4 @@
+import { stockHistoryTransformer } from './rules/facts/stockHistory.ts'
 import { MEMBER_HISTORY, historyTransformer, retiredMemberUse } from './rules/facts/memberHistory.ts'
 import { startSiteRouting } from './rules/routing.ts'
 import { fitGuardrailStock } from './guardrails.ts'
@@ -212,7 +213,8 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         if (!context) continue
         const { drawing, base } = context
         const world = ([x, y, z]: Vector3Tuple): Vector3Tuple => [x + drawing.points[0].x / PIXELS_PER_METER, roundSite(y + base), z + drawing.points[0].y / PIXELS_PER_METER]
-        posts.push(...context.construction.working().posts!.flatMap(post => post.segments.map(pipe => ({ ...pipe,
+        const stockHistory = stockHistoryTransformer(world)
+        posts.push(...context.construction.working().posts!.flatMap(post => post.segments.map(pipe => ({ ...pipe, ...stockHistory(pipe),
           start: world(pipe.start), end: world(pipe.end) }))))
       }
       preparedTransitions = commitTransitionPosts(transitionWork!, posts)
@@ -263,8 +265,9 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       if (sharedRemovals.has(member.id)) layout[RETIRED_USES]!.push(retiredMemberUse(member, use, 'P06', 'shared-cap'))
     }
     const members = transformedMembers.filter(member => !removed.has(member.id))
+    const stockHistory = stockHistoryTransformer(world)
     const pipeSegments = part.pipeSegments.filter(pipe => !removed.has(pipe.memberId))
-      .map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
+      .map(pipe => ({ ...pipe, ...stockHistory(pipe), start: world(pipe.start), end: world(pipe.end) }))
     const connectors = part.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
       .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
     // Validation closures outlive assembly. Keep bulky local construction facts
@@ -280,7 +283,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         // Logical world geometry was committed above. Only new physical records
         // need this coordinate conversion; do not transform every member twice.
         const completed = toPlan({ ...physical, members: [], decks: [], baseChannels: [], pathDimensions: [] })
-        const finalPipes = completed.pipeSegments.filter(pipe => !removed.has(pipe.memberId)).map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
+        const finalPipes = completed.pipeSegments.filter(pipe => !removed.has(pipe.memberId)).map(pipe => ({ ...pipe, ...stockHistory(pipe), start: world(pipe.start), end: world(pipe.end) }))
         const finalConnectors = completed.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
           .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
         positionSiteStock({ members, pipeSegments: finalPipes, connectors: finalConnectors, decks: decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,

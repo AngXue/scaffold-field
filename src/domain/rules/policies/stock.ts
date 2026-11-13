@@ -1,3 +1,4 @@
+import { STOCK_HISTORY, stockSelection, stockBirth } from '../facts/stockHistory.ts'
 import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import { DEFAULT_PARAMETERS, SPLICE_STAGGER, type ScaffoldMember, type ScaffoldParameters, type Vector3Tuple, type LayoutWarning, type PipeSegment, type PipeAssemblyPlan } from '../../scaffold.ts'
 import { Vector } from '../facts/vector.ts'
@@ -219,6 +220,7 @@ export function createPipeAssembly(
     ? start
     : start.subtract(direction.scale(excessLength / 2))
   const segments: PipeSegment[] = []
+  const selection = stockSelection(member, selectedStocks, overlap, effectiveLength, excessLength)
   let cursor = assemblyStart
 
   selectedStocks.forEach((stockLength, index) => {
@@ -236,6 +238,8 @@ export function createPipeAssembly(
       overlapWithPrevious: index === 0 ? 0 : overlap,
     })
 
+    const piece = segments[segments.length - 1]
+    piece[STOCK_HISTORY] = stockBirth(piece, selection)
     cursor = cursor.add(direction.scale(stockLength - overlap))
   })
 

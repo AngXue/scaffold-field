@@ -1100,6 +1100,26 @@
           "file": "src/domain/rules/globalStages.test.ts",
           "title": "a failed input snapshot also prevents a caught error from publishing a nested success",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stockHistory.test.ts",
+          "title": "actual stock assembly keeps one immutable selection and stable piece identities independent of display labels",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stockHistory.test.ts",
+          "title": "successive real transition and walkway moves preserve both previous poses and the original purchased sequence",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stockHistory.test.ts",
+          "title": "world projection moves every stock pose together without changing the selected stock or semantic identity",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stockHistory.test.ts",
+          "title": "physical graph rejects stock histories with missing demand roots, cyclic moves or conflicting reused identities",
+          "count": 1
         }
       ]
     },

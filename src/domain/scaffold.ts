@@ -1,3 +1,4 @@
+import { STOCK_HISTORY, stockHistoryTransformer } from './rules/facts/stockHistory.ts'
 import { MEMBER_HISTORY, memberBirth, historyTransformer, type MemberHistory } from './rules/facts/memberHistory.ts'
 import { ConstructionIdentities, constructionAlias } from './rules/facts/constructionIdentity.ts'
 import type { SemanticValue } from './rules/facts/identity.ts'
@@ -158,6 +159,7 @@ export type ScaffoldMember = {
 }
 
 export type PipeSegment = {
+  [STOCK_HISTORY]?: import('./rules/facts/stockHistory.ts').StockHistory
   id: string
   memberId: string
   type: MemberType
@@ -839,11 +841,12 @@ export function assembleConnectedRuns(layout: ScaffoldAssembly, members: Scaffol
   const plans = layout.assemblyPlans.filter(plan => posts.has(plan.memberId))
   const sequences = new Map(plans.map(plan => [plan.memberId, plan.stockLengths]))
   const pipes = new Map<string, PipeSegment[]>()
+  const stockHistory = stockHistoryTransformer(point => point.map(value => round(value)) as Vector3Tuple)
   for (const pipe of layout.pipeSegments) if (posts.has(pipe.memberId)) {
     const group = pipes.get(pipe.memberId) ?? []
     // Transition geometry publishes the same millimetre world frame. Preserve
     // each committed stock choice while expressing its endpoints in that frame.
-    group.push({ ...pipe, id: `S-${pipe.memberId}-${pipe.sequence}`, start: pipe.start.map(value => round(value)) as Vector3Tuple, end: pipe.end.map(value => round(value)) as Vector3Tuple })
+    group.push({ ...pipe, ...stockHistory(pipe), id: `S-${pipe.memberId}-${pipe.sequence}`, start: pipe.start.map(value => round(value)) as Vector3Tuple, end: pipe.end.map(value => round(value)) as Vector3Tuple })
     pipes.set(pipe.memberId, group)
   }
   const prebuilt = plans.map(plan => ({ plan: { ...plan, segmentIds: pipes.get(plan.memberId)!.map(pipe => pipe.id) }, segments: pipes.get(plan.memberId)! }))
@@ -966,8 +969,9 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
     if (paths.length === 1 && phase === 4) {
       const path = paths[0], dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
       const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
+      const stockHistory = stockHistoryTransformer(move)
       state.working!.posts = constructions[0].working().committed!.posts.map(post => ({ ...post,
-        segments: post.segments.map(pipe => ({ ...pipe, start: move(pipe.start), end: move(pipe.end) })) }))
+        segments: post.segments.map(pipe => ({ ...pipe, ...stockHistory(pipe), start: move(pipe.start), end: move(pipe.end) })) }))
     }
     if (phase === 5) state.working!.aliases = new Map(constructions.flatMap((construction, component) => {
       const prefix = paths.length > 1 ? `G${component}-` : ''
@@ -989,7 +993,8 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
         m.cornerJunctions = m.cornerJunctions?.map(i => path.edgeIndices[i])
       })
       if (result.fittingPlans) result.fittingPlans = transformFittingPlans(result.fittingPlans, move)
-      result.pipeSegments?.forEach(p => { p.start = move(p.start); p.end = move(p.end) })
+      const stockHistory = stockHistoryTransformer(move)
+      result.pipeSegments?.forEach(p => { Object.assign(p, stockHistory(p)); p.start = move(p.start); p.end = move(p.end) })
       result.connectors?.forEach(c => { c.position = move(c.position); if (c[CONNECTOR_CONTACT]) c[CONNECTOR_CONTACT] = move(c[CONNECTOR_CONTACT]) })
       result.decks.forEach(d => {
         d.corners = d.corners.map(move) as DeckPanel['corners']; d.coverage = d.coverage?.map(face => face.map(move))

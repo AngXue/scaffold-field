@@ -1,3 +1,4 @@
+import { STOCK_HISTORY, type StockHistory, type StockSelection } from './stockHistory.ts'
 import { MEMBER_HISTORY, type MemberHistory } from './memberHistory.ts'
 import type { Site, SiteLayout } from '../../site.ts'
 import type { PipeSegment, Vector3Tuple } from '../../scaffold.ts'
@@ -117,10 +118,51 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     if (!member) throw new Error(`Dangling connection member: ${legacyId}`)
     return member.id
   }
-  uniqueLegacy(layout.pipeSegments, 'physical pipe')
+  const selections = new Map<string, StockSelection>()
+  type StockVersion = Omit<StockHistory, 'parent' | 'selection'> & { selectionId: string; parentId?: string }
+  const stockVersions = new Map<string, StockVersion>(), activeStock = new Set<string>(), visitedStock = new WeakMap<StockHistory, string>()
+  const registerStock = (node: StockHistory): string => {
+    const cached = visitedStock.get(node)
+    if (cached) return cached
+    if (activeStock.has(node.id)) throw new Error(`Cyclic stock history: ${node.id}`)
+    activeStock.add(node.id)
+    const { selection, parent, ...values } = node
+    if (selection.stockLengths[node.sequence - 1] !== node.stockLength
+      || (parent && (parent.selection.id !== selection.id || parent.sequence !== node.sequence || parent.stockLength !== node.stockLength)))
+      throw new Error(`Stock history changed a purchased piece: ${node.id}`)
+    const priorSelection = selections.get(selection.id)
+    if (priorSelection && JSON.stringify(priorSelection) !== JSON.stringify(selection)) throw new Error(`Conflicting stock selection: ${selection.id}`)
+    if (!priorSelection) selections.set(selection.id, publish(selection))
+    const data: StockVersion = { ...values, selectionId: selection.id, parentId: parent && registerStock(parent) }
+    const previous = stockVersions.get(node.id)
+    if (previous && JSON.stringify(previous) !== JSON.stringify(data)) throw new Error(`Conflicting stock history: ${node.id}`)
+    if (!previous) stockVersions.set(node.id, publish(data))
+    activeStock.delete(node.id); visitedStock.set(node, node.id)
+    return node.id
+  }
+  const physicalByAlias = uniqueLegacy(layout.pipeSegments, 'physical pipe')
   const pipes = layout.pipeSegments.map(pipe => publish({ id: ids.of('pipe', [memberId(pipe.memberId), pipe.sequence, pipe.stockLength]),
-    legacyId: pipe.id, memberId: memberId(pipe.memberId), stockLength: pipe.stockLength, sequence: pipe.sequence,
+    legacyId: pipe.id, constructionId: pipe[STOCK_HISTORY] && registerStock(pipe[STOCK_HISTORY]), memberId: memberId(pipe.memberId), stockLength: pipe.stockLength, sequence: pipe.sequence,
     start: [...pipe.start], end: [...pipe.end] }))
+  const hasAncestor = (head: string, target: string): boolean => {
+    const pending = [head], seen = new Set<string>()
+    while (pending.length) {
+      const id = pending.pop()!
+      if (id === target) return true
+      if (seen.has(id)) continue
+      seen.add(id); pending.push(...(construction.get(id)?.parentIds ?? []))
+    }
+    return false
+  }
+  for (const pipe of pipes) if (pipe.constructionId) {
+    const version = stockVersions.get(pipe.constructionId)!, selection = selections.get(version.selectionId)!
+    if (version.sequence !== pipe.sequence || version.stockLength !== pipe.stockLength
+      || version.start.some((value, axis) => value !== pipe.start[axis]) || version.end.some((value, axis) => value !== pipe.end[axis]))
+      throw new Error(`Final pipe differs from its construction: ${pipe.legacyId}`)
+    const member = byMember.get(physicalByAlias.get(pipe.legacyId)!.memberId)!
+    if (member.constructionId && !hasAncestor(member.constructionId, selection.memberConstructionId))
+      throw new Error(`Stock selection has no matching member ancestor: ${pipe.legacyId}`)
+  }
   const pipeIds = new Map(pipes.map(pipe => [pipe.legacyId, pipe.id]))
   const pipesByMember = new Map<string, PipeSegment[]>()
   for (const pipe of layout.pipeSegments) {
@@ -240,7 +282,10 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     lineage.get(record.useId)!.replacedBy.push(record.id)
   })
   members.forEach(member => derive(member.id, 'member', [...member.useIds, ...member.frameIds, ...(member.constructionId ? [member.constructionId] : [])]))
-  pipes.forEach(pipe => derive(pipe.id, 'pipe', [pipe.memberId]))
+  selections.forEach(selection => derive(selection.id, 'stock-selection', [selection.memberConstructionId]))
+  stockVersions.forEach(version => derive(version.id, `stock-${version.operation}`, [version.selectionId, ...(version.parentId ? [version.parentId] : [])]))
+  stockVersions.forEach(version => { if (version.parentId) lineage.get(version.parentId)!.replacedBy.push(version.id) })
+  pipes.forEach(pipe => derive(pipe.id, 'pipe', [pipe.memberId, ...(pipe.constructionId ? [pipe.constructionId] : [])]))
   nodes.forEach(node => derive(node.id, 'node', node.memberIds))
   const connectorNodes = new Map(nodes.flatMap(node => node.connectorIds.map(id => [id, node.id] as const)))
   connectors.forEach(connector => derive(connector.id, 'connector', [...connector.pipeIds, connectorNodes.get(connector.id)!]))
@@ -253,8 +298,8 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   }
   validateLineage([...lineage.values()])
   const ordered = <T extends { id: string }>(values: T[]) => values.sort((a, b) => a.id.localeCompare(b.id))
-  return { identityVersion: 1, lineageScope: 'actual member demand, merge, connection, clip and removal history; deck/base/stock intermediate identities pending',
-    construction: ordered([...construction.values()]),
+  return { identityVersion: 1, lineageScope: 'actual member demand, merge, connection, clip and removal history; actual stock selection, assembly and position history; station/deck/base intermediate identities pending',
+    construction: ordered([...construction.values()]), stockSelections: ordered([...selections.values()]), stockConstruction: ordered([...stockVersions.values()]),
     frames: ordered(frames), retired: ordered(retired),
     ranges: ordered([...ranges.values()]), replacements: [...replacements.values()].sort((a, b) => a.before.localeCompare(b.before) || a.after.localeCompare(b.after)),
     lineage: ordered([...lineage.values()]), sources: ordered(sources), spans: ordered(spans), nodes: ordered(nodes), members: ordered(members),

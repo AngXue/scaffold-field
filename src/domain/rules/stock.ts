@@ -1,3 +1,5 @@
+import { STOCK_DEMAND } from './facts/stockHistory.ts'
+import { historyOf } from './facts/memberHistory.ts'
 import { VERIFY_RULE_INPUTS } from './runtime.ts'
 import type { ScaffoldMember, ScaffoldParameters, LayoutWarning } from '../scaffold.ts'
 import { postStocks, repairPostSplices, createPipeAssembly, assembleHorizontalRuns, horizontalStockForward, STOCK_FORWARD } from './policies/stock.ts'
@@ -114,10 +116,10 @@ export function resolvePostSequences(members: ScaffoldMember[], sequences: Recor
 }
 export function assembleStockStage(members: ScaffoldMember[], sequences: Record<string, number[]>, parameters: ScaffoldParameters, fixed = false, prebuiltPosts?: Assembly[]) {
   if (!members.length) return { assemblies: [], warnings: [] }
-  // Stock consumes geometry and ties, not a second copy of the provenance graph.
+  // Stock consumes geometry, ties and the native demand reference, not a second copy of its ancestry.
   const demands = members.map(member => {
     const { id, type, start, end, length, layer, connectionPoints } = member
-    return { id, type, start, end, length, layer, connectionPoints, [STOCK_FORWARD]: type === 'post' || horizontalStockForward(member) }
+    return { id, type, start, end, length, layer, connectionPoints, [STOCK_DEMAND]: historyOf(member).id, [STOCK_FORWARD]: type === 'post' || horizontalStockForward(member) }
   })
   if (prebuiltPosts && !fixed) throw new Error('Committed upright inputs cannot request reselection')
   const { facts } = prebuiltPosts

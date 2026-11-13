@@ -1,3 +1,4 @@
+import { STOCK_HISTORY } from './facts/stockHistory.ts'
 import type { DeckPanel, ScaffoldMember, PipeSegment, ScaffoldConnector } from '../scaffold.ts'
 import type { PlacementEnvironment, PlacementLayout, Walkway } from './facts/placement.ts'
 import { walkwayObjectives } from './policies/placementConstraints.ts'
@@ -50,7 +51,9 @@ export function positionStock(layout: PlacementLayout, environment: PlacementEnv
   if (!layout.pipeSegments.length) return []
   const { facts } = run({ members: layout.members, pipes: layout.pipeSegments, connectors: layout.connectors, decks: layout.decks ?? [], environment })
   // One atomic compatibility commit. No policy mutates the incoming layout.
-  facts.placed!.pipes.forEach((pipe, index) => { layout.pipeSegments[index].start = [...pipe.start]; layout.pipeSegments[index].end = [...pipe.end] })
+  facts.placed!.pipes.forEach((pipe, index) => { layout.pipeSegments[index].start = [...pipe.start]; layout.pipeSegments[index].end = [...pipe.end];
+    if (pipe[STOCK_HISTORY]) layout.pipeSegments[index][STOCK_HISTORY] = pipe[STOCK_HISTORY]
+  })
   facts.placed!.connectors.forEach((connector, index) => { layout.connectors[index].position = [...connector.position] })
   return facts.placed!.decisions
 }

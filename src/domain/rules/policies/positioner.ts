@@ -1,3 +1,4 @@
+import { STOCK_HISTORY, stockMoved } from '../facts/stockHistory.ts'
 import type { PipeSegment, ScaffoldConnector, ScaffoldMember, Vector3Tuple } from '../../scaffold.ts'
 import { memberUses } from '../facts/memberUses.ts'
 import type { PlacementEnvironment, PlacementDecision, Walkway, Move, AxialRange } from '../facts/placement.ts'
@@ -22,7 +23,10 @@ export function solvePositions(members: readonly ScaffoldMember[], inputPipes: r
     const apply = (move: Move) => {
       if (move.delta.every(value => Math.abs(value) < 1e-6)) return
       const moved = (point: Vector3Tuple): Vector3Tuple => point.map((value, axis) => move.delta[axis] === 0 ? value : value + move.delta[axis]) as Vector3Tuple
-      for (const pipe of stock) { pipe.start = moved(pipe.start); pipe.end = moved(pipe.end) }
+      for (const pipe of stock) {
+        pipe.start = moved(pipe.start); pipe.end = moved(pipe.end)
+        if (pipe[STOCK_HISTORY]) pipe[STOCK_HISTORY] = stockMoved(pipe, move)
+      }
       for (const sleeve of sleeves.get(member.id) ?? []) sleeve.position = moved(sleeve.position)
       decision.moves.push(move)
     }

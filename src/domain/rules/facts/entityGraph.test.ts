@@ -108,6 +108,17 @@ describe('fixed projects: complete physical graph references', () => {
       if (node.operation === 'demand') expect(node.useIds.length, id).toBeGreaterThan(0)
       if (node.operation === 'merge') expect(node.parentIds.length, id).toBeGreaterThanOrEqual(2)
     }
+    const stockVersions = new Map(graph.stockConstruction.map(node => [node.id, node]))
+    const selections = new Map(graph.stockSelections.map(choice => [choice.id, choice]))
+    for (const pipe of graph.pipes) {
+      expect(pipe.constructionId, id).toBeDefined()
+      const version = stockVersions.get(pipe.constructionId!)!
+      expect(version.start, id).toEqual(pipe.start); expect(version.end, id).toEqual(pipe.end)
+      expect(version.stockLength, id).toBe(pipe.stockLength)
+      const choice = selections.get(version.selectionId)!
+      expect(construction.has(choice.memberConstructionId), id).toBe(true)
+      expect(choice.stockLengths[pipe.sequence - 1], id).toBe(pipe.stockLength)
+    }
     const entities = new Set([...graph.pipes, ...graph.connectors, ...graph.decks, ...graph.bases].map(entity => entity.id))
     expect(graph.ledger.entries.every(entry => entities.has(entry.entityId) && entry.sourceIds.length > 0)).toBe(true)
     const members = new Set(graph.members.map(member => member.id)), pipes = new Set(graph.pipes.map(pipe => pipe.id))

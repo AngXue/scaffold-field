@@ -534,7 +534,8 @@ export const RULES: readonly RuleDefinition[] = [
       "T10",
       "T11",
       "src/domain/rules/placement.test.ts",
-      "src/domain/guardrails.test.ts"
+      "src/domain/guardrails.test.ts",
+      "src/domain/rules/facts/stockHistory.test.ts"
     ]
   },
   {
@@ -554,7 +555,8 @@ export const RULES: readonly RuleDefinition[] = [
       "T10",
       "T12",
       "src/domain/rules/stock.test.ts",
-      "src/domain/scaffold.test.ts"
+      "src/domain/scaffold.test.ts",
+      "src/domain/rules/facts/stockHistory.test.ts"
     ]
   },
   {
@@ -610,7 +612,8 @@ export const RULES: readonly RuleDefinition[] = [
       "T10",
       "T11",
       "src/domain/rules/placement.test.ts",
-      "src/domain/guardrails.test.ts"
+      "src/domain/guardrails.test.ts",
+      "src/domain/rules/facts/stockHistory.test.ts"
     ]
   },
   {

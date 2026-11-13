@@ -46,11 +46,14 @@ npm run rules:docs -- --check
 | `src/domain/site.ts` | 场景解析、全局标高、几何校验和 `SiteLayout` 汇总 |
 | `src/domain/siteRouting.ts`、`src/domain/siteTransitions.ts` | 沿墙偏移、自动落脚、跨高差排站和同层接通 |
 | `src/domain/scaffold.ts`、`src/domain/plan.ts` | 单落脚架体、定尺组装、扣件、材料汇总和旧平地路径几何 |
+| `src/domain/rules/` | 分阶段规则、冲突检查、构件来源、标准管选配与定位记录、材料贡献和诊断 |
 | `src/App.tsx` | 项目与参数状态，向绘图、三维检查和材料表提供同一份 `SiteLayout` |
 | `src/components/ui/`、`docs/UI组件库.md` | 新拟态组件库、设计令牌和界面规范 |
 | `src/components/planAnnotations.ts`、`SceneDimensions.tsx` | 二维标注避让、三维尺寸标签与拾取辅助 |
 
 规则框架设计见[规则框架设计](docs/规则框架设计.md)、[现有规则清单](docs/规则清单.md)和[迁移与验收方案](docs/规则框架迁移与验收.md)。方案已批准并开始实施，当前状态见[规则框架实施进度](docs/规则框架实施进度.md)；完整规则迁移尚未完成。逐项业务及组合检查见[可执行验收矩阵](docs/qa/规则验收矩阵.md)。[规则索引与依赖图](docs/规则索引与依赖图.md)由实际注册表生成；修改规则步骤后执行 `npm run rules:docs`，本地审计与GitHub检查会拒绝过期文档。
+
+排查测算结果时，可从项目导出菜单选择「导出计算诊断」。诊断包含输入和引擎版本、实际构件合并／裁除关系、标准管选配及移动历史、材料贡献和问题来源；导出不会修改项目或人工数量。详细诊断按需生成，普通项目仍使用上述存档格式。
 
 界面组件与交互口径见[UI 组件库](docs/UI组件库.md)。测算口径见[计算规则](docs/计算规则.md)。改规则时同步更新领域代码、回归测试和文档。扣件计量的历史核对见[扣件计算复核](docs/扣件计算复核.md)。安卓性能的测量方法及迁移条件见[技术栈评估](docs/技术栈评估.md)。
 

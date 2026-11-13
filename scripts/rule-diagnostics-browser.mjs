@@ -36,6 +36,16 @@ try {
     for (const kind of ['merge', 'clip', 'connect', 'purpose-removal']) assert(graph.construction.some(node => node.operation === kind))
     assert(graph.construction.every(node => node.parentIds.every(id => construction.has(id))))
     assert(graph.retired.every(record => construction.get(record.constructionId)?.operation === 'purpose-removal'))
+    const stock = new Map(graph.stockConstruction.map(node => [node.id, node]))
+    const choices = new Map(graph.stockSelections.map(choice => [choice.id, choice]))
+    assert(graph.pipes.every(pipe => stock.has(pipe.constructionId)))
+    assert(graph.stockConstruction.some(node => node.operation === 'position'))
+    for (const pipe of graph.pipes) {
+      const node = stock.get(pipe.constructionId)
+      assert.deepEqual(node.start, pipe.start); assert.deepEqual(node.end, pipe.end)
+      assert.equal(node.stockLength, pipe.stockLength)
+      assert(construction.has(choices.get(node.selectionId).memberConstructionId))
+    }
     assert.equal(graph.pipes.length, 731)
     assert.equal(graph.ledger.entries.filter(entry => entry.category === 'cross').length, 1485)
     assert.equal(graph.ledger.entries.filter(entry => entry.category === 'butt').length, 222)
