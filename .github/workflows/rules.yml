@@ -45,6 +45,8 @@ jobs:
           export SITE_QA_OUTPUT="$RUNNER_TEMP/scaffold-browser-qa"
           node scripts/site-browser.mjs
           npm run test:rules -- --check --browser-report="$SITE_QA_OUTPUT/report.json"
+          node scripts/calculation-parity/prepare-rollback.mjs
+          SITE_QA_OUTPUT="$RUNNER_TEMP/scaffold-rollback-qa" node scripts/rollback-browser.mjs
           npm run audit:rules
       - name: Preserve reproducible evidence
         if: always()
@@ -55,4 +57,5 @@ jobs:
             artifacts/rule-migration/
             docs/geometry-audit/results.json
             ${{ runner.temp }}/scaffold-browser-qa/
+            ${{ runner.temp }}/scaffold-rollback-qa/
             ${{ runner.temp }}/scaffold-preview.log

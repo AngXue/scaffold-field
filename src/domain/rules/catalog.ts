@@ -787,7 +787,7 @@ export const RULES: readonly RuleDefinition[] = [
   {
     "id": "O03",
     "revision": 1,
-    "title": "项目／默认图／历史保留场景及修正；旧图恢复地面；符合条件才导出 OA 0.6",
+    "title": "项目／历史保留场景及修正，默认图只保留场景和参数；旧图恢复地面；符合条件才导出 OA 0.6",
     "status": "active",
     "implementation": "boundary",
     "source": [

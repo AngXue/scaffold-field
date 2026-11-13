@@ -53,13 +53,13 @@ export function acceptanceEvidence(manifest, results, browser, current) {
     // evidence T14 remains explicitly pending, even if all 23 domain rows pass.
     const pending = []
     if (!browser) pending.push('T14 current production browser exports and tablet layout')
-    else {
+    else try {
       assert.equal(browser.status, 'passed', 'Browser run failed')
       assert.equal(browser.engineRevision, current.engineRevision, 'Stale served browser engine')
       assert.equal(browser.sourceFingerprint, current.sourceFingerprint, 'Stale browser sources')
       assert.equal(manifest.browserChecks.length, 11, 'Browser coverage differs')
       assert.deepEqual(browser.checks, manifest.browserChecks, 'Missing browser flows')
-    }
+    } catch (error) { pending.push(`T14: ${error.message}`) }
     return { accepted: pending.length === 0, domainAccepted: true, tests: tested, rows, pending }
   } catch (error) {
     return { accepted: false, domainAccepted: false, rows: [], pending: [error.message] }

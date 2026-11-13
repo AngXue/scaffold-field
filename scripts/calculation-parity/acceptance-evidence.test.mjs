@@ -49,3 +49,13 @@ it.each(['missing-row', 'duplicate-row', 'missing-rule', 'unknown-rule', 'empty-
   if (kind === 'browser-failed') f.browser.status = 'failed'
   expect(acceptanceEvidence(f.manifest, f.results, f.browser, current).accepted).toBe(false)
 })
+
+it('keeps fresh domain results usable while an old browser report remains pending', () => {
+  const { manifest, results, browser } = fixture()
+  browser.sourceFingerprint = 'previous sources'
+  const outcome = acceptanceEvidence(manifest, results, browser, current)
+  expect(outcome.domainAccepted).toBe(true)
+  expect(outcome.accepted).toBe(false)
+  expect(outcome.rows).toHaveLength(23)
+  expect(outcome.pending[0]).toMatch(/T14: Stale browser sources/)
+})
