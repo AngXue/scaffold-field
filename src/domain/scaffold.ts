@@ -1,3 +1,4 @@
+import { PART_HISTORY, mapParts, appendParts, partProjection } from './rules/facts/partHistory.ts'
 import { STOCK_HISTORY, stockHistoryTransformer } from './rules/facts/stockHistory.ts'
 import { MEMBER_HISTORY, memberBirth, memberPublication, historyTransformer, type MemberHistory } from './rules/facts/memberHistory.ts'
 import { ConstructionIdentities, constructionAlias } from './rules/facts/constructionIdentity.ts'
@@ -171,6 +172,7 @@ export type PipeSegment = {
 }
 
 export type DeckPanel = {
+  [PART_HISTORY]?: import('./rules/facts/partHistory.ts').PartHistory
   [FRAME_SCOPES]?: readonly string[]
   id: string
   corners: [Vector3Tuple, Vector3Tuple, Vector3Tuple, Vector3Tuple]
@@ -202,6 +204,7 @@ export const BASE_CHANNEL_WIDTH = 0.048
  * direction as the transverse members, and the posts stand on it.
  */
 export type BaseChannel = {
+  [PART_HISTORY]?: import('./rules/facts/partHistory.ts').PartHistory
   id: string
   start: Vector3Tuple
   end: Vector3Tuple
@@ -584,11 +587,11 @@ function* constructScaffoldDraft(
     if (post.cornerJunctions) member.cornerJunctions = post.cornerJunctions
     emittedPosts.add(key)
   }
-  let baseChannels = resolveBaseCandidates({ rows: frame.rows.map(rows => rows.postRows), stations: topology.stations,
+  let baseChannels = resolveBaseCandidates({ identityScope: identities.scope, rows: frame.rows.map(rows => rows.postRows), stations: topology.stations,
     corners: topology.corners, order: segmentOrder, transverseTubeLength })
   const working = resolveBands(frame.rows.map((rows, index) => ({ rows, bayCount: topology.stations[index].bayCount,
     joinedStart: joinedCorners.has(previousSegment(index)), joinedEnd: joinedCorners.has(index), lifts: profileAt(index).height.lifts })), parameters, deckLayerOffset)
-  const decks = resolveDecks({ geometry: frame.rows.map((rows, index) => ({ postRows: rows.postRows, stations: topology.stations[index].stations, bands: working[index].map(({ elevation, layer, withDeck }) => ({ elevation, layer, withDeck })) })),
+  const decks = resolveDecks({ identityScope: identities.scope, geometry: frame.rows.map((rows, index) => ({ postRows: rows.postRows, stations: topology.stations[index].stations, bands: working[index].map(({ elevation, layer, withDeck }) => ({ elevation, layer, withDeck })) })),
     order: segmentOrder, corners: topology.corners.cornerDecks, counts: physical.slice(0, -1).map((_, index) => layersAt(index)), lifts: localLifts ? [...localLifts] : [],
     parameters, deckLayerOffset, physical, closed: pathIsClosed, perSegmentCounts: Boolean(segmentLayerCounts) })
   warnings.push(...pathValidation.bands)
@@ -751,7 +754,7 @@ export function completeScaffoldDraft(draft: ScaffoldDraft, fixedPostsAndBases =
 }
 export function assembleScaffoldDraft(draft: ScaffoldDraft, fixedPostsAndBases = false, prebuiltPosts?: StockAssembly[]): ScaffoldAssembly {
   if (!fixedPostsAndBases && !prebuiltPosts && draft[COMMITTED_UPRIGHTS]) return finishPreparedScaffoldAssembly(prepareScaffoldAssembly(draft))
-  return assembleLayout(draft.members, draft.decks.map(deck => ({ ...deck })), draft.baseChannels.map(base => ({ ...base })), [...draft.warnings], draft.parameters,
+  return assembleLayout(draft.members, mapParts(draft.decks, deck => ({ ...deck })), mapParts(draft.baseChannels, base => ({ ...base })), [...draft.warnings], draft.parameters,
     new Map(Object.entries(draft.postSequences)), draft.pathDimensions.map(dimension => ({ ...dimension })), { ...draft.postHeights }, fixedPostsAndBases, prebuiltPosts)
 }
 
@@ -766,7 +769,7 @@ export function prepareScaffoldAssembly(draft: ScaffoldDraft) {
 /** Complete an unchanged prepared scope without merging the same members twice. */
 export function finishPreparedScaffoldAssembly(prepared: ReturnType<typeof prepareScaffoldAssembly>, deferPlacement = false): ScaffoldAssembly {
   const { draft, posts } = prepared
-  return assembleLayout(draft.members.map(member => ({ ...member })), draft.decks.map(deck => ({ ...deck })), draft.baseChannels.map(base => ({ ...base })),
+  return assembleLayout(draft.members.map(member => ({ ...member })), mapParts(draft.decks, deck => ({ ...deck })), mapParts(draft.baseChannels, base => ({ ...base })),
     [...draft.warnings], draft.parameters, new Map(Object.entries(draft.postSequences)), draft.pathDimensions.map(dimension => ({ ...dimension })),
     { ...draft.postHeights }, true, posts, false, deferPlacement)
 }
@@ -947,10 +950,11 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
           start: move(member.start), end: move(member.end), connectionPoints: member.connectionPoints.map(move),
           pathSegment: edge(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(index => edge(index)!),
         })))
-        decks.push(...working.decks.map(deck => ({ ...deck, id: prefix + deck.id, corners: deck.corners.map(move) as DeckPanel['corners'],
+        const parts = partProjection(move, origin => ({ ...origin, pathSegment: edge(origin.pathSegment)! }))
+        appendParts(decks, parts.list(working.decks, deck => ({ ...deck, id: prefix + deck.id, corners: deck.corners.map(move) as DeckPanel['corners'],
           coverage: deck.coverage?.map(face => face.map(move)), pathSegment: edge(deck.pathSegment)!,
         })))
-        bases.push(...working.baseChannels.map(base => ({ ...base, id: prefix + base.id, start: move(base.start), end: move(base.end), pathSegment: edge(base.pathSegment)! })))
+        appendParts(bases, parts.list(working.baseChannels, base => ({ ...base, id: prefix + base.id, start: move(base.start), end: move(base.end), pathSegment: edge(base.pathSegment)! })))
       })
       if (paths.length > 1) {
         componentDemands = reconcileComponents(members, decks, bases, {})
@@ -997,11 +1001,10 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
       const stockHistory = stockHistoryTransformer(move)
       result.pipeSegments?.forEach(p => { Object.assign(p, stockHistory(p)); p.start = move(p.start); p.end = move(p.end) })
       result.connectors?.forEach(c => { c.position = move(c.position); if (c[CONNECTOR_CONTACT]) c[CONNECTOR_CONTACT] = move(c[CONNECTOR_CONTACT]) })
-      result.decks.forEach(d => {
-        d.corners = d.corners.map(move) as DeckPanel['corners']; d.coverage = d.coverage?.map(face => face.map(move))
-        d.pathSegment = path.edgeIndices[d.pathSegment]
-      })
-      result.baseChannels.forEach(b => { b.start = move(b.start); b.end = move(b.end); b.pathSegment = path.edgeIndices[b.pathSegment] })
+      const parts = partProjection(move, origin => ({ ...origin, pathSegment: path.edgeIndices[origin.pathSegment] }))
+      result.decks = parts.list(result.decks, deck => ({ ...deck, corners: deck.corners.map(move) as DeckPanel['corners'],
+        coverage: deck.coverage?.map(face => face.map(move)), pathSegment: path.edgeIndices[deck.pathSegment] }))
+      result.baseChannels = parts.list(result.baseChannels, base => ({ ...base, start: move(base.start), end: move(base.end), pathSegment: path.edgeIndices[base.pathSegment] }))
       result.pathDimensions.forEach(d => { d.index = path.edgeIndices[d.index]; d.start = move(d.start); d.end = move(d.end); d.labelPosition = move(d.labelPosition) })
       result.pathDimensions.sort((a, b) => a.index - b.index)
       return result

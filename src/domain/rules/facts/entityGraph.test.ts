@@ -125,6 +125,22 @@ describe('fixed projects: complete physical graph references', () => {
       expect(construction.has(choice.memberConstructionId), id).toBe(true)
       expect(choice.stockLengths[pipe.sequence - 1], id).toBe(pipe.stockLength)
     }
+    const parts = new Map(graph.partConstruction.map(part => [part.id,part]))
+    expect([...graph.decks,...graph.bases].every(part => part.constructionId && parts.has(part.constructionId)),id).toBe(true)
+    const lineage = new Map(graph.lineage.map(record => [record.id,record]))
+    for (const part of parts.values()) {
+      expect(part.parentIds.every(parent => parts.has(parent)),id).toBe(true)
+      expect(part.inputIds.every(input => parts.has(input)),id).toBe(true)
+      expect(part.supportIds.every(support => construction.has(support)),id).toBe(true)
+      for (const parent of part.parentIds) expect(lineage.get(parent)!.replacedBy,id).toContain(part.id)
+      for (const input of part.inputIds.filter(input => !part.parentIds.includes(input))) expect(lineage.get(input)!.replacedBy,id).not.toContain(part.id)
+    }
+    expect(graph.removedPartIds.every(key => parts.get(key)?.operation === 'remove'),id).toBe(true)
+    const roots = (key: string): string[] => { const part = parts.get(key)!; return part.parentIds.length ? part.parentIds.flatMap(roots) : [key] }
+    const claimedRoots = [...graph.decks,...graph.bases].flatMap(part => roots(part.constructionId!)).concat(graph.removedPartIds.flatMap(roots))
+    expect(new Set(claimedRoots).size,id).toBe(claimedRoots.length)
+    expect([...new Set(claimedRoots)].sort(),id).toEqual([...parts.values()].filter(part => part.operation === 'create').map(part => part.id).sort())
+    expect(graph.ledger.entries.every(entry => !graph.removedPartIds.includes(entry.entityId)),id).toBe(true)
     const entities = new Set([...graph.pipes, ...graph.connectors, ...graph.decks, ...graph.bases].map(entity => entity.id))
     expect(graph.ledger.entries.every(entry => entities.has(entry.entityId) && entry.sourceIds.length > 0)).toBe(true)
     const members = new Set(graph.members.map(member => member.id)), pipes = new Set(graph.pipes.map(pipe => pipe.id))

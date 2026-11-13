@@ -1,3 +1,4 @@
+import { PART_HISTORY, partHistory, partChanged, partShapeChanged, partList, removedParts, withRemoved, appendParts } from '../facts/partHistory.ts'
 import { DECK_PANEL, DECK_PANEL_LAP, type DeckPanel, type ScaffoldParameters, type Vector3Tuple } from '../../scaffold.ts'
 import { signedArea, subtractCoverage, type PlanPolygon } from '../../polygons.ts'
 import { roundDomain as round } from '../facts/precision.ts'
@@ -137,24 +138,32 @@ function resolveDeckCoverageOwned(decks: DeckPanel[], path: Array<[number, numbe
     faces.get(key(deck))!.push(...remaining)
     covered.push(...remaining)
   })
+  const inputs = Object.freeze(decks.map(partHistory)), retired = [...removedParts(decks)]
   const kept = decks.flatMap(deck => {
     const polygons = faces.get(key(deck))!
     const area = polygons.reduce((sum, polygon) => sum + Math.abs(signedArea(polygon)), 0)
-    if (area < 1e-7) return []
-    return [{ ...deck, area: round(area, 9), coverage: polygons.map(polygon => polygon.map(([x, z]) => [x, deck.corners[0][1], z] as Vector3Tuple)) }]
+    const before = partHistory(deck)
+    if (area < 1e-7) {
+      retired.push(partChanged({ ...deck, area: 0, coverage: [] }, [before], 'M06', 'remove', inputs, [], 'overlap'))
+      return []
+    }
+    const next = { ...deck, area: round(area, 9), coverage: polygons.map(polygon => polygon.map(([x, z]) => [x, deck.corners[0][1], z] as Vector3Tuple)) }
+    next[PART_HISTORY] = partShapeChanged(next, before) ? partChanged(next, [before], 'M06', 'coverage', inputs) : before
+    return [next]
   })
   decks.splice(0, decks.length, ...kept)
+  withRemoved(decks, retired)
 }
 
 /** M06 only mutates a private array; published candidate panels remain unchanged. */
 export function resolveDeckCoverage(candidates: readonly DeckPanel[], path: PlanPoint[], closed: boolean, perSegmentCounts: boolean): DeckPanel[] {
-  const decks = [...candidates]
+  const decks = partList([...candidates], candidates)
   if (!perSegmentCounts) { resolveDeckCoverageOwned(decks, path, closed); return decks }
   const layers = new Set(decks.map(deck => deck.layer)), covered: DeckPanel[] = []
   for (const layer of layers) {
     const panels = decks.filter(deck => deck.layer === layer)
     resolveDeckCoverageOwned(panels, path, closed)
-    covered.push(...panels)
+    appendParts(covered, panels)
   }
-  return covered
+  return partList(covered, covered, candidates)
 }

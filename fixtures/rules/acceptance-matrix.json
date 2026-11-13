@@ -1160,6 +1160,41 @@
           "file": "src/domain/rules/posts.test.ts",
           "title": "mitre demand history retains the two adjacent faces before publishing their common post",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/partHistory.test.ts",
+          "title": "deck coverage keeps purchased panels separate from cut faces and retains fully removed origins",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/partHistory.test.ts",
+          "title": "local coverage templates preserve a separate removal at every real lift",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/partHistory.test.ts",
+          "title": "duplicate bases merge their independent origins without purchasing another beam",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/partHistory.test.ts",
+          "title": "base removal records actual support coverage and survives even when the kept collection is empty",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/partHistory.test.ts",
+          "title": "part projection carries live, clipped and deleted geometry with shared immutable ancestors",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/partHistory.test.ts",
+          "title": "part identities ignore display labels and reject conflicting parents or missing ancestors",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/partHistory.test.ts",
+          "title": "the explanation graph rejects stale part poses, lost supports and cyclic coverage history",
+          "count": 1
         }
       ]
     },

@@ -48,6 +48,14 @@ try {
       assert.equal(node.stockLength, pipe.stockLength)
       assert(construction.has(choices.get(node.selectionId).memberConstructionId))
     }
+    const parts = new Map(graph.partConstruction.map(node => [node.id, node]))
+    assert([...graph.decks, ...graph.bases].every(part => parts.has(part.constructionId)))
+    assert(graph.partConstruction.every(node =>
+      [...node.parentIds, ...node.inputIds].every(id => parts.has(id)) && node.supportIds.every(id => construction.has(id))))
+    assert(graph.removedPartIds.every(id => parts.get(id)?.operation === 'remove'))
+    assert(graph.partConstruction.some(node => node.operation === 'coverage'))
+    assert(graph.partConstruction.some(node => node.operation === 'support'))
+    assert.equal(graph.decks.length, 329)
     assert.equal(graph.pipes.length, 731)
     assert.equal(graph.ledger.entries.filter(entry => entry.category === 'cross').length, 1485)
     assert.equal(graph.ledger.entries.filter(entry => entry.category === 'butt').length, 222)
@@ -61,7 +69,7 @@ try {
     assert.deepEqual(errors, [])
     await page.screenshot({ path: `${output}/diagnostics-${viewport.width}.png` })
     if (viewport.width === 1440) await file.saveAs(`${output}/adjacent-houses-diagnostic-v2.json`)
-    report.checks.push({ viewport, pipes: graph.pipes.length, lineage: graph.lineage.length, retired: graph.retired.length, replacements: graph.replacements.length, passed: true })
+    report.checks.push({ viewport, pipes: graph.pipes.length, lineage: graph.lineage.length, partVersions: parts.size, removedParts: graph.removedPartIds.length, retired: graph.retired.length, replacements: graph.replacements.length, passed: true })
     await context.close()
   }
   await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2))

@@ -1,3 +1,4 @@
+import { mapParts } from './facts/partHistory.ts'
 import type { ScaffoldMember, DeckPanel, BaseChannel } from '../scaffold.ts'
 import { sharedComponentPosts, uniqueComponentBases, componentDeckCoverage } from './policies/components.ts'
 import { RULES } from './catalog.ts'
@@ -34,6 +35,6 @@ const run = compilePipeline<Facts, Change>(RULES, COMPONENT_STEPS, (facts, propo
 export function reconcileComponents(members: ScaffoldMember[], decks: DeckPanel[], bases: BaseChannel[], sequences: Record<string, number[]>) {
   const { facts } = run({ members, decks, bases, sequences })
   return { members: facts.shared!.members.map(member => ({ ...member })) as ScaffoldMember[],
-    decks: facts.coverage!.decks.map(deck => ({ ...deck })) as DeckPanel[], bases: facts.uniqueBases!.map(base => ({ ...base })) as BaseChannel[],
+    decks: mapParts(facts.coverage!.decks, deck => ({ ...deck })) as DeckPanel[], bases: mapParts(facts.uniqueBases!, base => ({ ...base })) as BaseChannel[],
     sequenceOwners: facts.shared!.sequenceOwners as Record<string, string>, sequences: facts.shared!.sequences as Record<string, number[]>, overlap: facts.coverage!.overlap }
 }

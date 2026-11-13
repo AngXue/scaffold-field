@@ -330,6 +330,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/decks.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/partHistory.test.ts",
       "T05",
       "T12",
       "src/domain/rules/decks.test.ts",
@@ -349,6 +350,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/components.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/partHistory.test.ts",
       "T05",
       "T12",
       "src/domain/rules/decks.test.ts",
@@ -368,6 +370,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/components.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/partHistory.test.ts",
       "T05",
       "T12",
       "src/domain/rules/bases.test.ts",
@@ -473,6 +476,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/transitions.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/partHistory.test.ts",
       "src/domain/rules/facts/memberHistory.test.ts",
       "T07",
       "T11",

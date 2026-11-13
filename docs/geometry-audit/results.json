@@ -1,6 +1,6 @@
 {
   "date": "2026-11-13",
-  "sourceHash": "2e8bb56bdbf68ef9b43f582ee0056a2243555ed10b93316735d749c822a0cce4",
+  "sourceHash": "253494d35c941189d309c72e17a36ae0f2a76aba95689165f510c5fa0080ff62",
   "sourceFiles": [
     {
       "path": "guardrails.ts",
@@ -28,7 +28,7 @@
     },
     {
       "path": "rules/bases.ts",
-      "sha256": "9d178d34a90925aa2eaaba6dd3434e79e75f2d4626ed0ec0fe547b1883b83355"
+      "sha256": "af1ddb12e9c4bfd27fa274bc4e4cc8df2cea4138313434feb77e5eed08eb6b95"
     },
     {
       "path": "rules/boundaries/adjustments.ts",
@@ -56,11 +56,11 @@
     },
     {
       "path": "rules/catalog.ts",
-      "sha256": "c970bda677c649979c04a2887a3b192ab46e1b0ecc760652308c2816bab0e12a"
+      "sha256": "1a42d6450bea07bc78c8c1f12d3932a476e634d01ac844a3a1bdb7e72c2ac517"
     },
     {
       "path": "rules/components.ts",
-      "sha256": "bfe8f8f71c47268adbb8eb46f363713a2a7a0567ecbc49226187f80377e6e85a"
+      "sha256": "256c410a63b8401bd31ec52d7548c520a7b82c714143f03c74451067d3f82ab0"
     },
     {
       "path": "rules/connections.ts",
@@ -76,11 +76,11 @@
     },
     {
       "path": "rules/decks.ts",
-      "sha256": "3454c512f23bc5847f04012836ae9c1b4e87492c329620c93e940188a389c554"
+      "sha256": "eba509cc529201060a52fc66031c421b6f2b8eb52daf56a18a5319089af20fb5"
     },
     {
       "path": "rules/diagnostics/build.ts",
-      "sha256": "d446f6a04e28db3342eeb827ec5e6f6db130b005fe1d98eee9ce643349b70124"
+      "sha256": "b582e16ebf29ef18edaffa9c001cef10edc32c9cfa9da3c7dc33fd5a2829c074"
     },
     {
       "path": "rules/diagnostics/editor.ts",
@@ -112,7 +112,7 @@
     },
     {
       "path": "rules/facts/entityGraph.ts",
-      "sha256": "58b40a5a32c2a66309af763d6f04f759ad41267be2a38a30a3cf1b5c6998c4cd"
+      "sha256": "133eb48bbef38c26d19182650bde713d19e82841a69467b5479cd8f7bbf5b2fb"
     },
     {
       "path": "rules/facts/fittings.ts",
@@ -141,6 +141,10 @@
     {
       "path": "rules/facts/memberUses.ts",
       "sha256": "3681c36b2d009b42c80d542c0a7038ee9ad6ad0d78f220595dd8fa62a1da3445"
+    },
+    {
+      "path": "rules/facts/partHistory.ts",
+      "sha256": "b76961a37182c1f9f9ce61b253e6097a09c818c26fcdad20bb07affd88e69607"
     },
     {
       "path": "rules/facts/placement.ts",
@@ -204,7 +208,7 @@
     },
     {
       "path": "rules/policies/bases.ts",
-      "sha256": "8ff8e34381db3ced6b129194baae0bc6f787275630a061a9f36465c683b4c424"
+      "sha256": "620a50c9f0bdffcc34cf2ea80f2c2677165198440a46c39a67776c63bc09cae1"
     },
     {
       "path": "rules/policies/blocks.ts",
@@ -220,7 +224,7 @@
     },
     {
       "path": "rules/policies/components.ts",
-      "sha256": "0b049d11addd0ce4a630f67f52fc061196d337389667482542869553245e9b1f"
+      "sha256": "4cd9c82214d75e9dfcdbe4eb24c1d2ca8b4f63c6cf80f982fc0d03506e8e1544"
     },
     {
       "path": "rules/policies/connections.ts",
@@ -228,7 +232,7 @@
     },
     {
       "path": "rules/policies/decks.ts",
-      "sha256": "84833b65e33983208515ed0661091b3944918dedd211481debe9aaca2f18b57f"
+      "sha256": "d585fe1a66b4150aa5bba671f12abec5d163af3e6d86e638d6d07c036b02eabd"
     },
     {
       "path": "rules/policies/frameRows.ts",
@@ -304,7 +308,7 @@
     },
     {
       "path": "rules/policies/transitions.ts",
-      "sha256": "40becc1e6dcffb5a651cba362efc73a4442d95a33db721d6c97539bd53197da9"
+      "sha256": "2d439be4049c7a08da12d5099ef7f059b2d3865140371cc8ad5072c73cc8ac97"
     },
     {
       "path": "rules/posts.ts",
@@ -344,15 +348,15 @@
     },
     {
       "path": "rules/transitions.ts",
-      "sha256": "f5d1f1b3f3367ef46fb20fdee5c2e00444834429ecbc98120ef5133ad224fe72"
+      "sha256": "249a9c3f4bb61ffc43635443bd658c6d4e91d47607a1370e5158c2f00e94ab62"
     },
     {
       "path": "scaffold.ts",
-      "sha256": "ce8f8941007f437c34a4eedcf2b5eb57b24d1d8a1da90012c9c366fb7c036187"
+      "sha256": "e115d67e072931021ad4476b11c41af0d7137be1d791e6a62467a94427bfc634"
     },
     {
       "path": "site.ts",
-      "sha256": "53f39d7be2dfc19a60441810be764f6b1d47bf8c61c77aed2c9c4be67c27547e"
+      "sha256": "adbe381036632d6fbdc65668865e509371695db8c2ed34d777134dad317e6f66"
     },
     {
       "path": "siteAlignment.ts",
@@ -376,7 +380,7 @@
     },
     {
       "path": "siteTransitions.ts",
-      "sha256": "94fe5956573e2bd4d8d339cdd876da94ae5eab9b72a5a891239f37afcc80a1cb"
+      "sha256": "b123a33252c168b1aec3262d41f8c52374642908d2c498b4072d4bd6009d2416"
     },
     {
       "path": "siteWallFit.ts",

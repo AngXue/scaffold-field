@@ -1,3 +1,4 @@
+import { mapParts } from './facts/partHistory.ts'
 import type { BaseChannel, ScaffoldMember } from '../scaffold.ts'
 import { baseCandidates, retainSupportingBases, type BaseInput } from './policies/bases.ts'
 import { RULES } from './catalog.ts'
@@ -31,10 +32,10 @@ const compile = (steps: RuleStep<Facts, Change>[]) => compilePipeline<Facts, Cha
 const runCandidates = compile(BASE_STEPS.filter(step => step.id === 'M07.baseCandidates'))
 const runSupporting = compile(BASE_STEPS.filter(step => step.id === 'M07.supportingBases'))
 export function resolveBaseCandidates(input: BaseInput): BaseChannel[] {
-  return runCandidates({ input }).facts.candidates!.map(base => ({ ...base })) as BaseChannel[]
+  return mapParts(runCandidates({ input }).facts.candidates!, base => ({ ...base })) as BaseChannel[]
 }
 export function resolveSupportingBases(candidates: BaseChannel[], members: ScaffoldMember[]): BaseChannel[] {
   // The post projection excludes horizontal geometry and its provenance graph.
   const posts = members.filter(member => member.type === 'post')
-  return runSupporting({ candidates, posts }).facts.kept!.map(base => ({ ...base })) as BaseChannel[]
+  return mapParts(runSupporting({ candidates, posts }).facts.kept!, base => ({ ...base })) as BaseChannel[]
 }

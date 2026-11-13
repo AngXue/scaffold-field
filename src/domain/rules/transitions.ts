@@ -1,3 +1,4 @@
+import { mapParts } from './facts/partHistory.ts'
 import type { RetiredUse } from './facts/memberUses.ts'
 import type { ScaffoldMember, DeckPanel, PipeSegment, ScaffoldParameters } from '../scaffold.ts'
 import type { SectionSummary } from '../site.ts'
@@ -109,7 +110,7 @@ export function finishTransitions(prepared: PreparedTransitions, members: Scaffo
   const result = runGuards({ ...prepared.context, members, decks: prepared.geometry.decks, posts: [],
     geometry: prepared.geometry, working: prepared.working, tops: prepared.tops }, { trace }), { facts } = result
   return { trace: [...prepared.trace, ...result.trace], plan: facts.plan as TransitionPlan, opened: facts.opened && { groups: [...facts.opened.groups], retired: facts.opened.retired as RetiredUse[],
-    members: facts.opened.members.map(member => ({ ...member })) as ScaffoldMember[], decks: facts.opened.decks.map(deck => ({ ...deck })) as DeckPanel[] } }
+    members: facts.opened.members.map(member => ({ ...member })) as ScaffoldMember[], decks: mapParts(facts.opened.decks, deck => ({ ...deck })) as DeckPanel[] } }
 }
 export function resolveTransitions(input: TransitionInput, trace = false) {
   return finishTransitions(commitTransitionPosts(prepareTransitionWork(input, trace), input.posts, trace), input.members, undefined, trace)

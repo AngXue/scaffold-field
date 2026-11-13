@@ -1,3 +1,4 @@
+import { PART_HISTORY, removedParts, partShapeChanged, type PartHistory } from './partHistory.ts'
 import { STOCK_HISTORY, type StockHistory, type StockSelection } from './stockHistory.ts'
 import { MEMBER_HISTORY, type MemberHistory } from './memberHistory.ts'
 import type { Site, SiteLayout } from '../../site.ts'
@@ -242,10 +243,43 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     if (!span) throw new Error(`Dangling component support span: ${segment}`)
     return span
   }
+  type PartVersion = Omit<PartHistory, 'parents' | 'inputs' | 'origins'> & { parentIds: string[]; inputIds: string[]; sourceIds: string[]; spanIds: string[] }
+  const partVersions = new Map<string,PartVersion>(), visitedParts = new WeakMap<PartHistory,string>(), activeParts = new Set<string>()
+  const registerPart = (node: PartHistory): string => {
+    const cached = visitedParts.get(node)
+    if (cached) return cached
+    if (activeParts.has(node.id)) throw new Error(`Cyclic part history: ${node.id}`)
+    activeParts.add(node.id)
+    const { parents, inputs, origins, ...values } = node
+    const parentIds = [...new Set(parents.map(registerPart))].sort(), inputIds = [...new Set(inputs.map(registerPart))].sort()
+    const originSpans = origins.map(origin => {
+      const span = origin.spanId ? spanByLegacy.get(origin.spanId) : spanFor(origin.pathSegment)
+      if (!span || (origin.sectionId && sourceIds.get(origin.sectionId) !== span.sourceId)) throw new Error(`Dangling part origin: ${node.id}`)
+      return span
+    })
+    if (node.supportIds.some(id => !construction.has(id))) throw new Error(`Dangling part support: ${node.id}`)
+    const record: PartVersion = { ...values, parentIds, inputIds, spanIds: [...new Set(originSpans.map(span => span.id))].sort(),
+      sourceIds: [...new Set(originSpans.map(span => span.sourceId))].sort() }
+    const previous = partVersions.get(node.id)
+    if (previous && JSON.stringify(previous) !== JSON.stringify(record)) throw new Error(`Conflicting part history: ${node.id}`)
+    if (!previous) partVersions.set(node.id,publish(record))
+    activeParts.delete(node.id); visitedParts.set(node,node.id)
+    return node.id
+  }
+  const partSources = (history: PartHistory | undefined, segment: number) => {
+    const constructionId = history && registerPart(history), record = constructionId && partVersions.get(constructionId)
+    return { constructionId, spanIds: record ? record.spanIds : [spanFor(segment).id], sourceIds: record ? record.sourceIds : [spanFor(segment).sourceId] }
+  }
   const decks = layout.decks.map(deck => publish({ id: ids.of('deck', [spanFor(deck.pathSegment).id, deck.layer, canonicalPoints(deck.corners)]),
-    legacyId: deck.id, frameIds: frameReferences(deck), spanIds: [spanFor(deck.pathSegment).id], sourceIds: [spanFor(deck.pathSegment).sourceId] }))
+    legacyId: deck.id, frameIds: frameReferences(deck), ...partSources(deck[PART_HISTORY],deck.pathSegment) }))
   const bases = layout.baseChannels.map(base => publish({ id: ids.of('base', [spanFor(base.pathSegment).id, canonicalPoints([base.start, base.end])]),
-    legacyId: base.id, spanIds: [spanFor(base.pathSegment).id], sourceIds: [spanFor(base.pathSegment).sourceId] }))
+    legacyId: base.id, ...partSources(base[PART_HISTORY],base.pathSegment) }))
+  for (const part of [...layout.decks,...layout.baseChannels]) if (part[PART_HISTORY]) {
+    if (part[PART_HISTORY]!.operation === 'remove' || partShapeChanged(part,part[PART_HISTORY]!))
+      throw new Error(`Final part differs from its construction: ${part.id}`)
+  }
+  const removedPartIds = [...new Set([...removedParts(layout.decks), ...removedParts(layout.baseChannels)].map(registerPart))].sort()
+  const partEntities = new Map([...decks,...bases].map(part => [part.id,part]))
   const ledger = buildMaterialLedger(layout)
   const aliases = new Map<string, string>([
     ...pipes.map(pipe => [`stock:${pipe.legacyId}`, pipe.id] as const),
@@ -258,6 +292,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     return publish({ ...entry, id: ids.of('contribution', [entry.category, entityId]), legacyId: entry.id, entityId,
       memberIds: entry.memberIds.map(memberId), sourceIds: [...new Set([
         ...entry.uses.map(use => sourceIds.get(use.sectionId!)!), ...entry.sourceSegments.map(segment => spanFor(segment).sourceId),
+        ...(partEntities.get(entityId)?.sourceIds ?? []),
       ])].sort() })
   })
   const lineage = new Map<string, LineageRecord>()
@@ -289,8 +324,10 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   nodes.forEach(node => derive(node.id, 'node', node.memberIds))
   const connectorNodes = new Map(nodes.flatMap(node => node.connectorIds.map(id => [id, node.id] as const)))
   connectors.forEach(connector => derive(connector.id, 'connector', [...connector.pipeIds, connectorNodes.get(connector.id)!]))
-  decks.forEach(deck => derive(deck.id, 'deck', deck.spanIds))
-  bases.forEach(base => derive(base.id, 'base', base.spanIds))
+  partVersions.forEach(part => derive(part.id, `${part.kind}-${part.operation}`, [...part.parentIds,...part.inputIds,...part.supportIds,...part.spanIds]))
+  partVersions.forEach(part => { for (const parent of part.parentIds) lineage.get(parent)!.replacedBy.push(part.id) })
+  decks.forEach(deck => derive(deck.id, 'deck', [...deck.spanIds,...(deck.constructionId ? [deck.constructionId] : [])]))
+  bases.forEach(base => derive(base.id, 'base', [...base.spanIds,...(base.constructionId ? [base.constructionId] : [])]))
   entries.forEach(entry => derive(entry.id, 'contribution', [entry.entityId]))
   for (const record of lineage.values()) {
     record.derivedFrom = [...new Set(record.derivedFrom)].sort()
@@ -298,8 +335,9 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   }
   validateLineage([...lineage.values()])
   const ordered = <T extends { id: string }>(values: T[]) => values.sort((a, b) => a.id.localeCompare(b.id))
-  return { identityVersion: 1, lineageScope: 'actual member demand, merge, connection, clip and removal history; actual stock selection, assembly and position history; station/deck/base intermediate identities pending',
+  return { identityVersion: 1, lineageScope: 'actual member demand, merge, connection, clip and removal history; actual stock selection, assembly and position history; actual deck/base creation, coverage, support, deduplication and retirement history; station identities pending',
     construction: ordered([...construction.values()]), stockSelections: ordered([...selections.values()]), stockConstruction: ordered([...stockVersions.values()]),
+    partConstruction: ordered([...partVersions.values()]), removedPartIds,
     frames: ordered(frames), retired: ordered(retired),
     ranges: ordered([...ranges.values()]), replacements: [...replacements.values()].sort((a, b) => a.before.localeCompare(b.before) || a.after.localeCompare(b.after)),
     lineage: ordered([...lineage.values()]), sources: ordered(sources), spans: ordered(spans), nodes: ordered(nodes), members: ordered(members),

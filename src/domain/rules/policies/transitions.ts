@@ -1,3 +1,4 @@
+import { PART_HISTORY, partBirth, mapParts, partList } from '../facts/partHistory.ts'
 import { MEMBER_HISTORY, historyOf, memberChange, historyTransformer, retiredMemberUse } from '../facts/memberHistory.ts'
 import { FRAME_SCOPES, combinedScopes, requiredScopes, inFrameScopes } from '../facts/scopes.ts'
 import { MEMBER_USES, memberUses, makeUse, clipUses, hasSource, type RetiredUse } from '../facts/memberUses.ts'
@@ -17,7 +18,7 @@ export function prepareTransitionGeometry(sourceMembers: ScaffoldMember[], sourc
     return { ...member, ...history(member), [MEMBER_USES]: memberUses(member).map(use => ({ ...use, sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId })), start: pointMm(member.start), end: pointMm(member.end), connectionPoints: member.connectionPoints.map(pointMm),
       layer: member.layer && section ? member.layer + section.firstLayer - 1 : member.layer }
   })
-  const decks = sourceDecks.map(deck => {
+  const decks = mapParts(sourceDecks, deck => {
     const section = summaryById.get(spans[deck.pathSegment]?.line.id)
     return { ...deck, layer: deck.layer + (section?.firstLayer ?? 1) - 1 }
   })
@@ -66,7 +67,9 @@ export function planWorkingTransitions(geometry: TransitionGeometry, spans: Rout
         const from: [Vector3Tuple, Vector3Tuple] = [sides[0].from.point, sides[1].from.point]
         const to: [Vector3Tuple, Vector3Tuple] = [sides[0].to.point, sides[1].to.point]
         panels = deckBetweenStations(from, to, layer, left, `transition-deck-${left}-${right}-${layer}`, settings)
-          .map(panel => ({ ...panel, [FRAME_SCOPES]: combinedScopes(...rails.flatMap(rail => [rail.from.member, rail.to.member])) }))
+          .map(panel => ({ ...panel, [PART_HISTORY]: partBirth(panel, JSON.stringify([before.id,after.id]), 'P05',
+            sides.flatMap(side => [historyOf(side.from.member).id,historyOf(side.to.member).id]), [{pathSegment:left},{pathSegment:right}]),
+            [FRAME_SCOPES]: combinedScopes(...rails.flatMap(rail => [rail.from.member, rail.to.member])) }))
       }
       courses.push({ layer, elevation, matches, rails, panels })
     }
@@ -195,6 +198,6 @@ export function openTransitionCaps(geometry: TransitionGeometry, plan: Transitio
   const joinedIndices = new Set(bridges.flatMap(bridge => [bridge.left, bridge.right]))
   const groups = new Set(members.filter(member => [...joinedIndices].some(index => hasSource(member, index)) || capCuts.has(member.id)).flatMap(member => [...requiredScopes(member)]))
   return { groups: [...groups], members: [...members.filter(member => inFrameScopes(member, groups)).flatMap(openCaps), ...links],
-    decks: [...decks.filter(deck => inFrameScopes(deck, groups)), ...panels], retired }
+    decks: partList([...decks.filter(deck => inFrameScopes(deck, groups)), ...panels], decks, panels), retired }
 
 }

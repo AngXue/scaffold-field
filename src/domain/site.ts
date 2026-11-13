@@ -1,3 +1,4 @@
+import { mapParts, appendParts, partProjection, removedParts, withRemoved } from './rules/facts/partHistory.ts'
 import { stockHistoryTransformer } from './rules/facts/stockHistory.ts'
 import { MEMBER_HISTORY, historyTransformer, retiredMemberUse } from './rules/facts/memberHistory.ts'
 import { startSiteRouting } from './rules/routing.ts'
@@ -202,7 +203,8 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
           [MEMBER_USES]: transformUses(member, world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) })),
           start: world(member.start), end: world(member.end), connectionPoints: member.connectionPoints.map(world),
           pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) })))
-        decks.push(...working.decks.map(deck => ({ ...deck, id: prefix + deck.id, [FRAME_SCOPES]: scope,
+        const parts = partProjection(world, origin => ({ pathSegment: pathIndex(origin.pathSegment), sectionId: owner(origin.pathSegment), spanId: owner(origin.pathSegment) }))
+        appendParts(decks, parts.list(working.decks, deck => ({ ...deck, id: prefix + deck.id, [FRAME_SCOPES]: scope,
           corners: deck.corners.map(world) as typeof deck.corners, coverage: deck.coverage?.map(face => face.map(world)), pathSegment: pathIndex(deck.pathSegment) })))
       }
       transitionWork = prepareTransitionWork({ ...transitionContext, members, decks, summaries, settings })
@@ -232,7 +234,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     const preparation = prepareScaffoldAssembly(plan.draft)
     const part: ScaffoldAssembly = plan.toPlan({ ...preparation.draft,
       members: preparation.draft.members.map(member => ({ ...member })),
-      decks: preparation.draft.decks.map(deck => ({ ...deck })), baseChannels: preparation.draft.baseChannels.map(base => ({ ...base })),
+      decks: mapParts(preparation.draft.decks, deck => ({ ...deck })), baseChannels: mapParts(preparation.draft.baseChannels, base => ({ ...base })),
       pathDimensions: preparation.draft.pathDimensions.map(dimension => ({ ...dimension })),
       // Only uprights exist physically before the global high/low joins are settled.
       pipeSegments: preparation.posts.flatMap(post => post.segments.map(pipe => ({ ...pipe }))), connectors: [], fittingPlans: [],
@@ -298,6 +300,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       if (member.type === 'post') checks.push({ kind: 'post', sectionId: memberOwners.get(member.id)!, point: member.start })
       layout.members.push({ ...member, [FRAME_SCOPES]: scope, id: prefix + member.id })
     }
+    const parts = partProjection(world, origin => ({ pathSegment: pathIndex(origin.pathSegment), sectionId: owner(origin.pathSegment), spanId: owner(origin.pathSegment) }))
     for (const beam of part.baseChannels) {
       const start = world(beam.start), end = world(beam.end)
       const half = BASE_CHANNEL_WIDTH / 2
@@ -310,7 +313,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         max: [Math.max(...footprint.map(p => p[0])), start[1] + BASE_CHANNEL_HEIGHT, Math.max(...footprint.map(p => p[1]))],
       }
       elements.push({ bounds, sectionId: owner(beam.pathSegment) })
-      layout.baseChannels.push({ ...beam, id: prefix + beam.id, start, end, pathSegment: pathIndex(beam.pathSegment) })
+      layout.baseChannels.push({ ...beam, ...parts.on(beam), id: prefix + beam.id, start, end, pathSegment: pathIndex(beam.pathSegment) })
     }
     for (const pipe of pipeSegments) {
       layout.pipeSegments.push({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })
@@ -321,8 +324,10 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       const polygons = (coverage ?? [corners]).map(face => face.map(([x, , z]) => [x, z] as [number, number]))
       checks.push({ kind: 'deck', sectionId: owner(deck.pathSegment), elevation: corners[0][1], polygons })
       elements.push({ sectionId: owner(deck.pathSegment), deck: polygons, bounds: deckBounds(coverage?.flat() ?? corners) })
-      layout.decks.push({ ...deck, [FRAME_SCOPES]: scope, id: prefix + deck.id, corners, coverage, pathSegment: pathIndex(deck.pathSegment) })
+      layout.decks.push({ ...deck, ...parts.on(deck), [FRAME_SCOPES]: scope, id: prefix + deck.id, corners, coverage, pathSegment: pathIndex(deck.pathSegment) })
     }
+    withRemoved(layout.decks, removedParts(part.decks).map(parts.record), layout.decks)
+    withRemoved(layout.baseChannels, removedParts(part.baseChannels).map(parts.record), layout.baseChannels)
     validations.push({ groupIndex, validate: physical => {
       checks.push(...physical.checks)
       elements.push(...physical.elements)
@@ -473,7 +478,10 @@ function assembleSite(input: Site, settings: ScaffoldParameters): SiteAssembly {
     ...(record.history && { history: history({ [MEMBER_HISTORY]: record.history })[MEMBER_HISTORY] }), use: { ...record.use,
     sectionId: spans[record.use.pathSegment]?.sourceId ?? record.use.sectionId, spanId: spans[record.use.pathSegment]?.line.id ?? record.use.spanId,
   } }))
-  return { ...result.layout, [RETIRED_USES]: retired, members, pathDimensions, blocks, sections: spanLayout.sections, spans, joinedLifts: result.joined, issues,
+  const parts = partProjection(point => [...point], origin => ({ pathSegment: origin.pathSegment,
+    sectionId: spans[origin.pathSegment]?.sourceId ?? origin.sectionId, spanId: spans[origin.pathSegment]?.line.id ?? origin.spanId }))
+  return { ...result.layout, decks: parts.list(result.layout.decks, deck => deck), baseChannels: parts.list(result.layout.baseChannels, base => base),
+    [RETIRED_USES]: retired, members, pathDimensions, blocks, sections: spanLayout.sections, spans, joinedLifts: result.joined, issues,
     perimeter: sourcePerimeter(site.sections),
     canExportMaterials: !issues.some(issue => issue.blocking) }
 }
