@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: npm run test:rules -- --domain-only
       - run: npm run lint
+      - run: npm run rules:docs -- --check
       - run: npm run build
       - run: npm run test:parity
       - run: npm run audit:geometry

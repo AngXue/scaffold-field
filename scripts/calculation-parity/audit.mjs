@@ -1,4 +1,6 @@
 import './loader.mjs'
+import { registeredSteps } from './registry.mjs'
+import { checkRuleDocuments } from './rule-documents.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { performanceEvidence } from './performance-evidence.mjs'
@@ -19,19 +21,13 @@ for (const rule of RULES) {
     for (const test of rule.cases.filter(test => test.endsWith('.ts'))) assert(existsSync(resolve(root, test)), `${rule.id}: missing test ${test}`)
   }
 }
-const packages = [
-  ['scene', 'SCENE_STEPS'], ['routing', 'ROUTING_STEPS'], ['groups', 'GROUP_STEPS'],
-  ['topology', 'TOPOLOGY_STEPS'], ['heights', 'HEIGHT_STEPS'], ['frameRows', 'FRAME_ROW_STEPS'], ['bands', 'BAND_STEPS'], ['decks', 'DECK_STEPS'], ['components', 'COMPONENT_STEPS'], ['posts', 'POST_STEPS'], ['bases', 'BASE_STEPS'], ['transitions', 'TRANSITION_STEPS'], ['guardRemovals', 'GUARD_REMOVAL_STEPS'], ['placement', 'PLACEMENT_STEPS'], ['pathValidation', 'PATH_VALIDATION_STEPS'], ['sectionValidation', 'SECTION_VALIDATION_STEPS'], ['siteValidation', 'SITE_VALIDATION_STEPS'], ['sharedMembers', 'MERGE_STEPS'], ['sharedMembers', 'CANDIDATE_STEPS'], ['stock', 'STOCK_STEPS'], ['stock', 'COMMITTED_STOCK_STEPS'], ['connections', 'CONTACT_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
-]
+
 const executed = new Set(), steps = new Set()
-for (const [name, exported] of packages) {
-  // Importing each live package also compiles and verifies its actual local dependency DAG.
-  const module = await import(`../../src/domain/rules/${name}.ts`)
-  for (const step of module[exported]) {
-    assert(!steps.has(step.id), `Duplicate execution step across packages: ${step.id}`)
-    steps.add(step.id); executed.add(step.ruleId)
-  }
+const registered = await registeredSteps()
+for (const { step } of registered) {
+  steps.add(step.id); executed.add(step.ruleId)
 }
+checkRuleDocuments(registered)
 // Pure numeric/lift policies are deliberately reusable before entity stages.
 const { getSectionLevels } = await import('../../src/domain/rules/policies/levels.ts')
 const precision = await import('../../src/domain/rules/facts/precision.ts')

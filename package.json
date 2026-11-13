@@ -27,7 +27,8 @@
     "preaudit:geometry": "npm run rules:fingerprint",
     "preaudit:rules": "node scripts/rule-fingerprint.ts --check",
     "test:rules": "node scripts/calculation-parity/acceptance.mjs",
-    "pretest:rules": "npm run rules:fingerprint"
+    "pretest:rules": "npm run rules:fingerprint",
+    "rules:docs": "node scripts/calculation-parity/rule-documents.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
