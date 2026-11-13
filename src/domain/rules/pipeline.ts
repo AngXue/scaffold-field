@@ -1,4 +1,5 @@
-import { traceInvocation, recordRuleTrace, enterCalculationPhase, rejectCalculation } from './diagnostics/session.ts'
+import { validateRuleRelations } from './relations.ts'
+import { traceInvocation, recordRuleTrace, recordAppliedRelation, enterCalculationPhase, rejectCalculation } from './diagnostics/session.ts'
 import { RuleFailure, type Phase, type DeepReadonly, type Proposal, type RuleDefinition, type RuleStep, type Trace } from './contracts.ts'
 
 /** Freeze only calculation-owned plain data; callers retain ownership of their input. */
@@ -56,10 +57,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
       throw new RuleFailure(step.id, 'invalid or duplicate step registration')
     registered.set(step.id, step)
   }
-  for (const step of steps) for (const relation of step.refines ?? []) {
-    if (!registered.has(relation.step) || !step.after.includes(relation.step) || !relation.reason || !relation.caseId || !relation.targets.length)
-      throw new RuleFailure(step.id, 'invalid refinement contract')
-  }
+  validateRuleRelations(definitions, steps)
   const active = steps.filter(step => rules.get(step.ruleId)!.status === 'active')
   for (const step of active) for (const dependency of step.after) {
     const predecessor = registered.get(dependency)
@@ -114,9 +112,16 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
                 throw new RuleFailure(step.id, 'unauthorized proposal or stale revision')
               const existing = written.get(proposal.target)
               const same = existing && sameValue({ ...existing.proposal, expectedRevision: 0 }, { ...proposal, expectedRevision: 0 })
-              if (existing && !same && !step.refines?.some(relation => relation.step === existing.step
-                && relation.targets.includes(proposal.target) && relation.when(proposal, existing.proposal, view)))
-                throw new RuleFailure(step.id, `conflicting proposals: ${proposal.target}`)
+              if (existing && !same) {
+                const refinement = step.refines?.find(relation => relation.step === existing.step
+                  && relation.targets.includes(proposal.target) && relation.when(proposal, existing.proposal, view))
+                if (!refinement) throw new RuleFailure(step.id, `conflicting proposals: ${proposal.target}`)
+                if (options.trace) {
+                  const entry = trace.at(-1)!
+                  entry.appliedRelations = [...new Set([...(entry.appliedRelations ?? []), refinement.relationId])]
+                }
+                recordAppliedRelation(invocation, step.id, refinement.relationId)
+              }
               proposals.set(proposal.target, proposal)
               written.set(proposal.target, { proposal, step: step.id })
             }

@@ -1225,6 +1225,41 @@
           "file": "scripts/calculation-parity/performance-evidence.test.mjs",
           "title": "excludes the user-rejected 200-section stress load without weakening other scene budgets",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/relations.test.ts",
+          "title": "requires real rule ownership and execution edges, not just a plausible name",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/relations.test.ts",
+          "title": "audits all package bindings and rejects unregistered cross-rule dependencies",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/relations.test.ts",
+          "title": "rejects mutually enabled incompatible rules without inventing a priority",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/relations.test.ts",
+          "title": "requires confirmation, invariants, effect scope and a safe fallback for exceptions",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/relations.test.ts",
+          "title": "binds an exception to its named typed predicate and declared target",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/relations.test.ts",
+          "title": "only grants permission when the predicate accepts; metadata never authorizes a write by itself",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/diagnostics/session.test.ts",
+          "title": "records the accepted inward-corner exception only when it changes a guard range",
+          "count": 1
         }
       ]
     },

@@ -5,7 +5,12 @@ import type { DeepReadonly, RuleDefinition, RuleStep } from './contracts'
 
 type Facts = { values: number[]; result: number }
 type Add = { kind: 'sum'; target: 'result'; expectedRevision: number; value: number }
-const definition: RuleDefinition = { id: 'SUM', revision: 1, title: 'sum', status: 'active', implementation: 'native', source: ['test'], cases: ['sum'] }
+const definition: RuleDefinition = { id: 'SUM', revision: 1, title: 'sum', status: 'active', implementation: 'native', source: ['test'], cases: ['sum'], relations: [] }
+const refinedDefinition: RuleDefinition = { ...definition, relations: [{
+  id: 'SUM/add-one', kind: 'refines', target: 'SUM', condition: 'value-six', reason: 'add one', cases: ['forward', 'phase-resume'],
+  bindings: [{ step: 'next', after: 'SUM.eval' }, { step: 'later', after: 'SUM.eval' }], targets: ['result'],
+  invariants: ['Input values remain unchanged.'], confirmation: ['test'], fallback: 'reject',
+}] }
 const step: RuleStep<Facts, Add> = { id: 'SUM.eval', ruleId: 'SUM', phase: 1, after: [], reads: ['values'], kinds: ['sum'], targets: ['result'],
   evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'sum', target: 'result', expectedRevision: revision, value: facts.values!.reduce((a, b) => a + b, 0) }] }) }
 const reduce = (facts: DeepReadonly<Facts>, proposals: readonly Add[]): Facts => ({ values: [...facts.values], result: proposals.at(-1)!.value })
@@ -47,11 +52,14 @@ describe('rule pipeline contracts', () => {
   })
   it('resolves forward dependencies even with reversed registration', () => {
     const next: RuleStep<Facts, Add> = { ...step, id: 'next', reads: ['result'], after: [step.id],
-      refines: [{ step: step.id, targets: ['result'], reason: 'add one to sum', caseId: 'forward', when: next => next.value === 6 }],
+      refines: [{ step: step.id, targets: ['result'], relationId: 'SUM/add-one', condition: 'value-six', when: next => next.value === 6 }],
       evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'sum', target: 'result', expectedRevision: revision, value: facts.result! + 1 }] }) }
-    expect(compilePipeline([definition], [next, step], reduce)(input()).facts.result).toBe(6)
-    expect(() => compilePipeline([definition], [next, step], reduce)({ values: [4, 5], result: 0 })).toThrow('conflicting')
-    expect(() => compilePipeline([definition], [{ ...next, refines: undefined }, step], reduce)(input())).toThrow('conflicting')
+    const run = compilePipeline([refinedDefinition], [next, step], reduce)
+    expect(run(input()).facts.result).toBe(6)
+    expect(run(input(), { trace: true }).trace.at(-1)?.appliedRelations).toEqual(['SUM/add-one'])
+    expect(run(input(), { trace: true }).trace[0].appliedRelations).toBeUndefined()
+    expect(() => compilePipeline([refinedDefinition], [next, step], reduce)({ values: [4, 5], result: 0 })).toThrow('conflicting')
+    expect(() => compilePipeline([refinedDefinition], [{ ...next, refines: undefined }, step], reduce)(input())).toThrow('conflicting')
   })
   it('deduplicates identical writes, rejects competing writes without committing', () => {
     expect(compilePipeline([definition], [step, { ...step, id: 'same' }], reduce)(input()).facts.result).toBe(5)
@@ -125,9 +133,9 @@ it('advances committed phases without replaying earlier rules or publishing futu
   const calls: string[] = []
   const first: RuleStep<Facts, Add> = { ...step, evaluate: (facts, revision) => { calls.push('first'); return step.evaluate(facts, revision) } }
   const second: RuleStep<Facts, Add> = { ...step, id: 'later', phase: 5, after: [step.id], reads: ['result'],
-    refines: [{ step: step.id, targets: ['result'], reason: 'explicit stage extension', caseId: 'phase-resume', when: next => next.value === 6 }],
+    refines: [{ step: step.id, targets: ['result'], relationId: 'SUM/add-one', condition: 'value-six', when: next => next.value === 6 }],
     evaluate: (facts, revision) => { calls.push('later'); return { status: 'proposed', proposals: [{ kind: 'sum', target: 'result', expectedRevision: revision, value: facts.result! + 1 }] } } }
-  const stage = compilePipeline([definition], [second, first], reduce).start(input(), { trace: true })
+  const stage = compilePipeline([refinedDefinition], [second, first], reduce).start(input(), { trace: true })
   const initial = stage.advance(0)
   expect(initial.facts.result).toBe(0)
   expect(calls).toEqual([])

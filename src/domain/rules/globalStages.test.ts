@@ -28,7 +28,7 @@ it('all frozen and large scenes execute globally ordered S0-S9 steps', () => {
     expect(JSON.stringify(input), id).toBe(before)
   }
 }, 30000)
-const rule: RuleDefinition = { id: 'ORDER', revision: 1, title: 'phase contract', status: 'active', implementation: 'native', source: ['test'], cases: ['test'] }
+const rule: RuleDefinition = { id: 'ORDER', revision: 1, title: 'phase contract', status: 'active', implementation: 'native', source: ['test'], cases: ['test'], relations: [] }
 const runStep = (phase: Phase, evaluate = () => {}) => {
   const step: RuleStep<Record<string, never>, Proposal> = { id: `ORDER.${phase}`, ruleId: rule.id, phase, after: [], reads: [], kinds: [], targets: [],
     evaluate: () => { evaluate(); return { status: 'not-applicable', reason: 'contract' } } }

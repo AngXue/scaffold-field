@@ -29,8 +29,7 @@ export const FRAME_ROW_STEPS: RuleStep<Facts, Change>[] = [
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'GuardRanges', target: 'guards', expectedRevision: revision,
       value: facts.rows!.map((rows, index) => outwardRanges(rows as FrameRows, facts.ends![index] as EndBoundary, facts.counts![index], facts.outerRow!)) }] }) },
   { id: 'P03.inwardRanges', ruleId: 'P03', phase: 5, after: ['P02.ranges'], reads: ['physical', 'stations', 'corners', 'ends', 'guards', 'outerRow', 'width'], kinds: ['GuardRanges'], targets: ['guards'],
-    refines: [{ step: 'P02.ranges', targets: ['guards'], reason: 'Only common-lift inward side guards end at the shared post; working members and unmatched lifts retain their ranges.',
-      caseId: 'P03-common-lift-inward', when: (next, previous, facts) => next.kind === 'GuardRanges' && previous.kind === 'GuardRanges'
+    refines: [{ step: 'P02.ranges', targets: ['guards'], relationId: 'P03/common-lift-inward', condition: 'common-lift-inward-range', when: (next, previous, facts) => next.kind === 'GuardRanges' && previous.kind === 'GuardRanges'
         && next.value.length === previous.value.length
         && next.value.every((ranges, index) => JSON.stringify(ranges) === JSON.stringify(inwardRanges(previous.value[index],
           facts.ends![index] as EndBoundary, facts.physical![index] as PlanPoint, facts.stations![index] as AlignedStations[number],

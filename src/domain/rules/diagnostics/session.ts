@@ -34,6 +34,13 @@ export function recordRuleTrace(invocation: number | undefined, rule: { id: stri
   session.trace.push({ invocation, step: rule.id, phase: rule.phase, ruleId: rule.ruleId,
     ruleRevision: RULES.find(entry => entry.id === rule.ruleId)?.revision ?? 0, inputRevision: revision, status, targets, ...(reason && { reason }) })
 }
+/** Only record a relation after its typed predicate accepted a competing write. */
+export function recordAppliedRelation(invocation: number | undefined, step: string, relation: string) {
+  if (invocation === undefined) return
+  const entry = session?.trace?.at(-1)
+  if (entry?.invocation === invocation && entry.step === step)
+    entry.appliedRelations = [...new Set([...(entry.appliedRelations ?? []), relation])]
+}
 export function calculationSession(input: Site, parameters: ScaffoldParameters, calculate: () => SiteLayout, trace = false): DiagnosedLayout {
   const meta: CalculationMeta = Object.freeze({ formatVersion: '0.7', inputFingerprint: fingerprint({ scene: input, parameters }), rulesetFingerprint, engineRevision: ENGINE_REVISION })
   const previous = session, current: Session = { trace: trace ? [] : undefined, invocation: 0, phase: -1, failed: false }

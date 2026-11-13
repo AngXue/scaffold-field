@@ -62,3 +62,16 @@ it('explicit local diagnostics contain the entity-to-material chain and remain s
   expect(json.diagnosticVersion).toBe(2)
   expect(json.meta.engineRevision).toBe(ENGINE_REVISION)
 })
+
+it('records the accepted inward-corner exception only when it changes a guard range', () => {
+  const inner = SITE_DEMOS.find(demo => demo.id === 'adjacent-houses')!
+  const result = calculateSite(inner.site, inner.parameters, { trace: true })
+  const applied = result[CALCULATION_TRACE]!.filter(event => event.appliedRelations?.length)
+  expect(applied).toHaveLength(1)
+  expect(applied[0].step).toBe('P03.inwardRanges')
+  expect(applied[0].appliedRelations).toEqual(['P03/common-lift-inward'])
+  const roof = SITE_DEMOS.find(demo => demo.id === 'roof')!
+  expect(calculateSite(roof.site, roof.parameters, { trace: true })[CALCULATION_TRACE]!
+    .every(event => event.appliedRelations === undefined)).toBe(true)
+  expect(JSON.stringify(result)).toBe(JSON.stringify(calculateSite(inner.site, inner.parameters)))
+})

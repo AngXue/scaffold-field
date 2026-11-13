@@ -1,6 +1,6 @@
 {
   "date": "2026-11-13",
-  "sourceHash": "f3fbb0b2da60ef683fa2207e70e16723dd89d6f577bbf503bfd6a0351f582e3e",
+  "sourceHash": "ef056b103e9f3b2632c51c3b7daccd1da7cb44a64bf640d0e11a19c659835cfd",
   "sourceFiles": [
     {
       "path": "guardrails.ts",
@@ -56,7 +56,7 @@
     },
     {
       "path": "rules/catalog.ts",
-      "sha256": "2dcc9d21e8e9da876911340957abb7ec48361efe8e4ffe5a4b4976cb67c63e9f"
+      "sha256": "d81e19829967b1e07cc4213b749a769dc7fa20d38ffeb8e3f04f35c226064456"
     },
     {
       "path": "rules/components.ts",
@@ -72,7 +72,7 @@
     },
     {
       "path": "rules/contracts.ts",
-      "sha256": "2007e8214520637ea143d83348f9ea237b4a9bd921c6224f1239fb6a66401336"
+      "sha256": "c80cbf11fe44388fe5ec130471e2766077b90182d8c38307031ffa87a60cf6dd"
     },
     {
       "path": "rules/decks.ts",
@@ -80,7 +80,7 @@
     },
     {
       "path": "rules/diagnostics/build.ts",
-      "sha256": "201f859331b75fc64728f78ab5a94ff41f16a3154d63fbe399c85f3c510b141c"
+      "sha256": "fc5c35f26e33fc8720860c3b19d55585b6543e0f0676c061224dfc0704e2260c"
     },
     {
       "path": "rules/diagnostics/editor.ts",
@@ -96,7 +96,7 @@
     },
     {
       "path": "rules/diagnostics/session.ts",
-      "sha256": "04544ac7bf5c4c3448c7aabdec904545b9ccafeffe55f94e4edcbdfb2f6b2edf"
+      "sha256": "5bbf8eba327428e51ec0dd6bceb16600cc9ff8bbb236c5e82ea9de21a8cb7f76"
     },
     {
       "path": "rules/facts/connections.ts",
@@ -176,7 +176,7 @@
     },
     {
       "path": "rules/frameRows.ts",
-      "sha256": "99b1062267d6f0016bb30714278eab3900d280c0ac853816d72cb82864915170"
+      "sha256": "d9bcd64c7d0e5aaca0a5034a5abc1a475d5fad395804f7d650a33042e257b594"
     },
     {
       "path": "rules/groups.ts",
@@ -200,7 +200,7 @@
     },
     {
       "path": "rules/pipeline.ts",
-      "sha256": "5361afdeef828c15308fe94e1f7dd9815c09d69c48c82a4061eb790f85f27299"
+      "sha256": "861e30623a08a34b349afd2178df27ac106edf1a606231c6ccfd00ef37e8189f"
     },
     {
       "path": "rules/placement.ts",
@@ -317,6 +317,10 @@
     {
       "path": "rules/posts.ts",
       "sha256": "e74b5579e0c906d3c93e427ab3f1f4dcf3ea8f7eb1056caad0ec908529ca5810"
+    },
+    {
+      "path": "rules/relations.ts",
+      "sha256": "d4e48614a91849ad5a40aa503b0671f2630e445ce4986b10414ff93074da9196"
     },
     {
       "path": "rules/routing.ts",

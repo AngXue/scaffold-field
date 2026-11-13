@@ -1,5 +1,6 @@
 import './loader.mjs'
 import assert from 'node:assert/strict'
+import { validateRuleRelations } from '../../src/domain/rules/relations.ts'
 import { RULES } from '../../src/domain/rules/catalog.ts'
 
 // The audit and generated maintenance documents load the same production packages.
@@ -24,5 +25,6 @@ export async function registeredSteps() {
       assert(previous.phase <= step.phase, `Backwards execution dependency: ${step.id}`)
     }
   }
+  validateRuleRelations(RULES, entries.map(entry => entry.step), true)
   return entries.sort((a, b) => a.step.phase - b.step.phase || a.step.id.localeCompare(b.step.id))
 }

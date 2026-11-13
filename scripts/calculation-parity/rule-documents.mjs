@@ -47,9 +47,12 @@ export function ruleDocuments(entries) {
   lines.push('```', '', '## 明确的细化合同', '',
     '本节只列实际注册的 `refines` 合同；没有登记不能被解释为允许优先级覆盖。业务例外的确认来源仍见计算规则及专项修正记录。', '',
     '| 执行步骤 | 细化前项 | 目标 | 原因 | 固定用例 |', '| --- | --- | --- | --- | --- |')
-  const refinements = entries.flatMap(({ step }) => (step.refines ?? []).map(relation => ({ step, relation })))
-  for (const { step, relation } of refinements) lines.push(`| ${step.id} | ${relation.step} | ${codeList(relation.targets)} | ${cell(relation.reason)} | ${cell(relation.caseId)} |`)
-  if (!refinements.length) lines.push('| — | — | — | 当前无显式细化合同 | — |')
+  const refinements = RULES.flatMap(rule => rule.relations.filter(relation => relation.kind === 'refines' || relation.kind === 'exceptionOf').map(relation => ({ rule, relation })))
+  for (const { relation } of refinements) for (const binding of relation.bindings) lines.push(`| ${binding.step} | ${binding.after} | ${codeList(relation.targets)} | ${cell(relation.reason)} | ${codeList(relation.cases)} |`)
+  lines.push('', '## 业务关系合同', '',
+    '运行器核对规则状态、步骤绑定和具名谓词；发布审计逐项核对全部跨规则依赖。例外只允许声明目标上的条件性变更，条件不满足就拒绝竞争写入。诊断仅在谓词实际通过时记录应用的例外编号。', '',
+    '| 规则 / 关系编号 | 类型 → 前项 | 条件 | 保留不变量 | 确认来源 / 回退 |', '| --- | --- | --- | --- | --- |')
+  for (const rule of RULES) for (const relation of rule.relations) lines.push(`| ${rule.id} / ${cell(relation.id)} | ${relation.kind} → ${relation.target} | ${cell(relation.condition)} | ${codeList(relation.invariants ?? [])} | ${codeList(relation.confirmation ?? [])} / ${relation.fallback ?? '—'} |`)
   return lines.join('\n') + '\n'
 }
 export function checkRuleDocuments(entries) {

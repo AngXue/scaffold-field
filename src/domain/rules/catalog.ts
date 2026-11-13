@@ -1,7 +1,8 @@
+import { relationsFor } from './relations.ts'
 import type { RuleDefinition } from './contracts.ts'
 
 /** Migration inventory. Adapter status is explicit until a rule is extracted. */
-export const RULES: readonly RuleDefinition[] = [
+const inventory: readonly Omit<RuleDefinition, 'relations'>[] = [
   {
     "id": "I01",
     "revision": 1,
@@ -837,3 +838,5 @@ export const RULES: readonly RuleDefinition[] = [
     ]
   }
 ]
+
+export const RULES: readonly RuleDefinition[] = inventory.map(rule => ({ ...rule, relations: relationsFor(rule.id, rule.cases) }))
