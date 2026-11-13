@@ -59,6 +59,6 @@ it('explicit local diagnostics contain the entity-to-material chain and remain s
   expect(report.graph!.ledger.entries.every(entry => entry.entityId && entry.rule)).toBe(true)
   expect(report.trace.some(event => event.step === 'P05.links')).toBe(true)
   const json = JSON.parse(JSON.stringify(report))
-  expect(json.diagnosticVersion).toBe(1)
+  expect(json.diagnosticVersion).toBe(2)
   expect(json.meta.engineRevision).toBe(ENGINE_REVISION)
 })

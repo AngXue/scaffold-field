@@ -16,7 +16,7 @@ it('preserves actual connection contacts through scene coordinates, independentl
     const contact = contactOf(connector), member = byId.get(connector.memberId)!
     expect(connector[CONNECTOR_CONTACT]).toBeDefined()
     expect(contact[1]).toBe(member.start[1])
-    expect(graph.nodes.find(node => node.connectorIds.includes(connector.id))!.position).toEqual(contact)
+    expect(graph.nodes.find(node => node.connectorIds.includes(graph.connectors.find(fitting => fitting.legacyId === connector.id)!.id))!.position).toEqual(contact)
   }
   expect(contacts.some(connector => contactOf(connector).some((value, axis) => value !== connector.position[axis]))).toBe(true)
 })

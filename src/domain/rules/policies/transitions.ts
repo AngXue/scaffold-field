@@ -1,4 +1,4 @@
-import { MEMBER_USES, memberUses, makeUse, clipUses, hasSource } from '../facts/memberUses.ts'
+import { MEMBER_USES, memberUses, makeUse, clipUses, hasSource, type RetiredUse } from '../facts/memberUses.ts'
 import { deckBetweenStations } from './decks.ts'
 import type { DeckPanel, ScaffoldMember, ScaffoldParameters, Vector3Tuple, PipeSegment } from '../../scaffold.ts'
 import { mm, roundSite } from '../facts/precision.ts'
@@ -125,6 +125,7 @@ export function planTransitions(geometry: TransitionGeometry, tops: Record<strin
 export type TransitionPlan = ReturnType<typeof planTransitions>
 export function openTransitionCaps(geometry: TransitionGeometry, plan: TransitionPlan) {
   const { members, decks } = geometry, { bridges, links, panels } = plan, capCuts = new Map(plan.capCuts)
+  const retired: RetiredUse[] = []
   const openCaps = (member: ScaffoldMember): ScaffoldMember[] => {
     const cuts = capCuts.get(member.id)
     if (!cuts?.length) return [member]
@@ -132,7 +133,7 @@ export function openTransitionCaps(geometry: TransitionGeometry, plan: Transitio
     let intervals = [[Math.min(member.start[axis],member.end[axis]),Math.max(member.start[axis],member.end[axis])]]
     for (const {low,high} of cuts) intervals = intervals.flatMap(([a,b]) => high<=a || low>=b ? [[a,b]]
       : [[a,Math.min(b,low)],[Math.max(a,high),b]].filter(([l,r]) => r-l>0.001))
-    return intervals.flatMap(([low,high],i) => {
+    const remaining = intervals.flatMap(([low,high],i) => {
       const points = member.connectionPoints.filter(p => p[axis]>=low-0.001 && p[axis]<=high+0.001)
       // Surplus alone is not a remaining rail. Retain a real supported run only.
       if (new Set(points.map(p => mm(p[axis]))).size<2) return []
@@ -140,12 +141,23 @@ export function openTransitionCaps(geometry: TransitionGeometry, plan: Transitio
       return [{...member,id:i ? `${member.id}-open-${i}` : member.id,start:at(low),end:at(high),length:roundSite(high-low),connectionPoints:points,
         [MEMBER_USES]: clipUses(member, at(low), at(high), 'P06')}]
     })
+    // A fully discarded purpose has no survivor on which to keep its origin.
+    // Retain a compact tombstone beside the phase product, never a material item.
+    const retained = remaining.flatMap(member => [...memberUses(member)])
+    for (const use of memberUses(member)) {
+      const survives = retained.some(other => other.pathSegment === use.pathSegment && other.sectionId === use.sectionId
+        && other.spanId === use.spanId && other.purpose === use.purpose
+        && Math.min(Math.max(other.start[axis], other.end[axis]), Math.max(use.start[axis], use.end[axis]))
+          - Math.max(Math.min(other.start[axis], other.end[axis]), Math.min(use.start[axis], use.end[axis])) > 0.000001)
+      if (!survives) retired.push({ use, rule: 'P06', reason: 'transition-cap' })
+    }
+    return remaining
   }
   const joinedIndices = new Set(bridges.flatMap(bridge => [bridge.left, bridge.right]))
   const groupOf = (id: string) => id.split('/')[0]
   const groups = new Set(members.filter(member => [...joinedIndices].some(index => hasSource(member, index)) || capCuts.has(member.id)).map(member => groupOf(member.id)))
   const affected = (id: string) => groups.has(groupOf(id))
   return { groups: [...groups], members: [...members.filter(member => affected(member.id)).flatMap(openCaps), ...links],
-    decks: [...decks.filter(deck => affected(deck.id)), ...panels] }
+    decks: [...decks.filter(deck => affected(deck.id)), ...panels], retired }
 
 }

@@ -34,7 +34,11 @@ const run = compilePipeline<Facts, Change>(RULES, GUARD_REMOVAL_STEPS, (facts, p
   // Development still clones/freezes every nested input to enforce that contract.
   snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
 })
-export function resolveGuardRemovals(input: Omit<Facts, 'wall' | 'shared'>) {
+export function resolveGuardRemovalPlan(input: Omit<Facts, 'wall' | 'shared'>) {
   const { facts } = run(input)
-  return [...new Set([...facts.wall!, ...facts.shared!])]
+  return { wall: [...facts.wall!], shared: [...facts.shared!] }
+}
+export function resolveGuardRemovals(input: Omit<Facts, 'wall' | 'shared'>) {
+  const plan = resolveGuardRemovalPlan(input)
+  return [...new Set([...plan.wall, ...plan.shared])]
 }

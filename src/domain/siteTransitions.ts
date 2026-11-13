@@ -1,3 +1,4 @@
+import { RETIRED_USES } from './rules/facts/memberUses.ts'
 import type { ScaffoldAssembly } from './rules/facts/draft.ts'
 import { positionStock } from './rules/placement.ts'
 import { assembleConnectedRuns, type ScaffoldLayout, type ScaffoldParameters } from './scaffold.ts'
@@ -28,5 +29,5 @@ export function connectSiteTransitions(layout: ScaffoldAssembly, spans: RoutedSp
   const combinedDecks = [...layout.decks.filter(deck => !affected(deck.id)), ...assembled.decks]
   const fittings = [...layout.connectors.filter(connector => !affected(connector.memberId)), ...assembled.connectors]
   const plans = [...layout.assemblyPlans.filter(plan => !affected(plan.memberId)), ...assembled.assemblyPlans]
-  return { layout: { ...layout, members: combinedMembers, pipeSegments: pipes, decks: combinedDecks, connectors: fittings, assemblyPlans: plans }, joined, failed, bridges, affected: [...groups] }
+  return { layout: { ...layout, [RETIRED_USES]: [...(layout[RETIRED_USES] ?? []), ...opened.retired], members: combinedMembers, pipeSegments: pipes, decks: combinedDecks, connectors: fittings, assemblyPlans: plans }, joined, failed, bridges, affected: [...groups] }
 }

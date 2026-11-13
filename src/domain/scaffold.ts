@@ -20,7 +20,7 @@ import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { assembledLength, postStockWarnings } from './rules/policies/stock.ts'
 import { assemblePostsStage, assembleStockStage, resolvePostSequences, type StockAssembly } from './rules/stock.ts'
 import { mergeMemberStage } from './rules/sharedMembers.ts'
-import { MEMBER_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
+import { MEMBER_USES, RETIRED_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
 import { drawingPaths, measurePath, PIXELS_PER_METER, type PlanDrawing } from './plan.ts'
 import { fitGuardrailStock } from './guardrails.ts'
 
@@ -294,6 +294,7 @@ export type PathDimension = {
 }
 
 export type ScaffoldLayout = {
+  [RETIRED_USES]?: import('./rules/facts/memberUses.ts').RetiredUse[]
   /** Measured path only: an open path has no implied closing edge. */
   pathDimensions: PathDimension[]
   perimeter: number

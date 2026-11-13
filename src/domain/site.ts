@@ -12,12 +12,12 @@ import { validatePhysicalChecks, validateIndependentGroups, validateBridges } fr
 import type { PhysicalCheck, ElementBounds, PhysicalGroup } from './rules/policies/siteValidation.ts'
 import { stockBounds, deckBounds, type AxisBox } from './rules/policies/collisionGeometry.ts'
 import { appendIssue, sourcedIssue, mapIssueSources } from './rules/facts/issues.ts'
-import { resolveGuardRemovals } from './rules/guardRemovals.ts'
+import { resolveGuardRemovalPlan } from './rules/guardRemovals.ts'
 import { mm, metresFromMm as m, roundSite, SITE_EPS as EPS } from './rules/facts/precision.ts'
 import { componentGroups } from './rules/groups.ts'
 import { meetOnPlan, footingStations } from './rules/policies/groups.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
-import { MEMBER_USES, transformUses, memberUses } from './rules/facts/memberUses.ts'
+import { MEMBER_USES, RETIRED_USES, transformUses, memberUses } from './rules/facts/memberUses.ts'
 import { resolveBlocks } from './rules/policies/blocks.ts'
 export { resolveBlocks } from './rules/policies/blocks.ts'
 export { getSectionLevels, defaultSectionLayers, sectionTargetLayer, siteWithTargetLayers } from './rules/policies/levels.ts'
@@ -110,7 +110,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   // Assembly plans and height labels are draft metadata, not a provisional BOM.
   const layout: ScaffoldAssembly = {
     pathDimensions: [], perimeter: 0, members: [], pipeSegments: [], decks: [], connectors: [], baseChannels: [], warnings: [],
-    assemblyPlans: [], postHeights: { theoretical: 0, inner: 0, outer: 0 },
+    [RETIRED_USES]: [], assemblyPlans: [], postHeights: { theoretical: 0, inner: 0, outer: 0 },
   }
   const indexById = new Map(site.sections.map((line, index) => [line.id, index]))
   const physicalGroups: PhysicalGroup[] = []
@@ -193,8 +193,14 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     const transformedMembers = part.members.map(member => ({ ...member,
       [MEMBER_USES]: transformUses(member, world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) })), start: world(member.start), end: world(member.end),
       connectionPoints: member.connectionPoints.map(world), pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) }))
-    const removed = new Set(resolveGuardRemovals({ members: transformedMembers, ends: [...transitionEnds], blocks,
-      followsWall, clearance: Math.max(settings.width, wallStandOff(settings)), stations: sharedStations }))
+    const removalPlan = resolveGuardRemovalPlan({ members: transformedMembers, ends: [...transitionEnds], blocks,
+      followsWall, clearance: Math.max(settings.width, wallStandOff(settings)), stations: sharedStations })
+    const wallRemovals = new Set(removalPlan.wall), sharedRemovals = new Set(removalPlan.shared)
+    const removed = new Set([...wallRemovals, ...sharedRemovals])
+    for (const member of transformedMembers) if (removed.has(member.id)) for (const use of memberUses(member)) {
+      if (wallRemovals.has(member.id)) layout[RETIRED_USES]!.push({ use, rule: 'P04', reason: 'wall' })
+      if (sharedRemovals.has(member.id)) layout[RETIRED_USES]!.push({ use, rule: 'P06', reason: 'shared-cap' })
+    }
     const members = transformedMembers.filter(member => !removed.has(member.id))
     const pipeSegments = part.pipeSegments.filter(pipe => !removed.has(pipe.memberId))
       .map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
@@ -384,7 +390,10 @@ function assembleSite(input: Site, settings: ScaffoldParameters): SiteAssembly {
   const members = result.layout.members.map(member => ({ ...member,
     [MEMBER_USES]: memberUses(member).map(use => ({ ...use, sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId })),
   }))
-  return { ...result.layout, members, pathDimensions, blocks, sections: spanLayout.sections, spans, joinedLifts: result.joined, issues,
+  const retired = result.layout[RETIRED_USES]?.map(record => ({ ...record, use: { ...record.use,
+    sectionId: spans[record.use.pathSegment]?.sourceId ?? record.use.sectionId, spanId: spans[record.use.pathSegment]?.line.id ?? record.use.spanId,
+  } }))
+  return { ...result.layout, [RETIRED_USES]: retired, members, pathDimensions, blocks, sections: spanLayout.sections, spans, joinedLifts: result.joined, issues,
     perimeter: sourcePerimeter(site.sections),
     canExportMaterials: !issues.some(issue => issue.blocking) }
 }

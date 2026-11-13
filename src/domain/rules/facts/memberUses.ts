@@ -2,7 +2,10 @@ import type { MemberType, ScaffoldMember, Vector3Tuple } from '../../scaffold.ts
 
 /** Calculation-only metadata: spread preserves it, legacy JSON intentionally omits it. */
 export const MEMBER_USES = Symbol('scaffold.memberUses')
+export const RETIRED_USES = Symbol('scaffold.retiredUses')
+export type RetiredUse = { use: MemberUse; rule: 'P04' | 'P06'; reason: 'wall' | 'shared-cap' | 'transition-cap' }
 export type MemberPurpose = MemberType | 'side-guard' | 'end-guard' | 'bridge-guard' | 'bridge-working'
+export type UseRangeChange = { rule: string; before: [Vector3Tuple, Vector3Tuple]; after: [Vector3Tuple, Vector3Tuple] }
 export type MemberUse = {
   pathSegment: number
   sectionId?: string
@@ -11,6 +14,8 @@ export type MemberUse = {
   start: Vector3Tuple
   end: Vector3Tuple
   rules: string[]
+  /** Compact interval replacement facts, retained even if a later merge absorbs this use. */
+  changes?: UseRangeChange[]
 }
 export type Provenanced = { [MEMBER_USES]?: MemberUse[] }
 const copyPoint = (p: Vector3Tuple): Vector3Tuple => [...p]
@@ -23,13 +28,18 @@ export function combineUses(...groups: readonly (readonly MemberUse[])[]): Membe
   for (const use of groups.flat()) {
     const key = JSON.stringify([use.pathSegment, use.sectionId, use.spanId, use.purpose, use.start, use.end])
     const previous = unique.get(key)
-    unique.set(key, { ...use, start: copyPoint(use.start), end: copyPoint(use.end), rules: [...new Set([...(previous?.rules ?? []), ...use.rules])] })
+    const changes = previous?.changes?.length || use.changes?.length
+      ? [...new Map([...(previous?.changes ?? []), ...(use.changes ?? [])].map(change => [JSON.stringify(change), change])).values()] : []
+    unique.set(key, { ...use, start: copyPoint(use.start), end: copyPoint(use.end), rules: [...new Set([...(previous?.rules ?? []), ...use.rules])],
+      ...(changes.length && { changes: changes.map(change => ({ ...change, before: change.before.map(copyPoint) as UseRangeChange['before'], after: change.after.map(copyPoint) as UseRangeChange['after'] })) }) })
   }
   return [...unique.values()]
 }
 export function transformUses(member: Provenanced, point: (p: Vector3Tuple) => Vector3Tuple,
   source: (use: MemberUse) => Pick<MemberUse, 'pathSegment' | 'sectionId' | 'spanId'>): MemberUse[] {
-  return memberUses(member).map(use => ({ ...use, ...source(use), start: point(use.start), end: point(use.end), rules: [...use.rules] }))
+  return memberUses(member).map(use => ({ ...use, ...source(use), start: point(use.start), end: point(use.end), rules: [...use.rules],
+    ...(use.changes && { changes: use.changes.map(change => ({ ...change, before: change.before.map(point) as UseRangeChange['before'], after: change.after.map(point) as UseRangeChange['after'] })) }),
+  }))
 }
 export function clipUses(member: Provenanced, start: Vector3Tuple, end: Vector3Tuple, rule: string): MemberUse[] {
   const delta = start.map((v, i) => Math.abs(end[i] - v))
@@ -41,7 +51,11 @@ export function clipUses(member: Provenanced, start: Vector3Tuple, end: Vector3T
     if (b - a < 0.000001) return []
     const at = (value: number): Vector3Tuple => use.start.map((v, i) => i === axis ? value : v) as Vector3Tuple
     const forward = use.end[axis] >= use.start[axis]
-    return [{ ...use, start: at(forward ? a : b), end: at(forward ? b : a), rules: [...new Set([...use.rules, rule])] }]
+    const start = at(forward ? a : b), end = at(forward ? b : a)
+    const changed = [start, end].some((point, side) => point.some((value, axis) => value !== [use.start, use.end][side][axis]))
+    return [{ ...use, start, end, rules: [...new Set([...use.rules, rule])],
+      ...(changed && { changes: [...(use.changes ?? []), { rule, before: [copyPoint(use.start), copyPoint(use.end)], after: [copyPoint(start), copyPoint(end)] } as UseRangeChange] }),
+    }]
   })
 }
 /** Consumers query all retained sources, never the compatibility display owner alone. */

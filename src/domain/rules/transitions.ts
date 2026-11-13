@@ -1,3 +1,4 @@
+import type { RetiredUse } from './facts/memberUses.ts'
 import type { ScaffoldMember, DeckPanel, PipeSegment, ScaffoldParameters } from '../scaffold.ts'
 import type { SectionSummary } from '../site.ts'
 import type { RoutedSpan, SiteTransition } from '../siteRouting.ts'
@@ -49,6 +50,6 @@ const run = compilePipeline<Facts, Change>(RULES, TRANSITION_STEPS, (facts, prop
 })
 export function resolveTransitions(input: Omit<Facts, 'geometry' | 'tops' | 'plan' | 'opened'>, trace = false) {
   const result = run(input, { trace }), { facts } = result
-  return { trace: result.trace, plan: facts.plan as TransitionPlan, opened: facts.opened && { groups: [...facts.opened.groups],
+  return { trace: result.trace, plan: facts.plan as TransitionPlan, opened: facts.opened && { groups: [...facts.opened.groups], retired: facts.opened.retired as RetiredUse[],
     members: facts.opened.members.map(member => ({ ...member })) as ScaffoldMember[], decks: facts.opened.decks.map(deck => ({ ...deck })) as DeckPanel[] } }
 }
