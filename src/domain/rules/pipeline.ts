@@ -10,17 +10,23 @@ function freeze<T>(value: T): DeepReadonly<T> {
   return value as DeepReadonly<T>
 }
 
-function cloneFacts<T>(value: T): T {
+function cloneFacts<T>(value: T, copies = new WeakMap<object, object>(), active = new WeakSet<object>()): T {
   if (!value || typeof value !== 'object') return value
-  if (Array.isArray(value)) return value.map(cloneFacts) as T
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
+  if (active.has(value)) throw new RuleFailure('input', 'facts must not contain cycles')
+  const previous = copies.get(value)
+  if (previous) return previous as T
+  if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)
     throw new RuleFailure('input', 'facts must use plain objects and arrays')
-  const copy: Record<PropertyKey, unknown> = {}
+  const copy: Record<PropertyKey, unknown> | unknown[] = Array.isArray(value) ? [] : {}
+  copies.set(value, copy); active.add(value)
   for (const key of Reflect.ownKeys(value)) {
-    const child = cloneFacts(Reflect.get(value, key))
+    if (Array.isArray(value) && key === 'length') continue
+    const child = cloneFacts(Reflect.get(value, key), copies, active)
     if (key === '__proto__') Object.defineProperty(copy, key, { value: child, writable: true, enumerable: true, configurable: true })
-    else copy[key] = child
+    else (copy as Record<PropertyKey, unknown>)[key] = child
   }
+  if (Array.isArray(value)) (copy as unknown[]).length = value.length
+  active.delete(value)
   return copy as T
 }
 
@@ -72,7 +78,10 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
     }
   }
   const start = (input: F, options: { trace?: boolean } = {}) => {
-    let facts = publish(configuration.snapshot ? configuration.snapshot(input) : cloneFacts(input)), revision = 0
+    let facts: DeepReadonly<F>
+    try { facts = publish(configuration.snapshot ? configuration.snapshot(input) : cloneFacts(input)) }
+    catch (error) { rejectCalculation(); throw error }
+    let revision = 0
     const trace: Trace[] = [], invocation = traceInvocation()
     const written = new Map<string, { proposal: P; step: string }>()
     let cursor = 0, lastPhase = -1, failed = false

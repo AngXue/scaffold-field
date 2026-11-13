@@ -153,3 +153,20 @@ it('rejects recovery of a failed phase and retains the last published immutable 
   expect(committed.facts.result).toBe(5)
   expect(source).toEqual(input())
 })
+
+it('snapshots retain shared ancestry once while detaching it from the caller', () => {
+  const ancestor = { interval: [0, 1] }, source = { first: { parent: ancestor }, second: { parent: ancestor } }
+  const run = compilePipeline([definition], [], (facts: DeepReadonly<typeof source>) => facts as typeof source)
+  const result = run(source).facts
+  expect(result.first.parent).toBe(result.second.parent)
+  expect(result.first.parent).not.toBe(ancestor)
+  expect(() => (result.first.parent.interval as number[]).push(2)).toThrow()
+  expect(source.first.parent.interval).toEqual([0, 1])
+})
+it('cyclic facts are rejected before evaluation rather than recursively copying them', () => {
+  type Node = { parent?: Node }
+  const cyclic: Node = {}; cyclic.parent = cyclic
+  const run = compilePipeline([definition], [], (facts: DeepReadonly<Node>) => facts as Node)
+  expect(() => run(cyclic)).toThrow('facts must not contain cycles')
+  expect(cyclic.parent).toBe(cyclic)
+})

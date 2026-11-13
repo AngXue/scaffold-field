@@ -224,6 +224,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/components.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/memberHistory.test.ts",
       "T05",
       "T12",
       "src/domain/rules/posts.test.ts",
@@ -384,6 +385,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/sharedMembers.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/memberHistory.test.ts",
       "T04",
       "T08",
       "T11",
@@ -471,6 +473,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/transitions.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/memberHistory.test.ts",
       "T07",
       "T11",
       "src/domain/rules/transitions.test.ts",
@@ -490,6 +493,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/guardRemovals.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/memberHistory.test.ts",
       "T07",
       "T11",
       "src/domain/rules/transitions.test.ts",

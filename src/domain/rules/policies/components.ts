@@ -1,3 +1,4 @@
+import { MEMBER_HISTORY, historyOf, memberChange } from '../facts/memberHistory.ts'
 import type { ScaffoldMember, DeckPanel, BaseChannel, Vector3Tuple } from '../../scaffold.ts'
 import { FRAME_SCOPES, combinedScopes } from '../facts/scopes.ts'
 import { MEMBER_USES, combineUses, memberUses } from '../facts/memberUses.ts'
@@ -13,6 +14,7 @@ export function sharedComponentPosts(candidates: readonly ScaffoldMember[], sour
     if (post.type !== 'post') continue
     const key = pointKey(post.start), existing = posts.get(key)
     if (!existing) { posts.set(key, post); continue }
+    const ancestors = [historyOf(existing), historyOf(post)]
     const scopes = combinedScopes(existing, post)
     if (scopes) existing[FRAME_SCOPES] = scopes
     existing[MEMBER_USES] = combineUses(memberUses(existing), memberUses(post))
@@ -21,6 +23,7 @@ export function sharedComponentPosts(candidates: readonly ScaffoldMember[], sour
       sequences[existing.id] = sequences[post.id]
       sequenceOwners[existing.id] = sequenceOwners[post.id]
     }
+    existing[MEMBER_HISTORY] = memberChange(existing, ancestors, 'G08', 'merge')
     members.splice(i, 1)
   }
 

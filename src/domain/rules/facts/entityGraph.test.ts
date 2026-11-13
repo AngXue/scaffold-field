@@ -101,6 +101,13 @@ describe('fixed projects: complete physical graph references', () => {
     for (const [index, event] of events.entries()) if (['C01.actual', 'C02.splices'].includes(event.step)) expect(index).toBeGreaterThan(lastPlacement)
     expect(graph.ledger.entries).toHaveLength(layout.pipeSegments.length + layout.connectors.length + layout.decks.length + layout.baseChannels.length)
     expect(new Set(graph.ledger.entries.map(entry => entry.entityId)).size).toBe(graph.ledger.entries.length)
+    const construction = new Map(graph.construction.map(node => [node.id, node]))
+    expect(graph.members.every(member => member.constructionId && construction.has(member.constructionId)), id).toBe(true)
+    for (const node of construction.values()) {
+      expect(node.parentIds.every(parent => construction.has(parent)), id).toBe(true)
+      if (node.operation === 'demand') expect(node.useIds.length, id).toBeGreaterThan(0)
+      if (node.operation === 'merge') expect(node.parentIds.length, id).toBeGreaterThanOrEqual(2)
+    }
     const entities = new Set([...graph.pipes, ...graph.connectors, ...graph.decks, ...graph.bases].map(entity => entity.id))
     expect(graph.ledger.entries.every(entry => entities.has(entry.entityId) && entry.sourceIds.length > 0)).toBe(true)
     const members = new Set(graph.members.map(member => member.id)), pipes = new Set(graph.pipes.map(pipe => pipe.id))

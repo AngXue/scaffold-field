@@ -529,6 +529,11 @@
           "file": "src/domain/siteEditing.test.ts",
           "title": "keeps every S1 upper guard continuous across the height change with 2 rail courses",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberHistory.test.ts",
+          "title": "the original S1 upper caps show actual merge-to-clip replacements and removed purposes",
+          "count": 1
         }
       ]
     },
@@ -1059,6 +1064,41 @@
         {
           "file": "src/domain/rules/constructionIdentity.test.ts",
           "title": "missing display aliases fail instead of publishing undefined member or pipe references",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberHistory.test.ts",
+          "title": "actual merges retain the replaced inputs and every intermediate union without editing their snapshots",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberHistory.test.ts",
+          "title": "coordinate adapters move all ancestral intervals and origins while preserving shared nodes and identities",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberHistory.test.ts",
+          "title": "common-post history keeps both demand heights and the unchanged stock owner",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberHistory.test.ts",
+          "title": "conflicting snapshots cannot hide behind the same ancestor identity",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "snapshots retain shared ancestry once while detaching it from the caller",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "cyclic facts are rejected before evaluation rather than recursively copying them",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/globalStages.test.ts",
+          "title": "a failed input snapshot also prevents a caught error from publishing a nested success",
           "count": 1
         }
       ]

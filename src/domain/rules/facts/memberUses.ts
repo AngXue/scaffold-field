@@ -3,7 +3,7 @@ import type { MemberType, ScaffoldMember, Vector3Tuple } from '../../scaffold.ts
 /** Calculation-only metadata: spread preserves it, legacy JSON intentionally omits it. */
 export const MEMBER_USES = Symbol('scaffold.memberUses')
 export const RETIRED_USES = Symbol('scaffold.retiredUses')
-export type RetiredUse = { use: MemberUse; rule: 'P04' | 'P06'; reason: 'wall' | 'shared-cap' | 'transition-cap' }
+export type RetiredUse = { history?: import('./memberHistory.ts').MemberHistory; use: MemberUse; rule: 'P04' | 'P06'; reason: 'wall' | 'shared-cap' | 'transition-cap' }
 export type MemberPurpose = MemberType | 'side-guard' | 'end-guard' | 'bridge-guard' | 'bridge-working'
 export type UseRangeChange = { rule: string; before: [Vector3Tuple, Vector3Tuple]; after: [Vector3Tuple, Vector3Tuple] }
 export type MemberUse = {

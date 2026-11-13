@@ -1,3 +1,4 @@
+import { MEMBER_HISTORY, historyOf, memberChange } from '../facts/memberHistory.ts'
 import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import type { ScaffoldMember } from '../../scaffold.ts'
 import { FRAME_SCOPES, combinedScopes } from '../facts/scopes.ts'
@@ -7,7 +8,7 @@ const vectorDistance = (a: number[], b: number[]) => Math.hypot(...a.map((n, i) 
 const pointKey = (p: number[]) => p.map(round).join(':')
 
 /** M08: pure merge preserving every source and purpose interval. */
-export function mergeSharedRuns(members: ScaffoldMember[]) {
+export function mergeSharedRuns(members: ScaffoldMember[], rule = 'M08') {
   const groups = new Map<string, Array<{ member: ScaffoldMember; low: number; high: number }>>()
   for (const original of members) {
     const member = { ...original }
@@ -27,6 +28,7 @@ export function mergeSharedRuns(members: ScaffoldMember[]) {
     let active = group[0]
     for (const next of group.slice(1)) {
       if (next.low > active.high + 0.001) { active = next; continue }
+      const ancestors = [historyOf(active.member), historyOf(next.member)]
       const candidates = [active.member.start, active.member.end, next.member.start, next.member.end]
       candidates.sort((a, b) => a[0] - b[0] || a[2] - b[2])
       const scopes = combinedScopes(active.member, next.member)
@@ -38,6 +40,7 @@ export function mergeSharedRuns(members: ScaffoldMember[]) {
       active.member.end = candidates.at(-1)!
       active.member.length = round(vectorDistance(active.member.start, active.member.end))
       active.member.connectionPoints = [...new Map([...active.member.connectionPoints, ...next.member.connectionPoints].map(p => [pointKey(p), p])).values()]
+      active.member[MEMBER_HISTORY] = memberChange(active.member, ancestors, rule, 'merge')
       active.high = Math.max(active.high, next.high)
       removed.add(next.member.id)
     }

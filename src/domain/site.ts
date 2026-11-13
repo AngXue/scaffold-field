@@ -1,3 +1,4 @@
+import { MEMBER_HISTORY, historyTransformer, retiredMemberUse } from './rules/facts/memberHistory.ts'
 import { startSiteRouting } from './rules/routing.ts'
 import { fitGuardrailStock } from './guardrails.ts'
 import { prepareTransitionWork, commitTransitionPosts, type PreparedTransitions, type TransitionInput } from './rules/transitions.ts'
@@ -195,7 +196,8 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         const working = context.construction.working()
         const world = ([x, y, z]: Vector3Tuple): Vector3Tuple => [x + drawing.points[0].x / PIXELS_PER_METER, roundSite(y + base), z + drawing.points[0].y / PIXELS_PER_METER]
         const pathIndex = (path: number | undefined) => indexById.get(owner(path))!
-        members.push(...working.members.map(member => ({ ...member, [FRAME_SCOPES]: scope,
+        const history = historyTransformer(world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) }))
+        members.push(...working.members.map(member => ({ ...member, ...history(member), [FRAME_SCOPES]: scope,
           [MEMBER_USES]: transformUses(member, world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) })),
           start: world(member.start), end: world(member.end), connectionPoints: member.connectionPoints.map(world),
           pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) })))
@@ -248,7 +250,8 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     const sharedStations = group.flatMap((a,i)=>group.slice(i+1).flatMap(b=>
       footingStations(a,settings.width).filter(pair=>footingStations(b,settings.width).some(other=>pair.every(p=>other.some(q=>Math.hypot(p.x-q.x,p.z-q.z)<EPS))))
         .map(points=>({points,layers:Math.min(a.layers,b.layers)}))))
-    const transformedMembers = part.members.map(member => ({ ...member,
+    const history = historyTransformer(world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) }))
+    const transformedMembers = part.members.map(member => ({ ...member, ...history(member),
       [MEMBER_USES]: transformUses(member, world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) })), start: world(member.start), end: world(member.end),
       connectionPoints: member.connectionPoints.map(world), pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) }))
     const removalPlan = resolveGuardRemovalPlan({ members: transformedMembers, ends: [...transitionEnds], blocks,
@@ -256,8 +259,8 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     const wallRemovals = new Set(removalPlan.wall), sharedRemovals = new Set(removalPlan.shared)
     const removed = new Set([...wallRemovals, ...sharedRemovals])
     for (const member of transformedMembers) if (removed.has(member.id)) for (const use of memberUses(member)) {
-      if (wallRemovals.has(member.id)) layout[RETIRED_USES]!.push({ use, rule: 'P04', reason: 'wall' })
-      if (sharedRemovals.has(member.id)) layout[RETIRED_USES]!.push({ use, rule: 'P06', reason: 'shared-cap' })
+      if (wallRemovals.has(member.id)) layout[RETIRED_USES]!.push(retiredMemberUse(member, use, 'P04', 'wall'))
+      if (sharedRemovals.has(member.id)) layout[RETIRED_USES]!.push(retiredMemberUse(member, use, 'P06', 'shared-cap'))
     }
     const members = transformedMembers.filter(member => !removed.has(member.id))
     const pipeSegments = part.pipeSegments.filter(pipe => !removed.has(pipe.memberId))
@@ -458,10 +461,13 @@ function assembleSite(input: Site, settings: ScaffoldParameters): SiteAssembly {
   if (result.joined.length) issues.push(...validateBridges({ layout: result.layout, blocks, spans, bridges: result.bridges, joined: result.joined,
     radius: settings.pipeDiameter / 2, labels: [...labels], previous: issues }))
   const pathDimensions = sourceDimensions(result.layout.pathDimensions, spans, labels)
-  const members = result.layout.members.map(member => ({ ...member,
+  const history = historyTransformer(point => [...point], use => ({ pathSegment: use.pathSegment,
+    sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId }))
+  const members = result.layout.members.map(member => ({ ...member, ...history(member),
     [MEMBER_USES]: memberUses(member).map(use => ({ ...use, sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId })),
   }))
-  const retired = result.layout[RETIRED_USES]?.map(record => ({ ...record, use: { ...record.use,
+  const retired = result.layout[RETIRED_USES]?.map(record => ({ ...record,
+    ...(record.history && { history: history({ [MEMBER_HISTORY]: record.history })[MEMBER_HISTORY] }), use: { ...record.use,
     sectionId: spans[record.use.pathSegment]?.sourceId ?? record.use.sectionId, spanId: spans[record.use.pathSegment]?.line.id ?? record.use.spanId,
   } }))
   return { ...result.layout, [RETIRED_USES]: retired, members, pathDimensions, blocks, sections: spanLayout.sections, spans, joinedLifts: result.joined, issues,

@@ -1,3 +1,4 @@
+import { MEMBER_HISTORY, type MemberHistory } from './memberHistory.ts'
 import type { Site, SiteLayout } from '../../site.ts'
 import type { PipeSegment, Vector3Tuple } from '../../scaffold.ts'
 import { contactOf, stockContainsContact } from './connections.ts'
@@ -74,6 +75,23 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     }
     return { sourceId, spanId: span.id, useId }
   }
+  type ConstructionRecord = Pick<MemberHistory, 'id' | 'operation' | 'rules' | 'type' | 'roles' | 'start' | 'end'> & { parentIds: string[]; useIds: string[] }
+  const construction = new Map<string, ConstructionRecord>(), visitedHistory = new WeakMap<MemberHistory, string>(), activeHistory = new Set<string>()
+  const registerHistory = (node: MemberHistory): string => {
+    const visited = visitedHistory.get(node)
+    if (visited) return visited
+    if (activeHistory.has(node.id)) throw new Error(`Cyclic construction history: ${node.id}`)
+    activeHistory.add(node.id)
+    const parentIds = [...new Set(node.parents.map(registerHistory))].sort()
+    const useIds = [...new Set(node.uses.map(use => registerUse(use, node.id).useId))].sort()
+    const data: ConstructionRecord = { id: node.id, operation: node.operation, rules: [...node.rules].sort(), type: node.type,
+      roles: [...node.roles].sort(), start: [...node.start], end: [...node.end], parentIds, useIds }
+    const previous = construction.get(node.id)
+    if (previous && JSON.stringify(previous) !== JSON.stringify(data)) throw new Error(`Conflicting construction history: ${node.id}`)
+    if (!previous) construction.set(node.id, publish(data))
+    activeHistory.delete(node.id); visitedHistory.set(node, node.id)
+    return node.id
+  }
   const members = layout.members.map(member => {
     const uses = memberUses(member)
     if (!uses.length) throw new Error(`Missing member origin: ${member.id}`)
@@ -85,13 +103,13 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
     return publish({ id: ids.of('member', [[...new Set(member.roles ?? [member.type])].sort(), member.layer ?? null,
       canonicalPoints([member.start, member.end]), canonicalPoints(member.connectionPoints), origins]),
-      legacyId: member.id, type: member.type, frameIds: frameReferences(member), uses, useIds: [...new Set(useIds)].sort(), nodeIds: [] as string[], sourceIds: [...new Set(origins.map(origin => origin[0]))].sort(),
+      legacyId: member.id, constructionId: member[MEMBER_HISTORY] && registerHistory(member[MEMBER_HISTORY]), type: member.type, frameIds: frameReferences(member), uses, useIds: [...new Set(useIds)].sort(), nodeIds: [] as string[], sourceIds: [...new Set(origins.map(origin => origin[0]))].sort(),
       spanIds: [...new Set(origins.map(origin => origin[1]))].sort() })
   })
   const retired = [...new Map((layout[RETIRED_USES] ?? []).map(record => {
     const { useId } = registerUse(record.use, `${record.rule}.${record.reason}`)
     const id = ids.of('removed-use', [useId, record.rule, record.reason])
-    return [id, { id, useId, rule: record.rule, reason: record.reason }] as const
+    return [id, { id, useId, rule: record.rule, reason: record.reason, constructionId: record.history && registerHistory(record.history) }] as const
   })).values()]
   const byMember = new Map(members.map(member => [member.legacyId, member]))
   const memberId = (legacyId: string) => {
@@ -213,11 +231,15 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     lineage.get(replacement.after)!.derivedFrom.push(replacement.before)
     lineage.get(replacement.before)!.replacedBy.push(replacement.after)
   }
+  construction.forEach(record => derive(record.id, `member-${record.operation}`, [...record.parentIds, ...record.useIds]))
+  for (const record of construction.values()) if (['merge', 'clip', 'purpose-removal'].includes(record.operation)) {
+    for (const parent of record.parentIds) lineage.get(parent)!.replacedBy.push(record.id)
+  }
   retired.forEach(record => {
-    derive(record.id, 'removed-use', [record.useId])
+    derive(record.id, 'removed-use', [record.useId, ...(record.constructionId ? [record.constructionId] : [])])
     lineage.get(record.useId)!.replacedBy.push(record.id)
   })
-  members.forEach(member => derive(member.id, 'member', [...member.useIds, ...member.frameIds]))
+  members.forEach(member => derive(member.id, 'member', [...member.useIds, ...member.frameIds, ...(member.constructionId ? [member.constructionId] : [])]))
   pipes.forEach(pipe => derive(pipe.id, 'pipe', [pipe.memberId]))
   nodes.forEach(node => derive(node.id, 'node', node.memberIds))
   const connectorNodes = new Map(nodes.flatMap(node => node.connectorIds.map(id => [id, node.id] as const)))
@@ -231,7 +253,8 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   }
   validateLineage([...lineage.values()])
   const ordered = <T extends { id: string }>(values: T[]) => values.sort((a, b) => a.id.localeCompare(b.id))
-  return { identityVersion: 1, lineageScope: 'final entities, retained interval replacements and removed guard purposes; intermediate merged entity identities pending',
+  return { identityVersion: 1, lineageScope: 'actual member demand, merge, connection, clip and removal history; deck/base/stock intermediate identities pending',
+    construction: ordered([...construction.values()]),
     frames: ordered(frames), retired: ordered(retired),
     ranges: ordered([...ranges.values()]), replacements: [...replacements.values()].sort((a, b) => a.before.localeCompare(b.before) || a.after.localeCompare(b.after)),
     lineage: ordered([...lineage.values()]), sources: ordered(sources), spans: ordered(spans), nodes: ordered(nodes), members: ordered(members),

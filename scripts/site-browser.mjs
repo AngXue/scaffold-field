@@ -49,11 +49,22 @@ const setNumber = async (page, label, value) => {
 }
 const canvas = page => page.locator('svg.site-plan')
 const point = async (page, x, z) => {
-  const c = canvas(page), b = await c.boundingBox()
-  const transform = await c.locator(':scope > g[transform]').getAttribute('transform')
-  const [, tx, tz, scale] = /translate\(([-\d.]+) ([-\d.]+)\) scale\(([-\d.]+)\)/.exec(transform)
-  const at = { x: b.x + Number(tx) + x * Number(scale), y: b.y + Number(tz) + z * Number(scale) }
-  assert(at.x > b.x && at.x < b.x + b.width && at.y > b.y && at.y < b.y + b.height, 'drawing point is in canvas')
+  // SVG visibility precedes its first ResizeObserver-driven fit. Read the ready
+  // view and its screen matrix atomically; never combine two different frames.
+  const ready = await page.waitForFunction(({ x, z }) => {
+    const svg = document.querySelector('svg.site-plan')
+    if (!svg) return false
+    const bounds = svg.getBoundingClientRect(), view = svg.viewBox.baseVal
+    if (view.width <= 1 || view.height <= 1 || Math.abs(view.width - bounds.width) >= 1 || Math.abs(view.height - bounds.height) >= 1) return false
+    const matrix = svg.querySelector(':scope > g[transform]')?.getScreenCTM()
+    if (!matrix) return false
+    const projected = new DOMPoint(x, z).matrixTransform(matrix)
+    return { at: { x: projected.x, y: projected.y }, bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } }
+  }, { x, z })
+  const { at, bounds: b } = await ready.jsonValue()
+  await ready.dispose()
+  assert(at.x > b.x && at.x < b.x + b.width && at.y > b.y && at.y < b.y + b.height,
+    `drawing point is in canvas: ${JSON.stringify({ x, z, at, bounds: b })}`)
   return at
 }
 const drag = async (page, x, z, tx, tz) => {

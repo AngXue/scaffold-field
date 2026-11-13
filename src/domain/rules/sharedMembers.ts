@@ -16,7 +16,9 @@ export const MERGE_STEPS: RuleStep<MergeFacts, MergeProposal>[] = [
 // Protection resolves interval unions as candidate geometry. Physical sharing
 // and stock assembly still commit through M08 at S6 after all protection settles.
 export const CANDIDATE_STEPS: RuleStep<MergeFacts, MergeProposal>[] = [
-  { ...MERGE_STEPS[0], id: 'P02.candidateIntervals', ruleId: 'P02', phase: 5 },
+  { ...MERGE_STEPS[0], id: 'P02.candidateIntervals', ruleId: 'P02', phase: 5,
+    evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'MergeSharedMemberRuns', target: 'members', expectedRevision: revision,
+      value: mergeSharedRuns(facts.candidates as ScaffoldMember[], 'P02') }] }) },
 ]
 const compile = (steps: RuleStep<MergeFacts, MergeProposal>[]) => compilePipeline<MergeFacts, MergeProposal>(RULES, steps, (facts, proposals) => {
   const members = proposals.flatMap(proposal => proposal.value), source = new Set(facts.candidates.map(member => member.id))

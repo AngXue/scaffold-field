@@ -1,3 +1,4 @@
+import { MEMBER_HISTORY, historyOf, memberChange, historyTransformer, retiredMemberUse } from '../facts/memberHistory.ts'
 import { FRAME_SCOPES, combinedScopes, requiredScopes, inFrameScopes } from '../facts/scopes.ts'
 import { MEMBER_USES, memberUses, makeUse, clipUses, hasSource, type RetiredUse } from '../facts/memberUses.ts'
 import { deckBetweenStations } from './decks.ts'
@@ -10,9 +11,10 @@ import type { JoinedLift, Bridge, CapCut } from '../facts/transitions.ts'
 export function prepareTransitionGeometry(sourceMembers: ScaffoldMember[], sourceDecks: DeckPanel[], spans: RoutedSpan[], summaries: SectionSummary[]) {
   const summaryById = new Map(summaries.map(s => [s.id, s]))
   const pointMm = (p: Vector3Tuple): Vector3Tuple => [roundSite(p[0]), roundSite(p[1]), roundSite(p[2])]
+  const history = historyTransformer(point => [...point], use => ({ pathSegment: use.pathSegment, sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId }))
   const members = sourceMembers.map(member => {
     const section = member.pathSegment === undefined ? undefined : summaryById.get(spans[member.pathSegment]?.line.id)
-    return { ...member, [MEMBER_USES]: memberUses(member).map(use => ({ ...use, sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId })), start: pointMm(member.start), end: pointMm(member.end), connectionPoints: member.connectionPoints.map(pointMm),
+    return { ...member, ...history(member), [MEMBER_USES]: memberUses(member).map(use => ({ ...use, sectionId: spans[use.pathSegment]?.sourceId ?? use.sectionId, spanId: spans[use.pathSegment]?.line.id ?? use.spanId })), start: pointMm(member.start), end: pointMm(member.end), connectionPoints: member.connectionPoints.map(pointMm),
       layer: member.layer && section ? member.layer + section.firstLayer - 1 : member.layer }
   })
   const decks = sourceDecks.map(deck => {
@@ -132,9 +134,11 @@ export function planTransitions(geometry: TransitionGeometry, tops: Record<strin
       const matches = [...workingMatches, ...guards].sort((a, b) => order(a) - order(b))
       for (const { from, to } of matches) {
         const start = from.point, end = to.point
-        links.push({ [FRAME_SCOPES]: combinedScopes(from.member, to.member), id: `transition-${links.length + 1}`, type: from.member.type, layer, pathSegment: left,
+        const link: ScaffoldMember = { [FRAME_SCOPES]: combinedScopes(from.member, to.member), id: `transition-${links.length + 1}`, type: from.member.type, layer, pathSegment: left,
           start, end, length: roundSite(gap), connectionPoints: [start, end],
-          [MEMBER_USES]: [left, right].map(index => ({ ...makeUse(index, from.member.type === 'guardrail' ? 'bridge-guard' : 'bridge-working', start, end, 'P05'), sectionId: spans[index].sourceId, spanId: spans[index].line.id })) })
+          [MEMBER_USES]: [left, right].map(index => ({ ...makeUse(index, from.member.type === 'guardrail' ? 'bridge-guard' : 'bridge-working', start, end, 'P05'), sectionId: spans[index].sourceId, spanId: spans[index].line.id })) }
+        link[MEMBER_HISTORY] = memberChange(link, [historyOf(from.member), historyOf(to.member)], 'P05', 'connect', memberUses(link))
+        links.push(link)
         if (from.member.type !== 'guardrail') continue
         for (const cap of members) {
           if (cap.type !== 'guardrail' || cap.layer !== layer || mm(cap.start[1]) !== mm(start[1])) continue
@@ -170,8 +174,11 @@ export function openTransitionCaps(geometry: TransitionGeometry, plan: Transitio
       // Surplus alone is not a remaining rail. Retain a real supported run only.
       if (new Set(points.map(p => mm(p[axis]))).size<2) return []
       const at = (value: number): Vector3Tuple => member.start.map((n,j) => j===axis ? value : n) as Vector3Tuple
-      return [{...member,id:i ? `${member.id}-open-${i}` : member.id,start:at(low),end:at(high),length:roundSite(high-low),connectionPoints:points,
-        [MEMBER_USES]: clipUses(member, at(low), at(high), 'P06')}]
+      const kept: ScaffoldMember = {...member,id:i ? `${member.id}-open-${i}` : member.id,start:at(low),end:at(high),length:roundSite(high-low),connectionPoints:points,
+        [MEMBER_USES]: clipUses(member, at(low), at(high), 'P06')}
+      const changed = low !== Math.min(member.start[axis], member.end[axis]) || high !== Math.max(member.start[axis], member.end[axis])
+      kept[MEMBER_HISTORY] = changed ? memberChange(kept, [historyOf(member)], 'P06', 'clip') : historyOf(member)
+      return [kept]
     })
     // A fully discarded purpose has no survivor on which to keep its origin.
     // Retain a compact tombstone beside the phase product, never a material item.
@@ -181,7 +188,7 @@ export function openTransitionCaps(geometry: TransitionGeometry, plan: Transitio
         && other.spanId === use.spanId && other.purpose === use.purpose
         && Math.min(Math.max(other.start[axis], other.end[axis]), Math.max(use.start[axis], use.end[axis]))
           - Math.max(Math.min(other.start[axis], other.end[axis]), Math.min(use.start[axis], use.end[axis])) > 0.000001)
-      if (!survives) retired.push({ use, rule: 'P06', reason: 'transition-cap' })
+      if (!survives) retired.push(retiredMemberUse(member, use, 'P06', 'transition-cap'))
     }
     return remaining
   }

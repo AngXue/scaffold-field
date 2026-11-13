@@ -50,3 +50,14 @@ it('a caught rule failure cannot be hidden by returning a successful nested calc
     return calculateSite(EMPTY_SITE, DEFAULT_PARAMETERS)
   })).toThrow('Cannot publish a rejected calculation')
 })
+
+it('a failed input snapshot also prevents a caught error from publishing a nested success', () => {
+  type Node = { parent?: Node }
+  const node: Node = {}; node.parent = node
+  const run = compilePipeline<Node, Proposal>([rule], [], facts => facts as Node)
+  expect(() => calculationSession(EMPTY_SITE, DEFAULT_PARAMETERS, () => {
+    try { run(node) } catch { /* failed preparation must reject the whole calculation */ }
+    return calculateSite(EMPTY_SITE, DEFAULT_PARAMETERS)
+  })).toThrow('Cannot publish a rejected calculation')
+  expect(calculateSite(EMPTY_SITE, DEFAULT_PARAMETERS).members).toEqual([])
+})

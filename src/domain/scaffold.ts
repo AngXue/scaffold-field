@@ -1,3 +1,4 @@
+import { MEMBER_HISTORY, memberBirth, historyTransformer, type MemberHistory } from './rules/facts/memberHistory.ts'
 import { ConstructionIdentities, constructionAlias } from './rules/facts/constructionIdentity.ts'
 import type { SemanticValue } from './rules/facts/identity.ts'
 import { CONSTRUCTION_PHASES, startConstruction, type ConstructionPhase } from './rules/construction.ts'
@@ -139,6 +140,7 @@ export const CONNECTOR_LABELS: Record<ConnectorType, string> = {
 export const SWEEP_BAR_LAYER = 0
 
 export type ScaffoldMember = {
+  [MEMBER_HISTORY]?: MemberHistory
   [FRAME_SCOPES]?: readonly string[]
   [MEMBER_USES]?: import('./rules/facts/memberUses.ts').MemberUse[]
   id: string
@@ -663,6 +665,7 @@ function* constructScaffoldDraft(
   })
 
   baseChannels = resolveSupportingBases(baseChannels, members)
+  for (const member of members) member[MEMBER_HISTORY] = memberBirth(member, member.id)
   state.working = { members, decks, baseChannels }
   yield 4
   heightStage.advance(4)
@@ -682,6 +685,7 @@ function* constructScaffoldDraft(
   const rowTopEdge = (row: number) => globalProfile.support.rowTops[row]
   const endTopEdge = globalProfile.support.endTop
   for (const emit of guardEmissions) emit()
+  for (const member of members) member[MEMBER_HISTORY] ??= memberBirth(member, member.id)
 
   members.sort((a, b) => {
     const left = displayOrder.get(a)!, right = displayOrder.get(b)!
@@ -933,7 +937,8 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
         const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
         const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
         const edge = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
-        members.push(...mergeSharedRuns(working.members).map(member => ({ ...member,
+        const history = historyTransformer(move, use => ({ pathSegment: edge(use.pathSegment)! }))
+        members.push(...mergeSharedRuns(working.members).map(member => ({ ...member, ...history(member),
           [MEMBER_USES]: transformUses(member, move, use => ({ pathSegment: edge(use.pathSegment)! })),
           start: move(member.start), end: move(member.end), connectionPoints: member.connectionPoints.map(move),
           pathSegment: edge(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(index => edge(index)!),
@@ -975,7 +980,9 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
     const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
     const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     const toPlan = <T extends PlanGeometry>(result: T): T => {
+      const history = historyTransformer(move, use => ({ pathSegment: path.edgeIndices[use.pathSegment] }))
       result.members.forEach(m => {
+        Object.assign(m, history(m))
         m[MEMBER_USES] = transformUses(m, move, use => ({ pathSegment: path.edgeIndices[use.pathSegment] }))
         m.start = move(m.start); m.end = move(m.end); m.connectionPoints = m.connectionPoints.map(move)
         if (m.pathSegment !== undefined) m.pathSegment = path.edgeIndices[m.pathSegment]
@@ -1006,7 +1013,8 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
     const translate = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
     const prefix = `G${component}-`
     const edgeIndex = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
-    members.push(...layout.members.map(m => ({ ...m, id: prefix + m.id,
+    const history = historyTransformer(translate, use => ({ pathSegment: edgeIndex(use.pathSegment)! }))
+    members.push(...layout.members.map(m => ({ ...m, ...history(m), id: prefix + m.id,
       [MEMBER_USES]: transformUses(m, translate, use => ({ pathSegment: edgeIndex(use.pathSegment)! })),
       start: translate(m.start), end: translate(m.end), connectionPoints: m.connectionPoints.map(translate),
       pathSegment: edgeIndex(m.pathSegment), cornerJunctions: m.cornerJunctions?.map(index => edgeIndex(index)!),
