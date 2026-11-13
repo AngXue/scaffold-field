@@ -1,3 +1,4 @@
+import { DISPLAY_ID, displayId } from '../facts/displayIdentity.ts'
 import { STOCK_HISTORY, stockSelection, stockBirth } from '../facts/stockHistory.ts'
 import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import { DEFAULT_PARAMETERS, SPLICE_STAGGER, type ScaffoldMember, type ScaffoldParameters, type Vector3Tuple, type LayoutWarning, type PipeSegment, type PipeAssemblyPlan } from '../../scaffold.ts'
@@ -229,6 +230,7 @@ export function createPipeAssembly(
     const id = `S-${member.id}-${index + 1}`
     segments.push({
       id,
+      [DISPLAY_ID]: `S-${displayId(member)}-${index + 1}`,
       memberId: member.id,
       type: member.type,
       start: segmentStart.toTuple(),

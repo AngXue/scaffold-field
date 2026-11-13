@@ -1,3 +1,4 @@
+import { DISPLAY_ID, INTERNAL_ID } from './facts/displayIdentity'
 import { describe, it, expect } from 'vitest'
 import { calculateSite } from '../site'
 import { SITE_DEMOS } from '../siteDemos'
@@ -13,10 +14,10 @@ describe('stock proposals and real splice contributions', () => {
     const sequences = Object.fromEntries(layout.materials.assemblyPlans.map(plan => [plan.memberId, [...plan.stockLengths]]))
     const original = JSON.stringify({ layout, sequences, parameters: demo.parameters })
     const result = assembleStockStage(layout.members, sequences, demo.parameters, true)
-    expect(result.assemblies.flatMap(assembly => assembly.segments).map(pipe => ({ ...pipe, id: '' })))
-      .toEqual(layout.pipeSegments.map(pipe => ({ ...pipe, id: '' })))
-    expect(finishFittings(layout.members, result.assemblies.flatMap(assembly => assembly.segments), [{ ...prepareFittingPlan(layout.members, {}, demo.parameters, result.assemblies.flatMap(assembly => assembly.segments)), contacts: [] }]).map(connector => ({ ...connector, id: '' })))
-      .toEqual(layout.connectors.filter(connector => connector.type === 'butt').map(connector => ({ ...connector, id: '' })))
+    expect(result.assemblies.flatMap(assembly => assembly.segments).map(pipe => ({ ...pipe, id: '', [DISPLAY_ID]: '', [INTERNAL_ID]: '' })))
+      .toEqual(layout.pipeSegments.map(pipe => ({ ...pipe, id: '', [DISPLAY_ID]: '', [INTERNAL_ID]: '' })))
+    expect(finishFittings(layout.members, result.assemblies.flatMap(assembly => assembly.segments), [{ ...prepareFittingPlan(layout.members, {}, demo.parameters, result.assemblies.flatMap(assembly => assembly.segments)), contacts: [] }]).map(connector => ({ ...connector, id: '', [DISPLAY_ID]: '', [INTERNAL_ID]: '' })))
+      .toEqual(layout.connectors.filter(connector => connector.type === 'butt').map(connector => ({ ...connector, id: '', [DISPLAY_ID]: '', [INTERNAL_ID]: '' })))
     expect(JSON.stringify({ layout, sequences, parameters: demo.parameters })).toBe(original)
   })
   it('rejects an illegal inherited post sequence, even when fixed geometry bypasses repair', () => {

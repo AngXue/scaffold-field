@@ -1,3 +1,4 @@
+import { DISPLAY_ID, displayId } from './rules/facts/displayIdentity.ts'
 import { mapParts, appendParts, partProjection, removedParts, withRemoved } from './rules/facts/partHistory.ts'
 import { stockHistoryTransformer } from './rules/facts/stockHistory.ts'
 import { MEMBER_HISTORY, historyTransformer, retiredMemberUse } from './rules/facts/memberHistory.ts'
@@ -204,7 +205,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
           start: world(member.start), end: world(member.end), connectionPoints: member.connectionPoints.map(world),
           pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) })))
         const parts = partProjection(world, origin => ({ pathSegment: pathIndex(origin.pathSegment), sectionId: owner(origin.pathSegment), spanId: owner(origin.pathSegment) }))
-        appendParts(decks, parts.list(working.decks, deck => ({ ...deck, id: prefix + deck.id, [FRAME_SCOPES]: scope,
+        appendParts(decks, parts.list(working.decks, deck => ({ ...deck, [DISPLAY_ID]: prefix + displayId(deck), [FRAME_SCOPES]: scope,
           corners: deck.corners.map(world) as typeof deck.corners, coverage: deck.coverage?.map(face => face.map(world)), pathSegment: pathIndex(deck.pathSegment) })))
       }
       transitionWork = prepareTransitionWork({ ...transitionContext, members, decks, summaries, settings })
@@ -291,14 +292,14 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         positionSiteStock({ members, pipeSegments: finalPipes, connectors: finalConnectors, decks: decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,
           coverage: deck.coverage?.map(face => face.map(world)) })) }, blocks, radius, transitionEnds, followsWall)
         const fittingPlans = transformFittingPlans(selectFittingPlans(completed.fittingPlans, id => !removed.has(id), true), world, prefix)
-        return { fittingPlans, pipeSegments: finalPipes.map(pipe => ({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })),
-          connectors: finalConnectors.map(c => ({ ...c, id: prefix + c.id, memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })),
-          assemblyPlans: completed.assemblyPlans.filter(p => !removed.has(p.memberId)).map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })) }
+        return { fittingPlans, pipeSegments: finalPipes.map(pipe => ({ ...pipe, [DISPLAY_ID]: prefix + displayId(pipe) })),
+          connectors: finalConnectors.map(c => ({ ...c, [DISPLAY_ID]: prefix + displayId(c) })),
+          assemblyPlans: completed.assemblyPlans.filter(p => !removed.has(p.memberId)) }
       }
     } })
     for (const member of members) {
       if (member.type === 'post') checks.push({ kind: 'post', sectionId: memberOwners.get(member.id)!, point: member.start })
-      layout.members.push({ ...member, [FRAME_SCOPES]: scope, id: prefix + member.id })
+      layout.members.push({ ...member, [FRAME_SCOPES]: scope, [DISPLAY_ID]: prefix + displayId(member) })
     }
     const parts = partProjection(world, origin => ({ pathSegment: pathIndex(origin.pathSegment), sectionId: owner(origin.pathSegment), spanId: owner(origin.pathSegment) }))
     for (const beam of part.baseChannels) {
@@ -313,10 +314,10 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         max: [Math.max(...footprint.map(p => p[0])), start[1] + BASE_CHANNEL_HEIGHT, Math.max(...footprint.map(p => p[1]))],
       }
       elements.push({ bounds, sectionId: owner(beam.pathSegment) })
-      layout.baseChannels.push({ ...beam, ...parts.on(beam), id: prefix + beam.id, start, end, pathSegment: pathIndex(beam.pathSegment) })
+      layout.baseChannels.push({ ...beam, ...parts.on(beam), [DISPLAY_ID]: prefix + displayId(beam), start, end, pathSegment: pathIndex(beam.pathSegment) })
     }
     for (const pipe of pipeSegments) {
-      layout.pipeSegments.push({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })
+      layout.pipeSegments.push({ ...pipe, [DISPLAY_ID]: prefix + displayId(pipe) })
     }
     for (const deck of part.decks) {
       const corners = deck.corners.map(world) as typeof deck.corners
@@ -324,7 +325,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       const polygons = (coverage ?? [corners]).map(face => face.map(([x, , z]) => [x, z] as [number, number]))
       checks.push({ kind: 'deck', sectionId: owner(deck.pathSegment), elevation: corners[0][1], polygons })
       elements.push({ sectionId: owner(deck.pathSegment), deck: polygons, bounds: deckBounds(coverage?.flat() ?? corners) })
-      layout.decks.push({ ...deck, ...parts.on(deck), [FRAME_SCOPES]: scope, id: prefix + deck.id, corners, coverage, pathSegment: pathIndex(deck.pathSegment) })
+      layout.decks.push({ ...deck, ...parts.on(deck), [FRAME_SCOPES]: scope, [DISPLAY_ID]: prefix + displayId(deck), corners, coverage, pathSegment: pathIndex(deck.pathSegment) })
     }
     withRemoved(layout.decks, removedParts(part.decks).map(parts.record), layout.decks)
     withRemoved(layout.baseChannels, removedParts(part.baseChannels).map(parts.record), layout.baseChannels)
@@ -340,10 +341,8 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         elements: elements.sort((a, b) => a.bounds.min[0] - b.bounds.min[0]),
       })
     } })
-    layout.connectors.push(...connectors.map(c => ({ ...c, id: prefix + c.id,
-      memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })))
-    layout.assemblyPlans.push(...part.assemblyPlans.filter(p => !removed.has(p.memberId))
-      .map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })))
+    layout.connectors.push(...connectors.map(c => ({ ...c, [DISPLAY_ID]: prefix + displayId(c) })))
+    layout.assemblyPlans.push(...part.assemblyPlans.filter(p => !removed.has(p.memberId)))
     for (const d of part.pathDimensions) {
       const index = pathIndex(d.index)
       if (layout.pathDimensions.some(dimension => dimension.index === index)) continue

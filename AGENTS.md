@@ -24,6 +24,7 @@
 - `App.tsx` merges the stored parameters over `DEFAULT_PARAMETERS` into one `settings` object and the panel, the calculation and the export all read THAT — never the raw state. A parameter object that predates a field (an older saved project, or a hot reload that kept the previous state) would otherwise render a field with no value, which reads as a dead control. `NumberField` additionally falls back to `min` when its value is not finite, so no field can ever become inoperable.
 - `ScaffoldMember` is a logical design member. `PipeSegment` is a physical fixed-stock pipe linked to a member by `memberId`. Never use one where the other is intended.
 - Theoretical length comes from logical members; purchased stock and combinations come from physical pipe segments.
+- Calculation entities keep native source/role-based IDs through S9. `DISPLAY_ID` is a compatibility label, never a join, stock, fitting or material key. Only `publishEntityAliases` in `src/domain/rules/boundaries/entities.ts` restores public IDs after quantities are computed; `INTERNAL_ID` retains the native reference for diagnostics. Coordinate adapters may prefix display labels but must not rename native references.
 - Keep engineering calculations out of React components. Add or change rules in `src/domain/` and cover them with deterministic tests.
 
 ## Domain Invariants

@@ -1,3 +1,4 @@
+import { INTERNAL_ID } from './displayIdentity.ts'
 import type { StationPlan, StationVersion } from './stations.ts'
 import { PART_HISTORY, removedParts, partShapeChanged, type PartHistory } from './partHistory.ts'
 import { STOCK_HISTORY, type StockHistory, type StockSelection } from './stockHistory.ts'
@@ -145,7 +146,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     }).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
     return publish({ id: ids.of('member', [[...new Set(member.roles ?? [member.type])].sort(), member.layer ?? null,
       canonicalPoints([member.start, member.end]), canonicalPoints(member.connectionPoints), origins]),
-      legacyId: member.id, constructionId: member[MEMBER_HISTORY] && registerHistory(member[MEMBER_HISTORY]), type: member.type, frameIds: frameReferences(member), uses, useIds: [...new Set(useIds)].sort(), nodeIds: [] as string[], sourceIds: [...new Set(origins.map(origin => origin[0]))].sort(),
+      legacyId: member.id, nativeId: member[INTERNAL_ID], constructionId: member[MEMBER_HISTORY] && registerHistory(member[MEMBER_HISTORY]), type: member.type, frameIds: frameReferences(member), uses, useIds: [...new Set(useIds)].sort(), nodeIds: [] as string[], sourceIds: [...new Set(origins.map(origin => origin[0]))].sort(),
       spanIds: [...new Set(origins.map(origin => origin[1]))].sort() })
   })
   const retired = [...new Map((layout[RETIRED_USES] ?? []).map(record => {
@@ -183,7 +184,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
   }
   const physicalByAlias = uniqueLegacy(layout.pipeSegments, 'physical pipe')
   const pipes = layout.pipeSegments.map(pipe => publish({ id: ids.of('pipe', [memberId(pipe.memberId), pipe.sequence, pipe.stockLength]),
-    legacyId: pipe.id, constructionId: pipe[STOCK_HISTORY] && registerStock(pipe[STOCK_HISTORY]), memberId: memberId(pipe.memberId), stockLength: pipe.stockLength, sequence: pipe.sequence,
+    legacyId: pipe.id, nativeId: pipe[INTERNAL_ID], constructionId: pipe[STOCK_HISTORY] && registerStock(pipe[STOCK_HISTORY]), memberId: memberId(pipe.memberId), stockLength: pipe.stockLength, sequence: pipe.sequence,
     start: [...pipe.start], end: [...pipe.end] }))
   const hasAncestor = (head: string, target: string): boolean => {
     const pending = [head], seen = new Set<string>()
@@ -230,7 +231,7 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     }
     const pipeReferences = linked.map(pipe => pipeIds.get(pipe.id)!).sort()
     return publish({ id: ids.of('connector', [connector.type, memberIds, pointKey(contact), ...(connector.type === 'butt' ? [pipeReferences] : [])]),
-      legacyId: connector.id, type: connector.type, memberIds, pipeIds: pipeReferences, contact: [...contact] as Vector3Tuple })
+      legacyId: connector.id, nativeId: connector[INTERNAL_ID], type: connector.type, memberIds, pipeIds: pipeReferences, contact: [...contact] as Vector3Tuple })
   })
   const nodes: ConnectionNode[] = []
   const addNode = (kind: ConnectionNode['kind'], position: Vector3Tuple, memberIds: string[], fittingIds: string[], stockIds: string[]) => {
@@ -311,9 +312,9 @@ export function buildEntityGraph(site: Site, layout: SiteLayout) {
     return { constructionId, spanIds: record ? record.spanIds : [spanFor(segment).id], sourceIds: record ? record.sourceIds : [spanFor(segment).sourceId] }
   }
   const decks = layout.decks.map(deck => publish({ id: ids.of('deck', [spanFor(deck.pathSegment).id, deck.layer, canonicalPoints(deck.corners)]),
-    legacyId: deck.id, frameIds: frameReferences(deck), ...partSources(deck[PART_HISTORY],deck.pathSegment) }))
+    legacyId: deck.id, nativeId: deck[INTERNAL_ID], frameIds: frameReferences(deck), ...partSources(deck[PART_HISTORY],deck.pathSegment) }))
   const bases = layout.baseChannels.map(base => publish({ id: ids.of('base', [spanFor(base.pathSegment).id, canonicalPoints([base.start, base.end])]),
-    legacyId: base.id, ...partSources(base[PART_HISTORY],base.pathSegment) }))
+    legacyId: base.id, nativeId: base[INTERNAL_ID], ...partSources(base[PART_HISTORY],base.pathSegment) }))
   for (const part of [...layout.decks,...layout.baseChannels]) if (part[PART_HISTORY]) {
     if (part[PART_HISTORY]!.operation === 'remove' || partShapeChanged(part,part[PART_HISTORY]!))
       throw new Error(`Final part differs from its construction: ${part.id}`)

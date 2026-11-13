@@ -1,3 +1,4 @@
+import { DISPLAY_ID } from './facts/displayIdentity.ts'
 import { mapParts } from './facts/partHistory.ts'
 import type { RetiredUse } from './facts/memberUses.ts'
 import type { ScaffoldMember, DeckPanel, PipeSegment, ScaffoldParameters } from '../scaffold.ts'
@@ -81,13 +82,13 @@ function aliasPrepared(prepared: PreparedTransitions, aliases: ReadonlyMap<strin
     if (!next) throw new Error('Missing committed transition member alias')
     return next
   }
-  const members = prepared.geometry.members.map(member => ({ ...member, id: alias(member.id) }))
+  const members = prepared.geometry.members.map(member => ({ ...member, [DISPLAY_ID]: alias(member.id) }))
   const byId = new Map(prepared.geometry.members.map((member, index) => [member.id, members[index]]))
   const match = (value: WorkingTransitions['intents'][number]['courses'][number]['matches'][number]) => ({
     from: { ...value.from, member: byId.get(value.from.member.id)! }, to: { ...value.to, member: byId.get(value.to.member.id)! },
   })
   return { ...prepared, geometry: { ...prepared.geometry, members },
-    tops: Object.fromEntries(Object.entries(prepared.tops).map(([id, top]) => [alias(id), top])),
+    tops: prepared.tops,
     working: { ...prepared.working, intents: prepared.working.intents.map(intent => ({ ...intent,
       courses: intent.courses.map(course => ({ ...course, matches: course.matches.map(match), rails: course.rails.map(match) })) })) } }
 }

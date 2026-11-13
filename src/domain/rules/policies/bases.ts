@@ -1,3 +1,4 @@
+import { DISPLAY_ID } from '../facts/displayIdentity.ts'
 import { PART_HISTORY, partBirth, partHistory, partChanged, removedParts, withRemoved, mapParts } from '../facts/partHistory.ts'
 import { historyOf } from '../facts/memberHistory.ts'
 import type { BaseChannel, ScaffoldMember, Vector3Tuple } from '../../scaffold.ts'
@@ -68,7 +69,7 @@ export function baseCandidates(input: BaseInput): BaseChannel[] {
       }
     }
   }
-  return baseChannels.map(base => ({ ...base, [PART_HISTORY]: partBirth(base,input.identityScope,'M07') }))
+  return baseChannels.map(base => { const history = partBirth(base,input.identityScope,'M07'); return { ...base, [DISPLAY_ID]: base.id, id: history.id, [PART_HISTORY]: history } })
 }
 export function retainSupportingBases(candidates: readonly BaseChannel[], members: readonly ScaffoldMember[]): BaseChannel[] {
   const baseChannels = mapParts(candidates, base => ({ ...base })), retired = [...removedParts(candidates)]

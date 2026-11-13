@@ -1260,6 +1260,141 @@
           "file": "src/domain/rules/diagnostics/session.test.ts",
           "title": "records the accepted inward-corner exception only when it changes a guard range",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/constructionIdentity.test.ts",
+          "title": "changing display labels cannot change native stock, connections or material contributions",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "adjacent-houses retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "outline retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "corridor retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "roof retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "aligned retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "stack retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "exact retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "narrow retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "step retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "sweep retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "penetration retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "overlap retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "legacy retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "wall-stroke retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "corridor-independent retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "corridor-two-rails retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "corridor-rotated retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "adjacent-houses-independent retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "adjacent-houses-two-rails retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "adjacent-houses-rotated retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "wall-stroke-independent retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "wall-stroke-two-rails retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "wall-stroke-rotated retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "orthogonal-50 retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "orthogonal-200 retains every final material entity including blocked drafts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/entityGraph.test.ts",
+          "title": "multi-elevation-24 retains every final material entity including blocked drafts",
+          "count": 1
         }
       ]
     },

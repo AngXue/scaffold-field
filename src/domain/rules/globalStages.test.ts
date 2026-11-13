@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { INTERNAL_ID, DISPLAY_ID } from './facts/displayIdentity'
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
 import { calculateSite, EMPTY_SITE } from '../site'
@@ -24,6 +25,12 @@ it('all frozen and large scenes execute globally ordered S0-S9 steps', () => {
     if (at('P05.workingLinks') >= 0) {
       expect(at('P05.workingLinks'), id).toBeLessThan(at('S01.posts'))
       expect(at('P07.actualPostTops'), id).toBeLessThan(at('P07.supportedCourses'))
+    }
+    for (const entities of [result.members, result.pipeSegments, result.connectors, result.decks, result.baseChannels]) {
+      const native = entities.map(entity => entity[INTERNAL_ID])
+      expect(native.every(value => typeof value === 'string' && value.length > 0), id).toBe(true)
+      expect(new Set(native).size, id).toBe(entities.length)
+      expect(entities.every(entity => entity.id === entity[DISPLAY_ID] && entity.id !== entity[INTERNAL_ID]), id).toBe(true)
     }
     expect(JSON.stringify(input), id).toBe(before)
   }

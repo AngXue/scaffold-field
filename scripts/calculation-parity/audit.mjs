@@ -1,4 +1,5 @@
 import './loader.mjs'
+import { rollbackEvidence } from './rollback-evidence.mjs'
 import { registeredSteps } from './registry.mjs'
 import { checkRuleDocuments } from './rule-documents.mjs'
 import assert from 'node:assert/strict'
@@ -6,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { performanceEvidence } from './performance-evidence.mjs'
 import { acceptanceEvidence } from './acceptance-evidence.mjs'
 import { verificationFingerprint } from './verification-fingerprint.mjs'
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 const root = resolve(import.meta.dirname, '../..')
 const { RULES } = await import('../../src/domain/rules/catalog.ts')
@@ -71,12 +72,30 @@ const globalTitles = [
 const globalOrchestrationAcceptance = { accepted: matrixAcceptance.domainAccepted && globalTitles.every(title =>
   acceptanceManifest.rows.find(row => row.id === 'T15')?.assertions.some(assertion => assertion.file === 'src/domain/rules/globalStages.test.ts' && assertion.title === title && assertion.count === 1)),
   scope: 'all 26 frozen/large fixtures plus ordinary/traced fail-before-evaluation and no-publication-after-failure contracts' }
+const allAssertions = acceptanceManifest.rows.flatMap(row => row.assertions)
+const ordinary = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/manifest.json'), 'utf8')).cases
+const registeredAssertion = (file, title) => allAssertions.some(assertion => assertion.file === file && assertion.title === title && assertion.count === 1)
+const identityAcceptance = { accepted: matrixAcceptance.domainAccepted
+  && registeredAssertion('src/domain/rules/constructionIdentity.test.ts', 'changing display labels cannot change native stock, connections or material contributions')
+  && [...ordinary, ...large.cases].every(id => registeredAssertion('src/domain/rules/facts/entityGraph.test.ts', `${id} retains every final material entity including blocked drafts`)),
+  scope: 'all 26 scenes: native keys, actual construction/stock/part/station history, reciprocal lineage and unique material contributions' }
+const bundleFingerprint = directory => {
+  const walk = path => readdirSync(path, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? walk(resolve(path, entry.name)) : [resolve(path, entry.name)])
+  return createHash('sha256').update(JSON.stringify(walk(directory).sort().map(path => [path.slice(directory.length + 1),
+    createHash('sha256').update(readFileSync(path)).digest('hex')]))).digest('hex')
+}
+let rollbackAcceptance
+try {
+  const build = readEvidence('rollback-build')
+  rollbackAcceptance = rollbackEvidence(readEvidence('rollback'), { baseline, engineRevision: ENGINE_REVISION, sourceFingerprint: verificationFingerprint(),
+    bundles: { current: bundleFingerprint(resolve(root, 'dist')), frozen: bundleFingerprint(resolve(build.directory, 'dist')) } })
+} catch (error) { rollbackAcceptance = { accepted: false, pending: [error.message] } }
 const summary = { rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
   boundaries: RULES.filter(rule => rule.implementation === 'boundary').length,
   adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size, partialRuleOwners: [...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'legacy-adapter'),
-  scope: 'phase-guarded production orchestration and local rule contracts; intermediate entity migration pending', globalOrchestrationAcceptance, performanceAcceptance, matrixAcceptance,
-  pendingAcceptance: [...(!globalOrchestrationAcceptance.accepted ? ['global S0-S9 orchestration without compatibility rebuilds'] : []), 'stable entity identities and full derivedFrom/replacedBy lineage',
-    ...(!matrixAcceptance.accepted ? ['complete T01-T15 combination evidence'] : []), ...(!performanceAcceptance.accepted ? ['paired representative-scene latency and memory budgets'] : []), 'rollback rehearsal and final production acceptance'] }
+  scope: 'native S0-S9 production rules, entity lineage and verified compatibility boundary', globalOrchestrationAcceptance, identityAcceptance, performanceAcceptance, matrixAcceptance, rollbackAcceptance,
+  pendingAcceptance: [...(!globalOrchestrationAcceptance.accepted ? ['global S0-S9 orchestration without compatibility rebuilds'] : []), ...(!identityAcceptance.accepted ? ['stable entity identities and full derivedFrom/replacedBy lineage'] : []),
+    ...(!matrixAcceptance.accepted ? ['complete T01-T15 combination evidence'] : []), ...(!performanceAcceptance.accepted ? ['paired representative-scene latency and memory budgets'] : []), ...(!rollbackAcceptance.accepted ? ['rollback rehearsal for final production build'] : [])] }
 console.log(JSON.stringify(summary, null, 2))
 if (process.argv.includes('--complete')) {
   assert.equal(summary.adaptersRemaining, 0, 'Complete migration gate: legacy calculation adapters remain')

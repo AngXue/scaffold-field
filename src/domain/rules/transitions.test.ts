@@ -1,3 +1,4 @@
+import { DISPLAY_ID, displayId } from './facts/displayIdentity'
 import { expect, it } from 'vitest'
 import { DEFAULT_PARAMETERS, type ScaffoldMember, type Vector3Tuple, type PipeSegment } from '../scaffold'
 import type { SiteSection, SectionSummary } from '../site'
@@ -32,7 +33,7 @@ it('connects working and guard runs independently, opens only the cap interval a
   expect(result.plan.joined).toEqual([{ before: 'S1-ground', after: 'S1-roof', levels: [1.88] }])
   expect(result.plan.links.map(member => member.type)).toEqual(['longitudinal', 'longitudinal', 'guardrail'])
   expect(result.plan.failed).toEqual([])
-  const remaining = result.opened!.members.find(member => member.id === 'R1/cap')!
+  const remaining = result.opened!.members.find(member => displayId(member) === 'R1/cap')!
   expect([remaining.start, remaining.end]).toEqual([[1, 2.82, -0.75], [1, 2.82, 0]])
   expect(memberUses(remaining)[0].rules).toContain('P06')
   expect(result.plan.bridges[0].rails.every(member => member.length === 1)).toBe(true)
@@ -105,7 +106,7 @@ it('protection rejects moved or removed committed work rather than silently reco
 it('staged transition intent survives display alias restoration without selecting different geometry', () => {
   const source = input(), ready = commitTransitionPosts(prepareTransitionWork(source), [])
   const aliases = new Map(source.members.map((member, index) => [member.id, `display-${index}`]))
-  const members = source.members.map(member => ({ ...member, id: aliases.get(member.id)! }))
+  const members = source.members.map(member => ({ ...member, [DISPLAY_ID]: aliases.get(member.id)! }))
   const result = finishTransitions(ready, members, aliases)
   expect(result.plan.links).toEqual(resolveTransitions({ ...source, members }).plan.links)
   expect(() => finishTransitions(ready, members, new Map())).toThrow('Missing committed transition member alias')

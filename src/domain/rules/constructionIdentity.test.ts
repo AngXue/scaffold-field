@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest'
-import { DEFAULT_PARAMETERS, startScaffoldPlan } from '../scaffold'
+import { DISPLAY_ID, INTERNAL_ID, displayId } from './facts/displayIdentity'
+import { physicalContributions } from './facts/materialLedger'
+import { DEFAULT_PARAMETERS, startScaffoldPlan, assembleScaffoldDraft, publishScaffoldAssembly } from '../scaffold'
 import type { PlanDrawing } from '../plan'
 import { ConstructionIdentities, constructionAlias } from './facts/constructionIdentity'
 
@@ -45,8 +47,19 @@ it('S4 stock plans use native keys and the compatibility boundary restores every
   expect(JSON.stringify(construction.working().members)).toBe(before)
   const aliases = construction.working().aliases!
   const finalIds = new Set(result.draft.members.map(member => member.id))
-  for (const id of ids) expect(finalIds.has(constructionAlias(aliases, id))).toBe(true)
-  expect(result.draft.members.every(member => /^G\d+-M\d+$/.test(member.id))).toBe(true)
+  for (const id of ids) expect(finalIds.has(id)).toBe(true)
+  expect(result.draft.members.every(member => /^G\d+-M\d+$/.test(displayId(member)))).toBe(true)
+  expect(result.draft.members.every(member => displayId(member) === constructionAlias(aliases, member.id))).toBe(true)
+  const assembly = assembleScaffoldDraft(result.draft)
+  const ledger = physicalContributions(assembly)
+  expect(ledger.every(entry => !/^R\d+\/|^G\d+-/.test(entry.entityId))).toBe(true)
+  const output = publishScaffoldAssembly(assembly, DEFAULT_PARAMETERS)
+  expect(output.members.every(member => finalIds.has(member[INTERNAL_ID]!))).toBe(true)
+  expect(output.members.every(member => /^G\d+-M\d+$/.test(member.id))).toBe(true)
+  const displayMembers = new Set(output.members.map(member => member.id))
+  expect(output.pipeSegments.every(pipe => displayMembers.has(pipe.memberId))).toBe(true)
+  expect(output.connectors.every(connector => displayMembers.has(connector.memberId)
+    && (!connector.connectedMemberId || displayMembers.has(connector.connectedMemberId)))).toBe(true)
   expect(Object.keys(result.draft.postSequences).every(id => finalIds.has(id))).toBe(true)
 })
 
@@ -63,4 +76,15 @@ it('semantic demand keys preserve role, lift, coordinates and scope without roun
 
 it('missing display aliases fail instead of publishing undefined member or pipe references', () => {
   expect(() => constructionAlias(new Map(), 'demand:missing')).toThrow('Missing construction display alias')
+})
+
+it('changing display labels cannot change native stock, connections or material contributions', () => {
+  const draft = () => startScaffoldPlan(drawing, DEFAULT_PARAMETERS).finish().draft
+  const original = draft(), renamed = draft()
+  renamed.members.forEach(member => { member[DISPLAY_ID] = `renamed/${displayId(member)}` })
+  const a = assembleScaffoldDraft(original), b = assembleScaffoldDraft(renamed)
+  expect(physicalContributions(a)).toEqual(physicalContributions(b))
+  expect(a.pipeSegments.map(pipe => [pipe.id, pipe.memberId, pipe.start, pipe.end])).toEqual(b.pipeSegments.map(pipe => [pipe.id, pipe.memberId, pipe.start, pipe.end]))
+  expect(a.connectors.map(connector => [connector.id, connector.memberId, connector.connectedMemberId, connector.position]))
+    .toEqual(b.connectors.map(connector => [connector.id, connector.memberId, connector.connectedMemberId, connector.position]))
 })

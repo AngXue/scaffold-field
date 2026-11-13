@@ -1,3 +1,4 @@
+import { DISPLAY_ID, displayId } from './facts/displayIdentity.ts'
 import type { ScaffoldMember, ScaffoldConnector, ScaffoldParameters, PipeSegment } from '../scaffold.ts'
 import { CONNECTOR_CONTACT, stockContainsContact } from './facts/connections.ts'
 import { prepareCrossContacts } from './policies/connections.ts'
@@ -38,7 +39,7 @@ export function prepareFittingPlan(members: ScaffoldMember[], tops: Record<strin
   return { memberIds: members.map(member => member.id),
     contacts: VERIFY_RULE_INPUTS ? contacts.map(contact => ({ ...contact, contact: [...contact.contact], displayPosition: [...contact.displayPosition],
       axis: [...contact.axis], secondaryAxis: [...contact.secondaryAxis] })) : contacts,
-    splices: members.filter(member => joined.has(member.id)).map(member => ({ memberId: member.id, displayPrefix: `C-${member.id}-splice-`,
+    splices: members.filter(member => joined.has(member.id)).map(member => ({ memberId: member.id, displayPrefix: `C-${displayId(member)}-splice-`,
       axis: new Vector(member.end).subtract(new Vector(member.start)).normalize().toTuple() })) }
 }
 
@@ -61,7 +62,7 @@ export const CONNECTION_STEPS: RuleStep<FittingFacts, FittingProposal>[] = [
         if (!stock[contact.memberId]?.some(pipe => stockContainsContact(pipe, contact.contact))
           || !stock[contact.connectedMemberId]?.some(pipe => stockContainsContact(pipe, contact.contact)))
           throw new Error('Contact is not supported by final stock geometry')
-        return { id: contact.displayId, type: 'cross' as const, [CONNECTOR_CONTACT]: [...contact.contact], position: [...contact.displayPosition],
+        return { id: `C-${contact.memberId}-${contact.connectedMemberId}`, [DISPLAY_ID]: contact.displayId, type: 'cross' as const, [CONNECTOR_CONTACT]: [...contact.contact], position: [...contact.displayPosition],
           memberId: contact.memberId, connectedMemberId: contact.connectedMemberId, axis: [...contact.axis], secondaryAxis: [...contact.secondaryAxis] } as ScaffoldConnector
       }))
       return { status: 'proposed', proposals: [{ kind: 'ConnectActualMembers', target: 'cross', expectedRevision: revision, value }] }
@@ -72,7 +73,7 @@ export const CONNECTION_STEPS: RuleStep<FittingFacts, FittingProposal>[] = [
       const value = facts.plans!.map(plan => plan.splices.flatMap(intent => {
         const pipes = stock[intent.memberId]
         if (!pipes?.length) throw new Error('Splice plan references unbuilt stock')
-        return pipes.slice(1).map((pipe, index) => ({ id: `${intent.displayPrefix}${index + 1}`, type: 'butt' as const,
+        return pipes.slice(1).map((pipe, index) => ({ id: `C-${intent.memberId}-splice-${index + 1}`, [DISPLAY_ID]: `${intent.displayPrefix}${index + 1}`, type: 'butt' as const,
           position: [...pipe.start], memberId: intent.memberId, axis: [...intent.axis] } as ScaffoldConnector))
       }))
       return { status: 'proposed', proposals: [{ kind: 'ConnectStockJoints', target: 'butt', expectedRevision: revision, value }] }

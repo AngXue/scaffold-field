@@ -1,3 +1,4 @@
+import { INTERNAL_ID } from './displayIdentity'
 /// <reference types="node" />
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -97,6 +98,11 @@ describe('fixed projects: complete physical graph references', () => {
   it.each([...ordinary, ...large])('%s retains every final material entity including blocked drafts', id => {
     const input = JSON.parse(readFileSync(resolve(root, `fixtures/rules/${large.includes(id) ? 'performance/' : ''}${id}.json`), 'utf8'))
     const layout = calculateSite(input.scene, input.parameters, { trace: true }), graph = buildEntityGraph(input.scene, layout)
+    const native = [...graph.members, ...graph.pipes, ...graph.connectors, ...graph.decks, ...graph.bases].map(entity => entity.nativeId)
+    expect(native.every(value => typeof value === 'string' && value.length > 0), id).toBe(true)
+    expect(new Set(native).size, id).toBe(native.length)
+    expect([...layout.members, ...layout.pipeSegments, ...layout.connectors, ...layout.decks, ...layout.baseChannels]
+      .every(entity => native.includes(entity[INTERNAL_ID])), id).toBe(true)
     const events = layout[CALCULATION_TRACE]!, lastPlacement = events.findLastIndex(event => event.step === 'S04.positionStock')
     for (const [index, event] of events.entries()) if (['C01.actual', 'C02.splices'].includes(event.step)) expect(index).toBeGreaterThan(lastPlacement)
     expect(graph.ledger.entries).toHaveLength(layout.pipeSegments.length + layout.connectors.length + layout.decks.length + layout.baseChannels.length)

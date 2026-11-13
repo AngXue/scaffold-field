@@ -1,3 +1,4 @@
+import { DISPLAY_ID, displayId } from './facts/displayIdentity.ts'
 import { STOCK_DEMAND } from './facts/stockHistory.ts'
 import { historyOf } from './facts/memberHistory.ts'
 import { VERIFY_RULE_INPUTS } from './runtime.ts'
@@ -119,7 +120,7 @@ export function assembleStockStage(members: ScaffoldMember[], sequences: Record<
   // Stock consumes geometry, ties and the native demand reference, not a second copy of its ancestry.
   const demands = members.map(member => {
     const { id, type, start, end, length, layer, connectionPoints } = member
-    return { id, type, start, end, length, layer, connectionPoints, [STOCK_DEMAND]: historyOf(member).id, [STOCK_FORWARD]: type === 'post' || horizontalStockForward(member) }
+    return { id, [DISPLAY_ID]: displayId(member), type, start, end, length, layer, connectionPoints, [STOCK_DEMAND]: historyOf(member).id, [STOCK_FORWARD]: type === 'post' || horizontalStockForward(member) }
   })
   if (prebuiltPosts && !fixed) throw new Error('Committed upright inputs cannot request reselection')
   const { facts } = prebuiltPosts

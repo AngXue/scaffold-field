@@ -1,3 +1,4 @@
+import { displayId } from '../facts/displayIdentity.ts'
 import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import type { ScaffoldMember, ScaffoldParameters, Vector3Tuple } from '../../scaffold.ts'
 import { Vector } from '../facts/vector.ts'
@@ -33,7 +34,7 @@ export function prepareCrossContacts(members: ScaffoldMember[], builtPostTops: R
     connectionKeys.add(key)
     const verticalOffset = (member.type === 'transverse' ? -1 : 1) * parameters.pipeDiameter * 0.65
     rawCrossConnectors.push({
-      displayId: `C-${member.id}-${other.id}`,
+      displayId: `C-${displayId(member)}-${displayId(other)}`,
       contact: [...point],
       displayPosition: [point[0], round(point[1] + verticalOffset), point[2]],
       memberId: member.id,

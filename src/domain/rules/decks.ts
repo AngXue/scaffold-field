@@ -1,3 +1,4 @@
+import { DISPLAY_ID } from './facts/displayIdentity.ts'
 import { PART_HISTORY, partBirth, mapParts } from './facts/partHistory.ts'
 import type { DeckPanel, ScaffoldParameters } from '../scaffold.ts'
 import { generateDecks, resolveDeckCoverage, type PanelGeometry } from './policies/decks.ts'
@@ -12,7 +13,7 @@ type Change = Proposal & ({ kind: 'PanelCandidates'; target: 'candidates'; value
 export const DECK_STEPS: RuleStep<Facts, Change>[] = [
   { id: 'M05.panels', ruleId: 'M05', phase: 3, after: [], reads: ['identityScope', 'geometry', 'order', 'corners', 'counts', 'lifts', 'parameters', 'deckLayerOffset'], kinds: ['PanelCandidates'], targets: ['candidates'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'PanelCandidates', target: 'candidates', expectedRevision: revision,
-      value: generateDecks(facts.geometry as PanelGeometry[], facts.order!, facts.corners as CornerTopology['cornerDecks'], facts.counts!, facts.lifts!, facts.parameters as ScaffoldParameters, facts.deckLayerOffset!).map(panel => ({ ...panel, [PART_HISTORY]: partBirth(panel, facts.identityScope, 'M05') })) }] }) },
+      value: generateDecks(facts.geometry as PanelGeometry[], facts.order!, facts.corners as CornerTopology['cornerDecks'], facts.counts!, facts.lifts!, facts.parameters as ScaffoldParameters, facts.deckLayerOffset!).map(panel => { const history = partBirth(panel, facts.identityScope, 'M05'); return { ...panel, [DISPLAY_ID]: panel.id, id: history.id, [PART_HISTORY]: history } }) }] }) },
   { id: 'M06.coverage', ruleId: 'M06', phase: 3, after: ['M05.panels'], reads: ['candidates', 'physical', 'closed', 'perSegmentCounts'], kinds: ['ResolveCoverage'], targets: ['panels'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'ResolveCoverage', target: 'panels', expectedRevision: revision,
       value: resolveDeckCoverage(facts.candidates as DeckPanel[], facts.physical as PlanPoint[], facts.closed!, facts.perSegmentCounts!) }] }) },

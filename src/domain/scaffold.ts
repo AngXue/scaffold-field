@@ -1,3 +1,5 @@
+import { DISPLAY_ID, displayId, type DisplayIdentity } from './rules/facts/displayIdentity.ts'
+import { publishEntityAliases } from './rules/boundaries/entities.ts'
 import { PART_HISTORY, mapParts, appendParts, partProjection } from './rules/facts/partHistory.ts'
 import { STOCK_HISTORY, stockHistoryTransformer } from './rules/facts/stockHistory.ts'
 import { MEMBER_HISTORY, memberBirth, memberPublication, historyTransformer, type MemberHistory } from './rules/facts/memberHistory.ts'
@@ -141,7 +143,7 @@ export const CONNECTOR_LABELS: Record<ConnectorType, string> = {
  */
 export const SWEEP_BAR_LAYER = 0
 
-export type ScaffoldMember = {
+export type ScaffoldMember = DisplayIdentity & {
   [MEMBER_HISTORY]?: MemberHistory
   [FRAME_SCOPES]?: readonly string[]
   [MEMBER_USES]?: import('./rules/facts/memberUses.ts').MemberUse[]
@@ -159,7 +161,7 @@ export type ScaffoldMember = {
   cornerJunctions?: number[]
 }
 
-export type PipeSegment = {
+export type PipeSegment = DisplayIdentity & {
   [STOCK_HISTORY]?: import('./rules/facts/stockHistory.ts').StockHistory
   id: string
   memberId: string
@@ -171,7 +173,7 @@ export type PipeSegment = {
   overlapWithPrevious: number
 }
 
-export type DeckPanel = {
+export type DeckPanel = DisplayIdentity & {
   [PART_HISTORY]?: import('./rules/facts/partHistory.ts').PartHistory
   [FRAME_SCOPES]?: readonly string[]
   id: string
@@ -183,7 +185,7 @@ export type DeckPanel = {
   pathSegment: number
 }
 
-export type ScaffoldConnector = {
+export type ScaffoldConnector = DisplayIdentity & {
   [CONNECTOR_CONTACT]?: Vector3Tuple
   id: string
   type: ConnectorType
@@ -203,7 +205,7 @@ export const BASE_CHANNEL_WIDTH = 0.048
  * 槽钢 base beam. One piece is laid under each pair of posts, running in the same
  * direction as the transverse members, and the posts stand on it.
  */
-export type BaseChannel = {
+export type BaseChannel = DisplayIdentity & {
   [PART_HISTORY]?: import('./rules/facts/partHistory.ts').PartHistory
   id: string
   start: Vector3Tuple
@@ -699,12 +701,11 @@ function* constructScaffoldDraft(
   })
   const aliases = new Map(members.map((member, index) => [member.id, `M${index + 1}`]))
   state.working.aliases = aliases
-  for (const member of members) member.id = constructionAlias(aliases, member.id)
-  const renameSequences = (sequences: Record<string, number[]>) => Object.fromEntries(Object.entries(sequences).map(([id, sequence]) => [constructionAlias(aliases, id), sequence]))
+  for (const member of members) member[DISPLAY_ID] = constructionAlias(aliases, member.id)
   const posts = committed.posts.map(post => {
-    const memberId = constructionAlias(aliases, post.plan.memberId)
-    const segments = post.segments.map(pipe => ({ ...pipe, memberId, id: `S-${memberId}-${pipe.sequence}` }))
-    return { segments, plan: { ...post.plan, memberId, segmentIds: segments.map(pipe => pipe.id) } }
+    const label = constructionAlias(aliases, post.plan.memberId)
+    const segments = post.segments.map(pipe => ({ ...pipe, [DISPLAY_ID]: `S-${label}-${pipe.sequence}` }))
+    return { segments, plan: post.plan }
   })
   const committedWarnings = committed.warnings.map(warning => ({ ...warning, id: warning.id.startsWith('splice-stagger-')
     ? `splice-stagger-${constructionAlias(aliases, warning.id.slice('splice-stagger-'.length))}` : warning.id }))
@@ -742,8 +743,8 @@ function* constructScaffoldDraft(
   warnings.push(...sweepHeightWarnings(parameters.sweepBarHeight))
 
   const dimensions = pathDimensions(physical, segmentLengths, parameters)
-  return { members, decks, baseChannels, warnings, parameters, postSequences: renameSequences(Object.fromEntries(postSequences)), pathDimensions: dimensions,
-    [COMMITTED_UPRIGHTS]: { posts, sequences: renameSequences(committed.sequences), warnings: committedWarnings },
+  return { members, decks, baseChannels, warnings, parameters, postSequences: Object.fromEntries(postSequences), pathDimensions: dimensions,
+    [COMMITTED_UPRIGHTS]: { posts, sequences: committed.sequences, warnings: committedWarnings },
     postHeights: { theoretical: theoreticalHeight, inner: round(rowTopEdge(innerRow)), outer: round(rowTopEdge(outerRow)) } }
 
 }
@@ -835,13 +836,14 @@ export function publishScaffoldAssembly<T extends ScaffoldAssembly>(assembly: T,
   const completed = completeAssemblyFittings(assembly)
   const { assemblyPlans, postHeights, fittingPlans, ...layout } = completed
   void fittingPlans
-  return { ...layout, materials: calculateMaterials(layout.members, layout.pipeSegments, layout.decks, layout.connectors,
-    layout.baseChannels, parameters, assemblyPlans, postHeights) }
+  return publishEntityAliases({ ...layout, materials: calculateMaterials(layout.members, layout.pipeSegments, layout.decks, layout.connectors,
+    layout.baseChannels, parameters, assemblyPlans, postHeights) })
 }
 
 /** Assemble final connected lift runs once, keeping the committed uprights and bases. */
 export function assembleConnectedRuns(layout: ScaffoldAssembly, members: ScaffoldMember[], decks: DeckPanel[], settings: ScaffoldParameters, deferPlacement = false) {
   const posts = new Set(members.filter(member => member.type === 'post').map(member => member.id))
+  const memberLabels = new Map(layout.members.map(member => [member.id, displayId(member)]))
   const plans = layout.assemblyPlans.filter(plan => posts.has(plan.memberId))
   const sequences = new Map(plans.map(plan => [plan.memberId, plan.stockLengths]))
   const pipes = new Map<string, PipeSegment[]>()
@@ -850,7 +852,7 @@ export function assembleConnectedRuns(layout: ScaffoldAssembly, members: Scaffol
     const group = pipes.get(pipe.memberId) ?? []
     // Transition geometry publishes the same millimetre world frame. Preserve
     // each committed stock choice while expressing its endpoints in that frame.
-    group.push({ ...pipe, ...stockHistory(pipe), id: `S-${pipe.memberId}-${pipe.sequence}`, start: pipe.start.map(value => round(value)) as Vector3Tuple, end: pipe.end.map(value => round(value)) as Vector3Tuple })
+    group.push({ ...pipe, ...stockHistory(pipe), [DISPLAY_ID]: `S-${constructionAlias(memberLabels, pipe.memberId)}-${pipe.sequence}`, start: pipe.start.map(value => round(value)) as Vector3Tuple, end: pipe.end.map(value => round(value)) as Vector3Tuple })
     pipes.set(pipe.memberId, group)
   }
   const prebuilt = plans.map(plan => ({ plan: { ...plan, segmentIds: pipes.get(plan.memberId)!.map(pipe => pipe.id) }, segments: pipes.get(plan.memberId)! }))
@@ -951,10 +953,10 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
           pathSegment: edge(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(index => edge(index)!),
         })))
         const parts = partProjection(move, origin => ({ ...origin, pathSegment: edge(origin.pathSegment)! }))
-        appendParts(decks, parts.list(working.decks, deck => ({ ...deck, id: prefix + deck.id, corners: deck.corners.map(move) as DeckPanel['corners'],
+        appendParts(decks, parts.list(working.decks, deck => ({ ...deck, [DISPLAY_ID]: prefix + displayId(deck), corners: deck.corners.map(move) as DeckPanel['corners'],
           coverage: deck.coverage?.map(face => face.map(move)), pathSegment: edge(deck.pathSegment)!,
         })))
-        appendParts(bases, parts.list(working.baseChannels, base => ({ ...base, id: prefix + base.id, start: move(base.start), end: move(base.end), pathSegment: edge(base.pathSegment)! })))
+        appendParts(bases, parts.list(working.baseChannels, base => ({ ...base, [DISPLAY_ID]: prefix + displayId(base), start: move(base.start), end: move(base.end), pathSegment: edge(base.pathSegment)! })))
       })
       if (paths.length > 1) {
         componentDemands = reconcileComponents(members, decks, bases, {})
@@ -1023,7 +1025,7 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
     const prefix = `G${component}-`
     const edgeIndex = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
     const history = historyTransformer(translate, use => ({ pathSegment: edgeIndex(use.pathSegment)! }))
-    members.push(...layout.members.map(m => ({ ...m, ...history(m), id: prefix + m.id,
+    members.push(...layout.members.map(m => ({ ...m, ...history(m), [DISPLAY_ID]: prefix + displayId(m),
       [MEMBER_USES]: transformUses(m, translate, use => ({ pathSegment: edgeIndex(use.pathSegment)! })),
       start: translate(m.start), end: translate(m.end), connectionPoints: m.connectionPoints.map(translate),
       pathSegment: edgeIndex(m.pathSegment), cornerJunctions: m.cornerJunctions?.map(index => edgeIndex(index)!),
@@ -1040,16 +1042,15 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
   const aliases = new Map<string, string>(constructions.flatMap((construction, component) =>
     [...construction.working().aliases!].map(([id, alias]) => [id, `G${component}-${alias}`] as const)))
   const sharedPosts = new Map<string, ScaffoldMember>(componentDemands!.members.filter(member => member.type === 'post').map(member => {
-    const id = constructionAlias(aliases, member.id)
-    return [id, { ...member, id }] as const
+    return [member.id, { ...member, [DISPLAY_ID]: constructionAlias(aliases, member.id) }] as const
   }))
   const finalMembers = members.filter(member => member.type !== 'post' || sharedPosts.has(member.id))
     .map(member => member.type === 'post' ? sharedPosts.get(member.id)! : member)
-  const sequences = Object.fromEntries(Object.entries(componentStock!.sequences).map(([id, sequence]) => [constructionAlias(aliases, id), sequence]))
+  const sequences = componentStock!.sequences
   const posts = componentStock!.posts.map(post => {
-    const memberId = constructionAlias(aliases, post.plan.memberId)
-    const segments = post.segments.map(pipe => ({ ...pipe, memberId, id: `S-${memberId}-${pipe.sequence}` }))
-    return { segments, plan: { ...post.plan, memberId, segmentIds: segments.map(pipe => pipe.id) } }
+    const label = constructionAlias(aliases, post.plan.memberId)
+    const segments = post.segments.map(pipe => ({ ...pipe, [DISPLAY_ID]: `S-${label}-${pipe.sequence}` }))
+    return { segments, plan: post.plan }
   })
   const stockWarnings = componentStock!.warnings.map(warning => ({ ...warning, id: warning.id.startsWith('splice-stagger-')
     ? `splice-stagger-${constructionAlias(aliases, warning.id.slice('splice-stagger-'.length))}` : warning.id }))
