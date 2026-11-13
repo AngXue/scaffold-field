@@ -1195,6 +1195,36 @@
           "file": "src/domain/rules/facts/partHistory.test.ts",
           "title": "the explanation graph rejects stale part poses, lost supports and cyclic coverage history",
           "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stations.test.ts",
+          "title": "station history records each accepted corner alignment before the next anchor changes it",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stations.test.ts",
+          "title": "station decisions retain both transition end pairs while recording ordinary inside-corner omissions",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stations.test.ts",
+          "title": "station projection preserves all omitted ancestors and shares one transformed plan across post demands",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stations.test.ts",
+          "title": "station identities are deterministic and isolate separate authored frame scopes",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/stations.test.ts",
+          "title": "explanation rejects omitted supports, altered station positions and missing station ancestors",
+          "count": 1
+        },
+        {
+          "file": "scripts/calculation-parity/performance-evidence.test.mjs",
+          "title": "excludes the user-rejected 200-section stress load without weakening other scene budgets",
+          "count": 1
         }
       ]
     },

@@ -24,6 +24,11 @@ type Part = DeckPanel | BaseChannel
 type Collection<T> = T[] & { [REMOVED_PARTS]?: readonly PartHistory[] }
 function freeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    // These geometry tuples are freshly allocated by the history factories.
+    // Freeze their three scalar coordinates directly, without enumerating keys
+    // and recursively visiting primitives for every historic endpoint.
+    if (Array.isArray(value) && value.length === 3 && typeof value[0] === 'number'
+      && typeof value[1] === 'number' && typeof value[2] === 'number') return Object.freeze(value)
     for (const key of Reflect.ownKeys(value)) freeze(Reflect.get(value, key))
     Object.freeze(value)
   }
@@ -85,11 +90,21 @@ export function mapParts<T>(source: readonly T[], map: (item: T) => T): T[] { re
 /** One coordinate adapter shares transformed ancestors across live and removed parts. */
 export function partProjection(point: (point: Vector3Tuple) => Vector3Tuple, source: (origin: PartOrigin) => PartOrigin) {
   const cache = new WeakMap<PartHistory, PartHistory>()
+  // Coverage versions share one immutable cutter set. Project the set once too;
+  // otherwise each panel recreates and freezes the same large dependency array.
+  const arrays = new WeakMap<readonly PartHistory[], readonly PartHistory[]>()
+  const records = (nodes: readonly PartHistory[]): readonly PartHistory[] => {
+    const cached = arrays.get(nodes)
+    if (cached) return cached
+    const result = Object.freeze(nodes.map(record))
+    arrays.set(nodes,result)
+    return result
+  }
   const record = (node: PartHistory): PartHistory => {
     const previous = cache.get(node)
     if (previous) return previous
     const result = freeze({ ...node, points: node.points.map(point), faces: node.faces?.map(face => face.map(point)), origins: node.origins.map(source),
-      parents: node.parents.map(record), inputs: node.inputs.map(record) })
+      parents: records(node.parents), inputs: records(node.inputs) })
     cache.set(node,result)
     return result
   }

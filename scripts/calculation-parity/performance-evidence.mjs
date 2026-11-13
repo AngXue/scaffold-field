@@ -1,5 +1,8 @@
 // User-confirmed on 2026-11-13: exactly threefold and above is over budget.
-export const PERFORMANCE_POLICY = Object.freeze({ id: '2026-11-13-under-threefold', maxRatioExclusive: 3 })
+export const PERFORMANCE_POLICY = Object.freeze({ id: '2026-11-13-representative-under-threefold', maxRatioExclusive: 3,
+  excludedSceneIds: Object.freeze(['orthogonal-200']) })
+// User excludes the unrealistic 200-section load from performance, not correctness.
+export const isPerformanceScene = id => !PERFORMANCE_POLICY.excludedSceneIds.includes(id)
 
 /** Evidence must describe the current implementation and all required fixtures.
  * Recompute ceilings from the approved policy instead of trusting a stored
@@ -10,10 +13,11 @@ export function performanceEvidence(report, expected) {
   if (!report || report.engineRevision !== expected.engineRevision) reasons.push('implementation fingerprint differs or report missing')
   if (report?.baseline !== expected.baseline) reasons.push('baseline differs')
   if (!(report?.samples >= 100)) reasons.push('fewer than 100 paired samples')
-  const measurements = report?.measurements ?? []
+  const fixtures = expected.fixtures.filter(fixture => isPerformanceScene(fixture.id))
+  const measurements = (report?.measurements ?? []).filter(item => isPerformanceScene(item.id))
   if (new Set(measurements.map(item => item.id)).size !== measurements.length) reasons.push('duplicate scene measurements')
   const positive = value => Number.isFinite(value) && value > 0
-  for (const fixture of expected.fixtures) {
+  for (const fixture of fixtures) {
     const item = measurements.find(item => item.id === fixture.id)
     if (!item || item.inputSha256 !== fixture.hash) { reasons.push(`${fixture.id}: missing or changed input`); continue }
     if (![item.old?.p50, item.old?.p95, item.current?.p50, item.current?.p95].every(positive)) {
@@ -29,5 +33,5 @@ export function performanceEvidence(report, expected) {
     else if (memory.current.peakRssKiB / memory.old.peakRssKiB >= PERFORMANCE_POLICY.maxRatioExclusive) reasons.push(`${fixture.id}: peak memory budget exceeded`)
     if (!memory?.old?.signature?.canExportMaterials || !memory?.current?.signature?.canExportMaterials) reasons.push(`${fixture.id}: invalid drawing used as benchmark`)
   }
-  return { accepted: reasons.length === 0, policy: PERFORMANCE_POLICY, reasons, scenes: expected.fixtures.map(fixture => fixture.id) }
+  return { accepted: reasons.length === 0, policy: PERFORMANCE_POLICY, reasons, scenes: fixtures.map(fixture => fixture.id) }
 }

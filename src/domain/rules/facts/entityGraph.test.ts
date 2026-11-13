@@ -102,6 +102,14 @@ describe('fixed projects: complete physical graph references', () => {
     expect(graph.ledger.entries).toHaveLength(layout.pipeSegments.length + layout.connectors.length + layout.decks.length + layout.baseChannels.length)
     expect(new Set(graph.ledger.entries.map(entry => entry.entityId)).size).toBe(graph.ledger.entries.length)
     const construction = new Map(graph.construction.map(node => [node.id, node]))
+    const stations = new Map(graph.stationConstruction.map(node => [node.id,node]))
+    expect(graph.construction.filter(node=>node.id.startsWith('post-demand:')).every(node=>node.stationIds.length>0
+      && node.stationIds.every(id=>['keep','corner'].includes(stations.get(id)!.operation)))).toBe(true)
+    for (const station of stations.values()) {
+      expect(station.parentIds.every(id=>stations.has(id))).toBe(true)
+      if (station.operation==='omit') expect(graph.construction.some(node=>node.stationIds.includes(station.id))).toBe(false)
+    }
+
     expect(graph.members.every(member => member.constructionId && construction.has(member.constructionId)), id).toBe(true)
     for (const node of construction.values()) {
       expect(node.parentIds.every(parent => construction.has(parent)), id).toBe(true)

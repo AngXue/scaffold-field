@@ -35,6 +35,10 @@ try {
     assert(graph.members.every(member => construction.has(member.constructionId)))
     assert(graph.construction.some(node => node.operation === 'emit'))
     assert(graph.construction.some(node => node.id.startsWith('post-demand:')))
+    const stations = new Map(graph.stationConstruction.map(node=>[node.id,node]))
+    for (const operation of ['grid','align','keep','omit','corner']) assert(graph.stationConstruction.some(node=>node.operation===operation))
+    assert(graph.construction.filter(node=>node.id.startsWith('post-demand:')).every(node=>node.stationIds.length
+      && node.stationIds.every(id=>['keep','corner'].includes(stations.get(id)?.operation))))
     for (const kind of ['merge', 'clip', 'connect', 'purpose-removal']) assert(graph.construction.some(node => node.operation === kind))
     assert(graph.construction.every(node => node.parentIds.every(id => construction.has(id))))
     assert(graph.retired.every(record => construction.get(record.constructionId)?.operation === 'purpose-removal'))
@@ -69,7 +73,7 @@ try {
     assert.deepEqual(errors, [])
     await page.screenshot({ path: `${output}/diagnostics-${viewport.width}.png` })
     if (viewport.width === 1440) await file.saveAs(`${output}/adjacent-houses-diagnostic-v2.json`)
-    report.checks.push({ viewport, pipes: graph.pipes.length, lineage: graph.lineage.length, partVersions: parts.size, removedParts: graph.removedPartIds.length, retired: graph.retired.length, replacements: graph.replacements.length, passed: true })
+    report.checks.push({ viewport, pipes: graph.pipes.length, lineage: graph.lineage.length, stationVersions: stations.size, partVersions: parts.size, removedParts: graph.removedPartIds.length, retired: graph.retired.length, replacements: graph.replacements.length, passed: true })
     await context.close()
   }
   await writeFile(`${output}/report.json`, JSON.stringify(report, null, 2))

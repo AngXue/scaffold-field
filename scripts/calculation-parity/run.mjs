@@ -1,6 +1,6 @@
 import './loader.mjs'
 import { compareApprovedDirection } from './approved-direction.mjs'
-import { PERFORMANCE_POLICY } from './performance-evidence.mjs'
+import { PERFORMANCE_POLICY, isPerformanceScene } from './performance-evidence.mjs'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
@@ -42,7 +42,7 @@ try {
   const { ENGINE_REVISION: engineRevision } = await import(pathToFileURL(resolve(root, 'src/domain/rules/diagnostics/build.ts')))
   if (process.argv.includes('--bench')) {
     const measurements = []
-    for (const id of ['roof', 'corridor', 'adjacent-houses', 'wall-stroke', ...large.cases]) {
+    for (const id of ['roof', 'corridor', 'adjacent-houses', 'wall-stroke', ...large.cases].filter(isPerformanceScene)) {
       const fixture = cases.find(item => item.id === id)
       const inputText = readFileSync(fixture.path, 'utf8')
       assert.equal(hash(inputText), fixture.input, `${id}: frozen benchmark input changed`)
@@ -79,7 +79,7 @@ try {
       console.log(JSON.stringify({ completed: id, passed: measurement.passed, ratioP50: measurement.ratioP50, ratioP95: measurement.ratioP95, ratioPeakRss: measurement.memory.ratioPeakRss }))
     }
     const report = { performancePolicy: PERFORMANCE_POLICY, engineRevision, baseline: manifest.baseline, generatedAt: new Date().toISOString(), node: process.version, platform: process.platform, arch: process.arch, samples: 100,
-      scope: 'paired latency and isolated-process peak RSS for small, 50/200-section and multi-elevation projects', measurements }
+      scope: 'paired latency and isolated-process peak RSS for representative small, 50-section and multi-elevation projects; 200-section performance excluded by user', measurements }
     writeFileSync(resolve(reportDirectory, 'latency.json'), JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
     assert(measurements.every(measurement => measurement.passed), 'Latency or memory budget exceeded; inspect artifacts/rule-migration/latency.json')

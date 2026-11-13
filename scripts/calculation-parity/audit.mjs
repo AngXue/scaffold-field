@@ -76,7 +76,7 @@ const summary = { rules: RULES.length, native: RULES.filter(rule => rule.impleme
   adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size, partialRuleOwners: [...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'legacy-adapter'),
   scope: 'phase-guarded production orchestration and local rule contracts; intermediate entity migration pending', globalOrchestrationAcceptance, performanceAcceptance, matrixAcceptance,
   pendingAcceptance: [...(!globalOrchestrationAcceptance.accepted ? ['global S0-S9 orchestration without compatibility rebuilds'] : []), 'stable entity identities and full derivedFrom/replacedBy lineage',
-    ...(!matrixAcceptance.accepted ? ['complete T01-T15 combination evidence'] : []), ...(!performanceAcceptance.accepted ? ['paired 50/200-segment latency and memory budgets'] : []), 'rollback rehearsal and final production acceptance'] }
+    ...(!matrixAcceptance.accepted ? ['complete T01-T15 combination evidence'] : []), ...(!performanceAcceptance.accepted ? ['paired representative-scene latency and memory budgets'] : []), 'rollback rehearsal and final production acceptance'] }
 console.log(JSON.stringify(summary, null, 2))
 if (process.argv.includes('--complete')) {
   assert.equal(summary.adaptersRemaining, 0, 'Complete migration gate: legacy calculation adapters remain')

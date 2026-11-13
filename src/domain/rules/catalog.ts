@@ -127,6 +127,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/topology.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/stations.test.ts",
       "T04",
       "T07",
       "T08",
@@ -224,6 +225,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/components.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/stations.test.ts",
       "src/domain/rules/facts/memberHistory.test.ts",
       "T05",
       "T12",
@@ -242,6 +244,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/topology.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/stations.test.ts",
       "T04",
       "T07",
       "T08",
@@ -260,6 +263,7 @@ export const RULES: readonly RuleDefinition[] = [
       "src/domain/rules/policies/frameRows.ts"
     ],
     "cases": [
+      "src/domain/rules/facts/stations.test.ts",
       "T05",
       "T12",
       "src/domain/rules/frameRows.test.ts",

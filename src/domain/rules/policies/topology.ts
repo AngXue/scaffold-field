@@ -1,3 +1,4 @@
+import { STATION_TRACK, STATION_PLAN, stationBirth, stationChange, stationPlan, type StationTrack, type StationPlan } from '../facts/stations.ts'
 import type { ScaffoldParameters, Vector3Tuple, LayoutWarning } from '../../scaffold.ts'
 import { roundDomain as round } from '../facts/precision.ts'
 export type PlanPoint = [number, number]
@@ -333,7 +334,9 @@ export function solveCornerTopology(physical: PlanPoint[], parameters: TopologyP
 }
 export type CornerTopology = ReturnType<typeof solveCornerTopology>
 
-export function alignStationGrid(physical: PlanPoint[], parameters: TopologyParameters, cornerStations: number[][]) {
+export type AlignedStation = { segmentLength: number; stations: number[]; bayCount: number; bayLength: number; direction: PlanPoint; normal: PlanPoint; [STATION_TRACK]?: StationTrack }
+export type AlignedStations = AlignedStation[]
+export function alignStationGrid(physical: PlanPoint[], parameters: TopologyParameters, cornerStations: number[][], identityScope = JSON.stringify(physical)): AlignedStations {
   return physical.slice(0, -1).map((_, segmentIndex) => {
     const start2d = physical[segmentIndex]
     const end2d = physical[segmentIndex + 1]
@@ -342,8 +345,13 @@ export function alignStationGrid(physical: PlanPoint[], parameters: TopologyPara
     const bayCount = Math.max(1, Math.ceil(segmentLength / parameters.postSpacing - 1e-9))
     const bayLength = segmentLength / bayCount
     const stations = Array.from({ length: bayCount + 1 }, (_, index) => index * bayLength)
-    // Share a nearby corner station across BOTH rows, its crossbar, base and deck
-    // bay. Never move an outline endpoint or increase a bay beyond the spacing.
+    const direction: PlanPoint = [(end2d[0]-start2d[0])/segmentLength,(end2d[1]-start2d[1])/segmentLength]
+    const normal: PlanPoint = [-direction[1],direction[0]]
+    const at = (distance: number, row: number): Vector3Tuple => [round(start2d[0]+direction[0]*distance+normal[0]*row*parameters.width),0,
+      round(start2d[1]+direction[1]*distance+normal[1]*row*parameters.width)]
+    const heads = ([0,1] as const).map(row => stations.map(distance => stationBirth(identityScope,at(distance,row),row,[{pathSegment:segmentIndex}])))
+    const versions = heads.flat()
+    // Record the actual successive anchor decisions; never infer old positions from final rows.
     for (const anchor of [...cornerStations[segmentIndex]].sort((a, b) => a - b)) {
       if (anchor <= 0.001 || anchor >= segmentLength - 0.001) continue
       const nearest = stations.reduce((best, value, index) =>
@@ -351,27 +359,49 @@ export function alignStationGrid(physical: PlanPoint[], parameters: TopologyPara
       if (nearest === 0 || nearest === bayCount || Math.abs(stations[nearest] - anchor) > 0.25) continue
       if (anchor - stations[nearest - 1] > parameters.postSpacing + 0.001
         || stations[nearest + 1] - anchor > parameters.postSpacing + 0.001) continue
+      if (stations[nearest] !== anchor) for (const row of [0,1]) {
+        heads[row][nearest] = stationChange(heads[row][nearest],'align',at(anchor,row),'corner-anchor')
+        versions.push(heads[row][nearest])
+      }
       stations[nearest] = anchor
     }
-    const direction: [number, number] = [
-      (end2d[0] - start2d[0]) / segmentLength,
-      (end2d[1] - start2d[1]) / segmentLength,
-    ]
-    const normal: [number, number] = [-direction[1], direction[0]]
-    return { segmentLength, stations, bayCount, bayLength, direction, normal }
+    return { segmentLength, stations, bayCount, bayLength, direction, normal,
+      [STATION_TRACK]: {scope:identityScope, versions,heads} }
   })
 }
-export type AlignedStations = ReturnType<typeof alignStationGrid>
-export function retainedOffsetStations(stations: AlignedStations, corners: CornerTopology, requiredEndPairs: readonly (readonly [boolean, boolean])[], parameters: TopologyParameters) {
+export type RetainedStations = boolean[][] & { [STATION_PLAN]?: StationPlan }
+export function retainedOffsetStations(stations: AlignedStations, corners: CornerTopology, requiredEndPairs: readonly (readonly [boolean, boolean])[], parameters: TopologyParameters): RetainedStations {
   const { offsetPostLimits, cornerStations } = corners, skippedOffsetPosts = new Set(corners.skippedOffsetPosts)
-  return stations.map(({ stations, bayCount, segmentLength }, segmentIndex) => stations.map((_, station) => {
-    const limits = offsetPostLimits[segmentIndex], anchors = cornerStations[segmentIndex]
-    const requiredPair = (station === 0 && requiredEndPairs[segmentIndex]?.[0]) || (station === bayCount && requiredEndPairs[segmentIndex]?.[1])
-    const nearTrimmedCorner = (station === 0 && limits.end > 0 && limits.end <= 0.25
-      && anchors.some(anchor => anchor < -0.001 && limits.end - anchor <= parameters.postSpacing + 0.001))
-      || (station === bayCount && segmentLength - limits.start > 0 && segmentLength - limits.start <= 0.25
-      && anchors.some(anchor => anchor > segmentLength + 0.001 && anchor - limits.start <= parameters.postSpacing + 0.001))
-    return !!requiredPair || !(nearTrimmedCorner || skippedOffsetPosts.has(`${segmentIndex}:${station}`)
-      || stations[station] > limits.end + 0.001 || stations[station] < limits.start - 0.001)
-  }))
+  const versions = stations.flatMap(segment => segment[STATION_TRACK]?.versions ?? [])
+  const heads: string[][][] = []
+  const result: RetainedStations = stations.map((segment, segmentIndex) => {
+    const {stations,bayCount,segmentLength} = segment
+    const rowHeads: string[][] = [[],[]]; heads.push(rowHeads)
+    return stations.map((_, station) => {
+      const limits = offsetPostLimits[segmentIndex], anchors = cornerStations[segmentIndex]
+      const requiredPair = (station === 0 && requiredEndPairs[segmentIndex]?.[0]) || (station === bayCount && requiredEndPairs[segmentIndex]?.[1])
+      const nearTrimmedCorner = (station === 0 && limits.end > 0 && limits.end <= 0.25
+        && anchors.some(anchor => anchor < -0.001 && limits.end - anchor <= parameters.postSpacing + 0.001))
+        || (station === bayCount && segmentLength - limits.start > 0 && segmentLength - limits.start <= 0.25
+        && anchors.some(anchor => anchor > segmentLength + 0.001 && anchor - limits.start <= parameters.postSpacing + 0.001))
+      const skipped = skippedOffsetPosts.has(`${segmentIndex}:${station}`)
+      const outside = stations[station] > limits.end + 0.001 || stations[station] < limits.start - 0.001
+      const keep = !!requiredPair || !(nearTrimmedCorner || skipped || outside)
+      const track = segment[STATION_TRACK]
+      if (track) for (const row of [0,1]) {
+        const previous = track.heads[row][station]
+        const reason = row === 0 ? 'ordinary' : requiredPair ? 'transition-pair' : nearTrimmedCorner ? 'short-corner' : skipped ? 'shared-corner' : outside ? 'outside-corner-range' : 'ordinary'
+        const decision = stationChange(previous,row === 0 || keep ? 'keep' : 'omit',previous.point,reason)
+        versions.push(decision); rowHeads[row].push(decision.id)
+      }
+      return keep
+    })
+  })
+  const scope = stations.find(segment => segment[STATION_TRACK])?.[STATION_TRACK]?.scope
+  if (scope !== undefined) {
+    const cornerNodes = corners.mitrePosts.map(corner => stationBirth(scope,corner.point,1,
+      [{pathSegment:corner.pathSegment},{pathSegment:(corner.pathSegment+1)%stations.length}],true))
+    result[STATION_PLAN] = stationPlan([...versions,...cornerNodes],heads,cornerNodes.map(node => node.id))
+  }
+  return result
 }

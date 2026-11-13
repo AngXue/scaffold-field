@@ -1,3 +1,4 @@
+import { stationProjection, type StationBinding } from './stations.ts'
 import type { MemberType, ScaffoldMember, Vector3Tuple } from '../../scaffold.ts'
 import { MEMBER_USES, combineUses, memberUses, transformUses, type MemberUse, type RetiredUse } from './memberUses.ts'
 import { FRAME_SCOPES } from './scopes.ts'
@@ -16,10 +17,16 @@ export type MemberHistory = {
   readonly end: Vector3Tuple
   readonly parents: readonly MemberHistory[]
   readonly uses: readonly MemberUse[]
+  readonly station?: StationBinding
 }
 export type HistoricMember = { [MEMBER_HISTORY]?: MemberHistory }
 function freeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    // These geometry tuples are freshly allocated by the history factories.
+    // Freeze their three scalar coordinates directly, without enumerating keys
+    // and recursively visiting primitives for every historic endpoint.
+    if (Array.isArray(value) && value.length === 3 && typeof value[0] === 'number'
+      && typeof value[1] === 'number' && typeof value[2] === 'number') return Object.freeze(value)
     for (const key of Reflect.ownKeys(value)) freeze(Reflect.get(value, key))
     Object.freeze(value)
   }
@@ -29,12 +36,12 @@ const origins = (uses: readonly MemberUse[]) => uses.map(use => [use.sectionId ?
   use.pathSegment, use.purpose, [use.start, use.end]] as const).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
 
 /** Called at demand publication, before compatibility labels are assigned. */
-export function memberBirth(member: ScaffoldMember, nativeId?: string): MemberHistory {
+export function memberBirth(member: ScaffoldMember, nativeId?: string, station?: StationBinding): MemberHistory {
   const uses = combineUses(memberUses(member)), roles = [...new Set(member.roles ?? [member.type])].sort()
   const id = nativeId ?? new SemanticIdentities().of('member-demand', [member.type, member.layer ?? null, roles,
     canonicalPoints([member.start, member.end]), canonicalPoints(member.connectionPoints), origins(uses), [...(member[FRAME_SCOPES] ?? [])].sort()])
   return freeze({ id, operation: 'demand', rules: [...new Set(uses.flatMap(use => use.rules))].sort(), type: member.type, roles,
-    start: [...member.start] as Vector3Tuple, end: [...member.end] as Vector3Tuple, parents: [], uses })
+    start: [...member.start] as Vector3Tuple, end: [...member.end] as Vector3Tuple, parents: [], uses, ...(station && {station}) })
 }
 export function historyOf(member: ScaffoldMember): MemberHistory { return member[MEMBER_HISTORY] ?? memberBirth(member) }
 
@@ -50,7 +57,7 @@ export function memberChange(member: ScaffoldMember, inputs: readonly MemberHist
   operation: Exclude<MemberHistory['operation'], 'demand'>, uses: readonly MemberUse[] = []): MemberHistory {
   const unique = new Map<string, MemberHistory>()
   const key = (node: MemberHistory) => JSON.stringify([node.operation, [...node.rules].sort(), node.type, [...node.roles].sort(),
-    node.start, node.end, node.parents.map(parent => parent.id).sort(), origins(node.uses)])
+    node.start, node.end, node.parents.map(parent => parent.id).sort(), origins(node.uses), node.station?.plan.id, node.station?.ids])
   for (const parent of inputs) {
     const previous = unique.get(parent.id)
     if (previous && previous !== parent && key(previous) !== key(parent)) throw new Error(`Conflicting member ancestor: ${parent.id}`)
@@ -70,10 +77,11 @@ export function memberChange(member: ScaffoldMember, inputs: readonly MemberHist
 export function historyTransformer(point: (point: Vector3Tuple) => Vector3Tuple,
   source: (use: MemberUse) => Pick<MemberUse, 'pathSegment' | 'sectionId' | 'spanId'>) {
   const transformed = new WeakMap<MemberHistory, MemberHistory>()
+  const stations = stationProjection(point, origin => source({ ...origin, purpose:'post', start:[0,0,0],end:[0,0,0],rules:[] }))
   const visit = (node: MemberHistory): MemberHistory => {
     const previous = transformed.get(node)
     if (previous) return previous
-    const next = freeze({ ...node, start: point(node.start), end: point(node.end), parents: node.parents.map(visit),
+    const next = freeze({ ...node, start: point(node.start), end: point(node.end), parents: node.parents.map(visit), ...(node.station && { station:stations(node.station) }),
       uses: transformUses({ [MEMBER_USES]: node.uses as MemberUse[] }, point, source) })
     transformed.set(node, next)
     return next

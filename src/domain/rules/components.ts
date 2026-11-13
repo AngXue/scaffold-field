@@ -31,7 +31,12 @@ const run = compilePipeline<Facts, Change>(RULES, COMPONENT_STEPS, (facts, propo
     case 'ComponentCoverage': result = { ...result, coverage: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // Each policy allocates owned members/parts before editing. Do not duplicate
+  // their shared immutable history graph in production; development still
+  // clones and deep-freezes the same inputs to detect accidental mutation.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function reconcileComponents(members: ScaffoldMember[], decks: DeckPanel[], bases: BaseChannel[], sequences: Record<string, number[]>) {
   const { facts } = run({ members, decks, bases, sequences })
   return { members: facts.shared!.members.map(member => ({ ...member })) as ScaffoldMember[],

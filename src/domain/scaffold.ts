@@ -558,7 +558,7 @@ function* constructScaffoldDraft(
 
   /** The sequence each post was built with, keyed by member id. */
   const postSequences = new Map<string, number[]>()
-  const topology = resolveTopology(physical, parameters, pathIsClosed, supportRailCount, requiredEndPairs)
+  const topology = resolveTopology(physical, parameters, pathIsClosed, supportRailCount, requiredEndPairs, identities.scope)
   const { segmentCount, segmentOrder } = topology.grid
   const previousSegment = (index: number) => (index + segmentCount - 1) % segmentCount
   const { mitrePosts } = topology.corners
@@ -571,7 +571,7 @@ function* constructScaffoldDraft(
   const { outerRow, innerRow } = profiles.get(layerCount)!.height
   const frameStage = startFrameRows(physical, topology.stations, topology.corners, physical.slice(0, -1).map((_, index) => layersAt(index)), pathIsClosed, parameters)
   let frame = frameStage.advance(3)
-  const postStage = startPosts({ identityScope: identities.scope, rows: frame.rows.map(rows => rows.postRows), heights: frame.rows.map((_, index) => profileAt(index).height),
+  const postStage = startPosts({ identityScope: identities.scope, stationPlan: topology.stationPlan, rows: frame.rows.map(rows => rows.postRows), heights: frame.rows.map((_, index) => profileAt(index).height),
     ends: frame.ends, grid: topology.grid, stations: topology.stations, mitres: topology.corners.mitrePosts, retained: topology.retained }, parameters)
   let postPlan = postStage.advance(3)
   const postDemands = new Map(postPlan.posts.map(post => [post.key, post])), emittedPosts = new Set<string>()

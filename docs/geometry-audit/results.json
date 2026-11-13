@@ -1,6 +1,6 @@
 {
   "date": "2026-11-13",
-  "sourceHash": "253494d35c941189d309c72e17a36ae0f2a76aba95689165f510c5fa0080ff62",
+  "sourceHash": "f3fbb0b2da60ef683fa2207e70e16723dd89d6f577bbf503bfd6a0351f582e3e",
   "sourceFiles": [
     {
       "path": "guardrails.ts",
@@ -56,11 +56,11 @@
     },
     {
       "path": "rules/catalog.ts",
-      "sha256": "1a42d6450bea07bc78c8c1f12d3932a476e634d01ac844a3a1bdb7e72c2ac517"
+      "sha256": "2dcc9d21e8e9da876911340957abb7ec48361efe8e4ffe5a4b4976cb67c63e9f"
     },
     {
       "path": "rules/components.ts",
-      "sha256": "256c410a63b8401bd31ec52d7548c520a7b82c714143f03c74451067d3f82ab0"
+      "sha256": "bc165bc8c58cae5a62be0561dffd0934bac825447aa4dec44a9bafb2a0405c91"
     },
     {
       "path": "rules/connections.ts",
@@ -80,7 +80,7 @@
     },
     {
       "path": "rules/diagnostics/build.ts",
-      "sha256": "b582e16ebf29ef18edaffa9c001cef10edc32c9cfa9da3c7dc33fd5a2829c074"
+      "sha256": "201f859331b75fc64728f78ab5a94ff41f16a3154d63fbe399c85f3c510b141c"
     },
     {
       "path": "rules/diagnostics/editor.ts",
@@ -112,7 +112,7 @@
     },
     {
       "path": "rules/facts/entityGraph.ts",
-      "sha256": "133eb48bbef38c26d19182650bde713d19e82841a69467b5479cd8f7bbf5b2fb"
+      "sha256": "70cbfb33194e567cb918709ef6d9246892ebb1c77b21dd67da80cf965a51fa3b"
     },
     {
       "path": "rules/facts/fittings.ts",
@@ -136,7 +136,7 @@
     },
     {
       "path": "rules/facts/memberHistory.ts",
-      "sha256": "082cca469ffb687f33ce32c74b118a43665a8d6e79feb007242685b06b53bb13"
+      "sha256": "6d0b4c7e4316046a917180da2570c2f18520bbf272f40d764e0b9d03698a892d"
     },
     {
       "path": "rules/facts/memberUses.ts",
@@ -144,7 +144,7 @@
     },
     {
       "path": "rules/facts/partHistory.ts",
-      "sha256": "b76961a37182c1f9f9ce61b253e6097a09c818c26fcdad20bb07affd88e69607"
+      "sha256": "56798ef5e3e6adc9eaee840a1ee0768419be27bd21b0c61829338d3935c26aa9"
     },
     {
       "path": "rules/facts/placement.ts",
@@ -157,6 +157,10 @@
     {
       "path": "rules/facts/scopes.ts",
       "sha256": "827da21388cf4dfe074a4c59750c7dffdd67c6739c4b682ed0ceeea2e79f6e33"
+    },
+    {
+      "path": "rules/facts/stations.ts",
+      "sha256": "68c67fa30749bddac8c899f48d6fbe4c66790cc375de97ba336ea8e31fad2025"
     },
     {
       "path": "rules/facts/stockHistory.ts",
@@ -276,7 +280,7 @@
     },
     {
       "path": "rules/policies/posts.ts",
-      "sha256": "540d41fd4752be6f2f5f4e774154e1e921ba2b14cafbb5e95e77c6a5c4149eda"
+      "sha256": "54158c4a61b049ee76bfbb6a1e44e275486c18efdb51f68c8685a60496fe9e2e"
     },
     {
       "path": "rules/policies/protectionRanges.ts",
@@ -304,7 +308,7 @@
     },
     {
       "path": "rules/policies/topology.ts",
-      "sha256": "f8b38b8a3277bd343ec1577e2f2845f35fb8aac3b3f4a73005d042440bd1cc26"
+      "sha256": "666a55f5c5326a16426357183043cb9267e4d1da51ca0f430db31e105d66bf93"
     },
     {
       "path": "rules/policies/transitions.ts",
@@ -344,7 +348,7 @@
     },
     {
       "path": "rules/topology.ts",
-      "sha256": "93af92e28d823cdfd3def500a7ff6050124102660d40176c4eac5acb6770b4a6"
+      "sha256": "d7929930329db94d496fd61d8300b53ac5ea8098c0afcfc4f415497c6ace8b2b"
     },
     {
       "path": "rules/transitions.ts",
@@ -352,7 +356,7 @@
     },
     {
       "path": "scaffold.ts",
-      "sha256": "e115d67e072931021ad4476b11c41af0d7137be1d791e6a62467a94427bfc634"
+      "sha256": "f9c1fe50539e162e89a8fc729347fd8786f32819ce59266d53c9249a905e512f"
     },
     {
       "path": "site.ts",

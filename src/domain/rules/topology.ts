@@ -1,12 +1,13 @@
+import { STATION_PLAN } from './facts/stations.ts'
 import type { ScaffoldParameters } from '../scaffold.ts'
 import { planStationGrid, solveCornerTopology, alignStationGrid, retainedOffsetStations, type PlanPoint, type TopologyParameters,
-  type StationGrid, type CornerTopology, type AlignedStations } from './policies/topology.ts'
+  type StationGrid, type CornerTopology, type AlignedStations, type RetainedStations } from './policies/topology.ts'
 import { RULES } from './catalog.ts'
 import { compilePipeline } from './pipeline.ts'
 import { VERIFY_RULE_INPUTS } from './runtime.ts'
 import type { Proposal, RuleStep } from './contracts.ts'
 
-type TopologyFacts = { physical: PlanPoint[]; parameters: TopologyParameters; closed: boolean; supportRows: number; required: readonly (readonly [boolean, boolean])[];
+type TopologyFacts = { identityScope?: string; physical: PlanPoint[]; parameters: TopologyParameters; closed: boolean; supportRows: number; required: readonly (readonly [boolean, boolean])[];
   grid?: StationGrid; corners?: CornerTopology; stations?: AlignedStations; retained?: boolean[][] }
 type TopologyProposal = Proposal & (
   | { kind: 'PlanStationGrid'; target: 'grid'; value: StationGrid }
@@ -21,9 +22,9 @@ export const TOPOLOGY_STEPS: RuleStep<TopologyFacts, TopologyProposal>[] = [
   { id: 'G08.corners', ruleId: 'G08', phase: 2, after: ['G03.grid'], reads: ['physical', 'parameters', 'closed', 'supportRows', 'grid'], kinds: ['ResolveCornerTopology'], targets: ['corners'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'ResolveCornerTopology', target: 'corners', expectedRevision: revision,
       value: solveCornerTopology(facts.physical as PlanPoint[], facts.parameters!, facts.closed!, facts.supportRows!, facts.grid as StationGrid) }] }) },
-  { id: 'G03.align', ruleId: 'G03', phase: 2, after: ['G08.corners'], reads: ['physical', 'parameters', 'corners'], kinds: ['AlignCornerStations'], targets: ['stations'],
+  { id: 'G03.align', ruleId: 'G03', phase: 2, after: ['G08.corners'], reads: ['physical', 'parameters', 'corners', 'identityScope'], kinds: ['AlignCornerStations'], targets: ['stations'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'AlignCornerStations', target: 'stations', expectedRevision: revision,
-      value: alignStationGrid(facts.physical as PlanPoint[], facts.parameters!, facts.corners!.cornerStations as number[][]) }] }) },
+      value: alignStationGrid(facts.physical as PlanPoint[], facts.parameters!, facts.corners!.cornerStations as number[][], facts.identityScope) }] }) },
   { id: 'G09.retain', ruleId: 'G09', phase: 2, after: ['G03.align'], reads: ['stations', 'corners', 'parameters', 'required'], kinds: ['RetainRequiredStations'], targets: ['retained'],
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'RetainRequiredStations', target: 'retained', expectedRevision: revision,
       value: retainedOffsetStations(facts.stations as AlignedStations, facts.corners as CornerTopology, facts.required!, facts.parameters!) }] }) },
@@ -42,7 +43,7 @@ const run = compilePipeline<TopologyFacts, TopologyProposal>(RULES, TOPOLOGY_STE
   // Development still clones/freezes the full snapshot to verify that contract.
   snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
 })
-export function resolveTopology(physical: PlanPoint[], parameters: ScaffoldParameters, closed: boolean, supportRows: number, required: readonly (readonly [boolean, boolean])[]) {
-  const { facts } = run({ physical, parameters: { width: parameters.width, postSpacing: parameters.postSpacing }, closed, supportRows, required })
-  return { grid: facts.grid as StationGrid, corners: facts.corners as CornerTopology, stations: facts.stations as AlignedStations, retained: facts.retained as boolean[][] }
+export function resolveTopology(physical: PlanPoint[], parameters: ScaffoldParameters, closed: boolean, supportRows: number, required: readonly (readonly [boolean, boolean])[], identityScope?: string) {
+  const { facts } = run({ physical, parameters: { width: parameters.width, postSpacing: parameters.postSpacing }, closed, supportRows, required, identityScope })
+  return { grid: facts.grid as StationGrid, corners: facts.corners as CornerTopology, stations: facts.stations as AlignedStations, retained: facts.retained as boolean[][], stationPlan: (facts.retained as RetainedStations)[STATION_PLAN] }
 }
