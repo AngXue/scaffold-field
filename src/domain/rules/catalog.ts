@@ -416,6 +416,7 @@ export const RULES: readonly RuleDefinition[] = [
     "implementation": "native",
     "source": [
       "src/domain/rules/frameRows.ts",
+      "src/domain/rules/sharedMembers.ts",
       "src/domain/rules/policies/protectionRanges.ts"
     ],
     "cases": [

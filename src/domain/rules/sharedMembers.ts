@@ -13,7 +13,12 @@ export const MERGE_STEPS: RuleStep<MergeFacts, MergeProposal>[] = [
     evaluate: (facts, revision) => ({ status: 'proposed', proposals: [{ kind: 'MergeSharedMemberRuns', target: 'members', expectedRevision: revision,
       value: mergeSharedRuns(facts.candidates as ScaffoldMember[]) }] }) },
 ]
-const run = compilePipeline<MergeFacts, MergeProposal>(RULES, MERGE_STEPS, (facts, proposals) => {
+// Protection resolves interval unions as candidate geometry. Physical sharing
+// and stock assembly still commit through M08 at S6 after all protection settles.
+export const CANDIDATE_STEPS: RuleStep<MergeFacts, MergeProposal>[] = [
+  { ...MERGE_STEPS[0], id: 'P02.candidateIntervals', ruleId: 'P02', phase: 5 },
+]
+const compile = (steps: RuleStep<MergeFacts, MergeProposal>[]) => compilePipeline<MergeFacts, MergeProposal>(RULES, steps, (facts, proposals) => {
   const members = proposals.flatMap(proposal => proposal.value), source = new Set(facts.candidates.map(member => member.id))
   if (source.size !== facts.candidates.length || new Set(members.map(member => member.id)).size !== members.length || members.some(member => !source.has(member.id)))
     throw new Error('Duplicate or dangling merge result')
@@ -28,6 +33,12 @@ const run = compilePipeline<MergeFacts, MergeProposal>(RULES, MERGE_STEPS, (fact
   // them synchronously and creates replacements; no authored scene is borrowed.
   snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
 })
+const run = compile(MERGE_STEPS)
+const candidates = compile(CANDIDATE_STEPS)
+export function prepareMemberCandidates(members: ScaffoldMember[]): ScaffoldMember[] {
+  if (!members.length) return []
+  return candidates({ candidates: members }).facts.members!.map(member => ({ ...member })) as ScaffoldMember[]
+}
 export function mergeMemberStage(members: ScaffoldMember[]): ScaffoldMember[] {
   if (!members.length) return []
   return run({ candidates: members }).facts.members!.map(member => ({ ...member })) as ScaffoldMember[]

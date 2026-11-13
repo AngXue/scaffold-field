@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { DEFAULT_PARAMETERS, type ScaffoldMember, type Vector3Tuple, type PipeSegment } from '../scaffold'
 import type { SiteSection, SectionSummary } from '../site'
-import { resolveTransitions } from './transitions'
+import { resolveTransitions, prepareTransitionWork, commitTransitionPosts, finishTransitions } from './transitions'
 import { actualPostTops } from './policies/transitions'
 import { FRAME_SCOPES } from './facts/scopes'
 import { MEMBER_USES, makeUse, memberUses } from './facts/memberUses'
@@ -37,7 +37,7 @@ it('connects working and guard runs independently, opens only the cap interval a
   expect(memberUses(remaining)[0].rules).toContain('P06')
   expect(result.plan.bridges[0].rails.every(member => member.length === 1)).toBe(true)
   expect(Object.isFrozen(result.plan.bridges[0].rails[0])).toBe(true)
-  expect(result.trace.map(step => step.step)).toEqual(['P05.globalGeometry', 'P07.actualPostTops', 'P05.links', 'P06.openCaps'])
+  expect(result.trace.map(step => step.step)).toEqual(['P05.globalGeometry', 'P05.workingLinks', 'P07.actualPostTops', 'P05.guardGeometry', 'P05.links', 'P06.openCaps'])
   expect(resolveTransitions(source).plan).toEqual(result.plan)
 })
 it('leaves protection intact when the transition exceeds the maximum bay', () => {
@@ -76,4 +76,37 @@ it('rejects a missing committed scope instead of guessing a physical group from 
   const source = input()
   delete source.members[0][FRAME_SCOPES]
   expect(() => resolveTransitions(source)).toThrow('Missing committed construction frame scope')
+})
+
+it('commits working connections before protection and preserves them when every guard is omitted', () => {
+  const source = input(), work = prepareTransitionWork(source, true)
+  expect(work.geometry.members.every(member => member.type !== 'guardrail')).toBe(true)
+  expect(work.trace.map(step => step.phase)).toEqual([3, 3])
+  expect(work.working.intents[0].courses[0].matches).toHaveLength(2)
+  const before = JSON.stringify(work)
+  const ready = commitTransitionPosts(work, [], true)
+  expect(ready.trace.at(-1)?.phase).toBe(4)
+  const without = finishTransitions(ready, source.members.filter(member => member.type !== 'guardrail'), undefined, true)
+  expect(without.plan.links.map(member => member.type)).toEqual(['longitudinal', 'longitudinal'])
+  const normal = resolveTransitions(source)
+  expect(without.plan.links).toEqual(normal.plan.links.filter(member => member.type !== 'guardrail'))
+  expect(without.plan.joined).toEqual(normal.plan.joined)
+  expect(without.plan.panels).toEqual(normal.plan.panels)
+  expect(JSON.stringify(work)).toBe(before)
+})
+it('protection rejects moved or removed committed work rather than silently recomputing it', () => {
+  const source = input(), ready = commitTransitionPosts(prepareTransitionWork(source), [])
+  const changed = source.members.map(member => ({ ...member, end: [...member.end] as Vector3Tuple }))
+  changed[0].end[0] += 0.1
+  expect(() => finishTransitions(ready, changed)).toThrow('cannot replace committed working geometry')
+  expect(() => finishTransitions(ready, source.members.slice(1))).toThrow('cannot discard committed working geometry')
+  expect(resolveTransitions(source).plan.links).toHaveLength(3)
+})
+it('staged transition intent survives display alias restoration without selecting different geometry', () => {
+  const source = input(), ready = commitTransitionPosts(prepareTransitionWork(source), [])
+  const aliases = new Map(source.members.map((member, index) => [member.id, `display-${index}`]))
+  const members = source.members.map(member => ({ ...member, id: aliases.get(member.id)! }))
+  const result = finishTransitions(ready, members, aliases)
+  expect(result.plan.links).toEqual(resolveTransitions({ ...source, members }).plan.links)
+  expect(() => finishTransitions(ready, members, new Map())).toThrow('Missing committed transition member alias')
 })

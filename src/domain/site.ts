@@ -1,3 +1,6 @@
+import { startSiteRouting } from './rules/routing.ts'
+import { fitGuardrailStock } from './guardrails.ts'
+import { prepareTransitionWork, commitTransitionPosts, type PreparedTransitions, type TransitionInput } from './rules/transitions.ts'
 import { CONSTRUCTION_PHASES } from './rules/construction.ts'
 import type { ScaffoldAssembly } from './rules/facts/draft.ts'
 import { resolveHeightStages } from './rules/heights.ts'
@@ -6,7 +9,7 @@ import { calculationSession, type DiagnosedLayout } from './rules/diagnostics/se
 import { sectionDimension, sourceDimensions, sourcePerimeter } from './rules/boundaries/dimensions.ts'
 import { legacySiteDrawing, drawingFromSections } from './rules/boundaries/sceneFiles.ts'
 export { siteFromLegacy, drawingFromSections, legacySiteDrawing, readSite, siteFromSnapshot, legacySnapshot } from './rules/boundaries/sceneFiles.ts'
-import { validateSectionInputs } from './rules/sectionValidation.ts'
+import { validateSectionInputs, prepareSectionLevels, type PreparedSectionLevels } from './rules/sectionValidation.ts'
 import { independentPipeScopes } from './rules/policies/siteValidation.ts'
 import { splitLengthIssues } from './rules/policies/sectionValidation.ts'
 import { validatePhysicalChecks, validateIndependentGroups, validateBridges } from './rules/siteValidation.ts'
@@ -31,7 +34,7 @@ import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, publishScaffoldAssembly, finis
 import type { PlanPolygon } from './polygons.ts'
 import { footprintContainsPoint } from './siteFootprints.ts'
 import { positionSiteStock } from './siteWallFit.ts'
-import { routeSiteSections, wallStandOff, type RoutedSpan } from './siteRouting.ts'
+import { wallStandOff, type RoutedSpan } from './siteRouting.ts'
 import { connectSiteTransitions, type JoinedLift, type TransitionEnd } from './siteTransitions.ts'
 
 /** Horizontal site coordinates and vertical heights are all measured in metres. */
@@ -107,7 +110,7 @@ export function reverseSectionGroup(site: Site, id: string): Site {
 
 type SiteAssembly = ScaffoldAssembly & Omit<SiteLayout, keyof ScaffoldLayout>
 
-function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = new Set<string>(), transitionEnds = new Map<number, TransitionEnd[]>(), resolution = resolveBlocks(site)) {
+function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = new Set<string>(), transitionEnds = new Map<number, TransitionEnd[]>(), resolution = resolveBlocks(site), transitionContext?: Pick<TransitionInput, 'spans' | 'transitions'>, sectionLevels?: PreparedSectionLevels) {
   const { blocks } = resolution
   const issues = [...resolution.issues]
   const flat = legacySiteDrawing(site)
@@ -118,14 +121,14 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   }
   const indexById = new Map(site.sections.map((line, index) => [line.id, index]))
   const physicalGroups: PhysicalGroup[] = []
-  const completions: Array<{ scopeId: string; complete: () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans' | 'fittingPlans'>; release: () => void }> = []
+  const completions: Array<{ scopeId: string; complete: () => () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans' | 'fittingPlans'>; release: () => void }> = []
   const validations: Array<{ groupIndex: number; validate: (physical: { checks: PhysicalCheck[]; elements: ElementBounds[] }) => void }> = []
   let measuredLength = 0
   const minimumLength = flat ? 0.01 : MIN_SECTION_LENGTH
   const label = (sectionId: string) => `第 ${indexById.get(sectionId)! + 1} 段`
   const labels = Object.fromEntries(site.sections.map(line => [line.id, label(line.id)]))
   const addIssue = (code: string, sectionIds: string[], message: string, blocking = true) => appendIssue(issues, sourcedIssue('G07', { code, sectionIds, message, blocking }))
-  const inputs = validateSectionInputs(site.sections, blocks, settings, minimumLength)
+  const inputs = validateSectionInputs(site.sections, blocks, settings, minimumLength, sectionLevels)
   const summaries = inputs.summaries
   for (const issue of inputs.issues) appendIssue(issues, issue)
   const eligible = new Set(summaries.filter(summary => summary.length >= minimumLength).map(summary => summary.id))
@@ -178,7 +181,46 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   })
   // A later frame must never restart local topology/demands after an earlier
   // frame has already selected stock or protection. Nested paths use the same barriers.
-  for (const phase of CONSTRUCTION_PHASES) for (const context of groupPlans) context?.construction.advance(phase)
+  let transitionWork: ReturnType<typeof prepareTransitionWork> | undefined
+  let preparedTransitions: PreparedTransitions | undefined
+  const transitionAliases = new Map<string, string>()
+  for (const phase of CONSTRUCTION_PHASES) {
+    for (const context of groupPlans) context?.construction.advance(phase)
+    if (!transitionContext?.transitions.length) continue
+    if (phase === 3) {
+      const members: ScaffoldLayout['members'] = [], decks: ScaffoldLayout['decks'] = []
+      for (const context of groupPlans) {
+        if (!context) continue
+        const { drawing, base, owner, scope, groupIndex } = context, prefix = `R${groupIndex + 1}/`
+        const working = context.construction.working()
+        const world = ([x, y, z]: Vector3Tuple): Vector3Tuple => [x + drawing.points[0].x / PIXELS_PER_METER, roundSite(y + base), z + drawing.points[0].y / PIXELS_PER_METER]
+        const pathIndex = (path: number | undefined) => indexById.get(owner(path))!
+        members.push(...working.members.map(member => ({ ...member, id: prefix + member.id, [FRAME_SCOPES]: scope,
+          [MEMBER_USES]: transformUses(member, world, use => ({ pathSegment: pathIndex(use.pathSegment), sectionId: owner(use.pathSegment), spanId: owner(use.pathSegment) })),
+          start: world(member.start), end: world(member.end), connectionPoints: member.connectionPoints.map(world),
+          pathSegment: pathIndex(member.pathSegment), cornerJunctions: member.cornerJunctions?.map(pathIndex) })))
+        decks.push(...working.decks.map(deck => ({ ...deck, id: prefix + deck.id, [FRAME_SCOPES]: scope,
+          corners: deck.corners.map(world) as typeof deck.corners, coverage: deck.coverage?.map(face => face.map(world)), pathSegment: pathIndex(deck.pathSegment) })))
+      }
+      transitionWork = prepareTransitionWork({ ...transitionContext, members, decks, summaries, settings })
+    }
+    if (phase === 4) {
+      const posts: ScaffoldLayout['pipeSegments'] = []
+      for (const context of groupPlans) {
+        if (!context) continue
+        const { drawing, base, groupIndex } = context, prefix = `R${groupIndex + 1}/`
+        const world = ([x, y, z]: Vector3Tuple): Vector3Tuple => [x + drawing.points[0].x / PIXELS_PER_METER, roundSite(y + base), z + drawing.points[0].y / PIXELS_PER_METER]
+        posts.push(...context.construction.working().posts!.flatMap(post => post.segments.map(pipe => ({ ...pipe,
+          id: prefix + pipe.id, memberId: prefix + pipe.memberId, start: world(pipe.start), end: world(pipe.end) }))))
+      }
+      preparedTransitions = commitTransitionPosts(transitionWork!, posts)
+    }
+    if (phase === 5) for (const context of groupPlans) {
+      if (!context) continue
+      const prefix = `R${context.groupIndex + 1}/`
+      for (const [id, alias] of context.construction.working().aliases!) transitionAliases.set(prefix + id, prefix + alias)
+    }
+  }
   groupPlans.forEach(context => {
     if (!context) return
     const { group, groupIndex, scopeId, scope, base, surface, followsWall, swapInnerOuter, drawing, owner } = context
@@ -229,19 +271,22 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
     } | undefined }
     completions.push({ scopeId, release: () => { pending.value = undefined }, complete: () => {
       const { preparation, toPlan, members, decks } = pending.value!
-      const physical = finishPreparedScaffoldAssembly(preparation)
-      // Logical world geometry was committed above. Only new physical records
-      // need this coordinate conversion; do not transform every member twice.
-      const completed = toPlan({ ...physical, members: [], decks: [], baseChannels: [], pathDimensions: [] })
-      const finalPipes = completed.pipeSegments.filter(pipe => !removed.has(pipe.memberId)).map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
-      const finalConnectors = completed.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
-        .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
-      positionSiteStock({ members, pipeSegments: finalPipes, connectors: finalConnectors, decks: decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,
-        coverage: deck.coverage?.map(face => face.map(world)) })) }, blocks, radius, transitionEnds, followsWall)
-      const fittingPlans = transformFittingPlans(selectFittingPlans(completed.fittingPlans, id => !removed.has(id), true), world, prefix)
-      return { fittingPlans, pipeSegments: finalPipes.map(pipe => ({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })),
-        connectors: finalConnectors.map(c => ({ ...c, id: prefix + c.id, memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })),
-        assemblyPlans: completed.assemblyPlans.filter(p => !removed.has(p.memberId)).map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })) }
+      const physical = finishPreparedScaffoldAssembly(preparation, true)
+      return () => {
+        fitGuardrailStock(physical)
+        // Logical world geometry was committed above. Only new physical records
+        // need this coordinate conversion; do not transform every member twice.
+        const completed = toPlan({ ...physical, members: [], decks: [], baseChannels: [], pathDimensions: [] })
+        const finalPipes = completed.pipeSegments.filter(pipe => !removed.has(pipe.memberId)).map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
+        const finalConnectors = completed.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
+          .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
+        positionSiteStock({ members, pipeSegments: finalPipes, connectors: finalConnectors, decks: decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,
+          coverage: deck.coverage?.map(face => face.map(world)) })) }, blocks, radius, transitionEnds, followsWall)
+        const fittingPlans = transformFittingPlans(selectFittingPlans(completed.fittingPlans, id => !removed.has(id), true), world, prefix)
+        return { fittingPlans, pipeSegments: finalPipes.map(pipe => ({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })),
+          connectors: finalConnectors.map(c => ({ ...c, id: prefix + c.id, memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })),
+          assemblyPlans: completed.assemblyPlans.filter(p => !removed.has(p.memberId)).map(p => ({ ...p, memberId: prefix + p.memberId, segmentIds: p.segmentIds.map(id => prefix + id) })) }
+      }
     } })
     for (const member of members) {
       if (member.type === 'post') checks.push({ kind: 'post', sectionId: memberOwners.get(member.id)!, point: member.start })
@@ -307,15 +352,19 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       inner: profile.support.rowTops[profile.height.innerRow], outer: profile.support.rowTops[profile.height.outerRow] }
   }
   const preview: SiteAssembly = { ...layout, blocks, sections: summaries, issues, canExportMaterials: !issues.some(issue => issue.blocking) }
-  return { preview, finish: (resolved: ScaffoldAssembly = preview, affected: readonly string[] = []): SiteAssembly => {
+  return { preview, transitionPreparation: preparedTransitions && { prepared: preparedTransitions, aliases: transitionAliases }, finish: (resolved: ScaffoldAssembly = preview, affected: readonly string[] = [], placeConnected?: () => void): SiteAssembly => {
     const changed = new Set(affected)
-    const additions: Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans' | 'fittingPlans'>[] = []
+    const placements: Array<() => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans' | 'fittingPlans'>> = []
     completions.reverse()
     while (completions.length) {
       const completion = completions.pop()!
-      try { if (!changed.has(completion.scopeId)) additions.push(completion.complete()) }
+      try { if (!changed.has(completion.scopeId)) placements.push(completion.complete()) }
       finally { completion.release() }
     }
+    // All S6 stock is committed before any frame enters S7. Preserve the
+    // original placement order: joined scopes first, independent scopes next.
+    placeConnected?.()
+    const additions = placements.map(place => place())
     const retainedIds = changed.size ? new Set(resolved.members.filter(member => inFrameScopes(member, changed)).map(member => member.id)) : new Set<string>()
     const retained = (id: string) => retainedIds.has(id)
     let final: SiteAssembly = { ...preview, ...resolved,
@@ -370,8 +419,10 @@ function assembleSite(input: Site, settings: ScaffoldParameters): SiteAssembly {
   const { site, blocks } = prepared
   settings = prepared.parameters
   if (!site.blocks.length) return calculateSiteSpans(site, settings, undefined, undefined, prepared.resolution)
-  const { spans, transitions, errors } = routeSiteSections(site.sections, blocks, settings)
-  if (!site.sections.some(section => section.automatic) && !spans.some(span => span.wall)) return calculateSiteSpans(site, settings, undefined, undefined, prepared.resolution)
+  const routing = startSiteRouting(site.sections, blocks, settings)
+  const sectionLevels = prepareSectionLevels(routing.supportSections(), blocks, settings)
+  const { spans, transitions, errors } = routing.finish()
+  if (!site.sections.some(section => section.automatic) && !spans.some(span => span.wall)) return calculateSiteSpans(site, settings, undefined, undefined, prepared.resolution, undefined, sectionLevels)
   const wallIds = new Set(spans.filter(span => span.wall).map(span => span.line.id))
   const sourceIds = new Map(spans.map(span => [span.line.id, span.sourceId]))
   const indices = new Map(spans.map((span, index) => [span.line.id, index]))
@@ -389,9 +440,9 @@ function assembleSite(input: Site, settings: ScaffoldParameters): SiteAssembly {
     ends.push({ axis, boundary, station, roof: Math.max(leftBase, rightBase), towardRoof: Math.sign(roofStation - station), wall: wallIds.has(low.id) })
     transitionEnds.set(index, ends)
   }
-  const staged = prepareSiteSpans({ ...site, sections: spans.map(span => span.line) }, settings, wallIds, transitionEnds, prepared.resolution)
-  const connected = connectSiteTransitions(staged.preview, spans, staged.preview.sections, transitions, settings)
-  const spanLayout = staged.finish(connected.layout, connected.affected)
+  const staged = prepareSiteSpans({ ...site, sections: spans.map(span => span.line) }, settings, wallIds, transitionEnds, prepared.resolution, { spans, transitions }, sectionLevels)
+  const connected = connectSiteTransitions(staged.preview, spans, staged.preview.sections, transitions, settings, staged.transitionPreparation, true)
+  const spanLayout = staged.finish(connected.layout, connected.affected, connected.place)
   const result = { ...connected, layout: spanLayout }
   const labels = new Map(site.sections.map((line, i) => [line.id, i + 1]))
   const issues = spanLayout.issues.map(issue => ({ ...mapIssueSources(issue, sourceIds),

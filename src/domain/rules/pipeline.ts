@@ -1,4 +1,4 @@
-import { traceInvocation, recordRuleTrace } from './diagnostics/session.ts'
+import { traceInvocation, recordRuleTrace, enterCalculationPhase, rejectCalculation } from './diagnostics/session.ts'
 import { RuleFailure, type Phase, type DeepReadonly, type Proposal, type RuleDefinition, type RuleStep, type Trace } from './contracts.ts'
 
 /** Freeze only calculation-owned plain data; callers retain ownership of their input. */
@@ -88,7 +88,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
           for (const step of batch) {
             const view = Object.fromEntries(step.reads.map(key => [key, (facts as Readonly<F>)[key]])) as DeepReadonly<Partial<F>>
             let outcome
-            try { outcome = step.evaluate(publish(view) as DeepReadonly<Partial<F>>, revision) }
+            try { enterCalculationPhase(step); outcome = step.evaluate(publish(view) as DeepReadonly<Partial<F>>, revision) }
             catch (error) {
               const reason = error instanceof Error ? error.message : String(error)
               if (invocation !== undefined) recordRuleTrace(invocation, step, revision, 'rejected', [], reason)
@@ -120,7 +120,7 @@ export function compilePipeline<F extends object, P extends Proposal>(definition
         }
         lastPhase = phase
         return { facts, trace: [...trace] }
-      } catch (error) { failed = true; throw error }
+      } catch (error) { failed = true; rejectCalculation(); throw error }
     }
     return { advance, finish: () => advance(9) }
   }

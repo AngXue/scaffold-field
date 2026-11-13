@@ -21,7 +21,7 @@ for (const rule of RULES) {
 }
 const packages = [
   ['scene', 'SCENE_STEPS'], ['routing', 'ROUTING_STEPS'], ['groups', 'GROUP_STEPS'],
-  ['topology', 'TOPOLOGY_STEPS'], ['heights', 'HEIGHT_STEPS'], ['frameRows', 'FRAME_ROW_STEPS'], ['bands', 'BAND_STEPS'], ['decks', 'DECK_STEPS'], ['components', 'COMPONENT_STEPS'], ['posts', 'POST_STEPS'], ['bases', 'BASE_STEPS'], ['transitions', 'TRANSITION_STEPS'], ['guardRemovals', 'GUARD_REMOVAL_STEPS'], ['placement', 'PLACEMENT_STEPS'], ['pathValidation', 'PATH_VALIDATION_STEPS'], ['sectionValidation', 'SECTION_VALIDATION_STEPS'], ['siteValidation', 'SITE_VALIDATION_STEPS'], ['sharedMembers', 'MERGE_STEPS'], ['stock', 'STOCK_STEPS'], ['stock', 'COMMITTED_STOCK_STEPS'], ['connections', 'CONTACT_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
+  ['topology', 'TOPOLOGY_STEPS'], ['heights', 'HEIGHT_STEPS'], ['frameRows', 'FRAME_ROW_STEPS'], ['bands', 'BAND_STEPS'], ['decks', 'DECK_STEPS'], ['components', 'COMPONENT_STEPS'], ['posts', 'POST_STEPS'], ['bases', 'BASE_STEPS'], ['transitions', 'TRANSITION_STEPS'], ['guardRemovals', 'GUARD_REMOVAL_STEPS'], ['placement', 'PLACEMENT_STEPS'], ['pathValidation', 'PATH_VALIDATION_STEPS'], ['sectionValidation', 'SECTION_VALIDATION_STEPS'], ['siteValidation', 'SITE_VALIDATION_STEPS'], ['sharedMembers', 'MERGE_STEPS'], ['sharedMembers', 'CANDIDATE_STEPS'], ['stock', 'STOCK_STEPS'], ['stock', 'COMMITTED_STOCK_STEPS'], ['connections', 'CONTACT_STEPS'], ['connections', 'CONNECTION_STEPS'], ['materials', 'MATERIAL_STEPS'],
 ]
 const executed = new Set(), steps = new Set()
 for (const [name, exported] of packages) {
@@ -62,14 +62,24 @@ const readEvidence = name => {
   const path = resolve(root, `artifacts/rule-migration/${name}.json`)
   return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : undefined
 }
-const matrixAcceptance = acceptanceEvidence(JSON.parse(readFileSync(resolve(root, 'fixtures/rules/acceptance-matrix.json'), 'utf8')),
+const acceptanceManifest = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/acceptance-matrix.json'), 'utf8'))
+const matrixAcceptance = acceptanceEvidence(acceptanceManifest,
   readEvidence('acceptance-tests'), readEvidence('acceptance-browser'),
   { root, sourceFingerprint: verificationFingerprint(), engineRevision: ENGINE_REVISION, rules: RULES.map(rule => rule.id) })
+const globalTitles = [
+  'all frozen and large scenes execute globally ordered S0-S9 steps',
+  'ordinary and traced sessions reject backwards stages before evaluation (false)',
+  'ordinary and traced sessions reject backwards stages before evaluation (true)',
+  'a caught rule failure cannot be hidden by returning a successful nested calculation',
+]
+const globalOrchestrationAcceptance = { accepted: matrixAcceptance.domainAccepted && globalTitles.every(title =>
+  acceptanceManifest.rows.find(row => row.id === 'T15')?.assertions.some(assertion => assertion.file === 'src/domain/rules/globalStages.test.ts' && assertion.title === title && assertion.count === 1)),
+  scope: 'all 26 frozen/large fixtures plus ordinary/traced fail-before-evaluation and no-publication-after-failure contracts' }
 const summary = { rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
   boundaries: RULES.filter(rule => rule.implementation === 'boundary').length,
   adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size, partialRuleOwners: [...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'legacy-adapter'),
-  scope: 'live package-local DAGs and boundaries; complete global pipeline still pending', performanceAcceptance, matrixAcceptance,
-  pendingAcceptance: ['global S0-S9 orchestration without compatibility rebuilds', 'stable entity identities and full derivedFrom/replacedBy lineage',
+  scope: 'phase-guarded production orchestration and local rule contracts; intermediate entity migration pending', globalOrchestrationAcceptance, performanceAcceptance, matrixAcceptance,
+  pendingAcceptance: [...(!globalOrchestrationAcceptance.accepted ? ['global S0-S9 orchestration without compatibility rebuilds'] : []), 'stable entity identities and full derivedFrom/replacedBy lineage',
     ...(!matrixAcceptance.accepted ? ['complete T01-T15 combination evidence'] : []), ...(!performanceAcceptance.accepted ? ['paired 50/200-segment latency and memory budgets'] : []), 'rollback rehearsal and final production acceptance'] }
 console.log(JSON.stringify(summary, null, 2))
 if (process.argv.includes('--complete')) {

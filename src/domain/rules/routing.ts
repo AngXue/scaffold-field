@@ -1,3 +1,4 @@
+import { getSectionLevels } from './policies/levels.ts'
 import { VERIFY_RULE_INPUTS } from './runtime.ts'
 import type { ResolvedBlock, SiteSection } from '../site.ts'
 import type { ScaffoldParameters } from '../scaffold.ts'
@@ -52,8 +53,21 @@ const run = compilePipeline<RoutingFacts, RoutingProposal>(RULES, ROUTING_STEPS,
   }
   return result
 }, { verifyImmutability: VERIFY_RULE_INPUTS })
+export function startSiteRouting(sections: SiteSection[], blocks: ResolvedBlock[], settings: ScaffoldParameters) {
+  const stage = run.start({ sections, blocks, settings })
+  return {
+    supportSections: () => {
+      const routes = stage.advance(1).facts.supported as RouteDraft[]
+      return routes.flatMap(route => route.kind === 'fixed' ? [route.span.line] : route.placements.flatMap((placement, index) => {
+        const layers = route.source.layers - getSectionLevels(placement.base, settings.liftHeight, 1).firstLayer + 1
+        return layers < 1 ? [] : [{ ...route.source, surfaceId: route.intervals[index].block?.id ?? 'ground', layers }]
+      }))
+    },
+    finish: () => stage.advance(2).facts.routed as ReturnType<typeof publishSupportSpans>,
+  }
+}
 export function routeSiteSections(sections: SiteSection[], blocks: ResolvedBlock[], settings: ScaffoldParameters) {
-  return run({ sections, blocks, settings }).facts.routed as ReturnType<typeof publishSupportSpans>
+  return startSiteRouting(sections, blocks, settings).finish()
 }
 /** Diagnostic stage products are opt-in; production does not retain this graph. */
 export function explainRouting(sections: SiteSection[], blocks: ResolvedBlock[], settings: ScaffoldParameters) {

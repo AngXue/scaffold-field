@@ -28,24 +28,69 @@ export function actualPostTops(pipes: readonly PipeSegment[]): Record<string, nu
   for (const pipe of pipes) if (pipe.type === 'post') tops[pipe.memberId] = Math.max(tops[pipe.memberId] ?? -Infinity, pipe.start[1], pipe.end[1])
   return tops
 }
-export function planTransitions(geometry: TransitionGeometry, tops: Record<string, number>, spans: RoutedSpan[], summaries: SectionSummary[], transitions: SiteTransition[], settings: ScaffoldParameters) {
-  const { members, decks } = geometry, postTops = new Map(Object.entries(tops))
+type End = { member: ScaffoldMember; point: Vector3Tuple }
+type Match = { from: End; to: End }
+/** S3 product: working ties and deck coverage never depend on later protection. */
+export function planWorkingTransitions(geometry: TransitionGeometry, spans: RoutedSpan[], summaries: SectionSummary[], transitions: SiteTransition[], settings: ScaffoldParameters) {
+  const { members, decks } = geometry
   const summaryById = new Map(summaries.map(summary => [summary.id, summary])), spanIndex = new Map(spans.map((span, index) => [span.line.id, index]))
-  const joined: JoinedLift[] = [], bridges: Bridge[] = [], failed: SiteTransition[] = []
-  const links: ScaffoldMember[] = [], panels: DeckPanel[] = []
-  const capCuts = new Map<string, Array<{ axis: 0 | 2; low: number; high: number }>>()
-  for (const transition of transitions) {
+  const joined: JoinedLift[] = [], failed: SiteTransition[] = []
+  const intents = transitions.map(transition => {
     const { before, after } = transition
     const left = spanIndex.get(before.id)!, right = spanIndex.get(after.id)!
-    const linkStart = links.length, panelStart = panels.length
-    const along = before.start.x === before.end.x ? 2 : 0, cross = along === 0 ? 2 : 0
-    const a = along === 0 ? before.end.x : before.end.z, b = along === 0 ? after.start.x : after.start.z
-    const gap = Math.abs(b - a)
+    const along: 0 | 2 = before.start.x === before.end.x ? 2 : 0, cross: 0 | 2 = along === 0 ? 2 : 0
+    const a = along === 0 ? before.end.x : before.end.z, b = along === 0 ? after.start.x : after.start.z, gap = Math.abs(b - a)
     const shared = (summaryById.get(before.id)?.levels ?? []).filter(y => summaryById.get(after.id)?.levels.includes(y))
-    const levels: number[] = []
+    const ends = (index: number, station: number): End[] => members.flatMap(member => {
+      if (!hasSource(member, index) || !member.layer || member.type !== 'longitudinal' || mm(member.start[cross]) !== mm(member.end[cross])) return []
+      const point = member.connectionPoints.find(p => mm(p[along]) === mm(station))
+      return point ? [{ member, point }] : []
+    })
+    const first = ends(left, a), second = ends(right, b)
+    const hasPanel = (index: number, layer: number, station: number) => decks.some(deck => deck.pathSegment === index
+      && deck.layer === layer && deck.corners.some(p => mm(p[along]) === mm(station)))
+    const courses: Array<{ layer: number; elevation: number; matches: Match[]; rails: Match[]; panels: DeckPanel[] }> = []
+    if (gap >= 0.001 && gap <= settings.postSpacing + 0.001) for (const elevation of shared) {
+      const layer = Math.round(elevation / settings.liftHeight)
+      const matches = first.filter(item => item.member.layer === layer).flatMap(from => {
+        const to = second.find(to => to.member.layer === layer && mm(to.point[1]) === mm(from.point[1]) && mm(to.point[cross]) === mm(from.point[cross]))
+        return to ? [{ from, to }] : []
+      })
+      const rails = matches.filter(({ from }) => mm(from.point[1]) === mm(elevation)).sort((p, q) => p.from.point[cross] - q.from.point[cross])
+      if (rails.length < 2 || Math.abs(rails.at(-1)!.from.point[cross] - rails[0].from.point[cross] - settings.width) > 0.002) continue
+      let panels: DeckPanel[] = []
+      if (hasPanel(left, layer, a) && hasPanel(right, layer, b)) {
+        const sides = [rails[0], rails.at(-1)!]
+        const from: [Vector3Tuple, Vector3Tuple] = [sides[0].from.point, sides[1].from.point]
+        const to: [Vector3Tuple, Vector3Tuple] = [sides[0].to.point, sides[1].to.point]
+        panels = deckBetweenStations(from, to, layer, left, `transition-deck-${left}-${right}-${layer}`, settings)
+          .map(panel => ({ ...panel, [FRAME_SCOPES]: combinedScopes(...rails.flatMap(rail => [rail.from.member, rail.to.member])) }))
+      }
+      courses.push({ layer, elevation, matches, rails, panels })
+    }
+    const levels = courses.map(course => course.elevation)
+    if (levels.length) joined.push({ before: before.id, after: after.id, levels })
+    if (gap < 0.001 || gap > settings.postSpacing + 0.001 || levels.length !== shared.length) failed.push(transition)
+    return { transition, left, right, along, cross, a, b, gap, courses }
+  })
+  return { joined, failed, intents }
+}
+export type WorkingTransitions = ReturnType<typeof planWorkingTransitions>
+
+/** S5 consumes S3 working intent and S4 physical tops, adding only protection. */
+export function planTransitions(geometry: TransitionGeometry, tops: Record<string, number>, spans: RoutedSpan[], summaries: SectionSummary[], transitions: SiteTransition[], settings: ScaffoldParameters,
+  working = planWorkingTransitions(geometry, spans, summaries, transitions, settings)) {
+  const { members } = geometry, postTops = new Map(Object.entries(tops))
+  const summaryById = new Map(summaries.map(summary => [summary.id, summary]))
+  const memberOrder = new Map(members.map((member, index) => [member.id, index]))
+  const bridges: Bridge[] = [], links: ScaffoldMember[] = [], panels: DeckPanel[] = []
+  const capCuts = new Map<string, Array<{ axis: 0 | 2; low: number; high: number }>>()
+  for (const intent of working.intents) {
+    const { left, right, along, cross, a, b, gap, courses } = intent
+    const linkStart = links.length, panelStart = panels.length
     const ends = (index: number, station: number) => {
       const own = members.flatMap(member => {
-        if (!hasSource(member, index) || !member.layer || (member.type !== 'longitudinal' && member.type !== 'guardrail')
+        if (!hasSource(member, index) || !member.layer || member.type !== 'guardrail'
           || mm(member.start[cross]) !== mm(member.end[cross])) return []
         const point = member.connectionPoints.find(p => mm(p[along]) === mm(station))
         return point ? [{ member, point }] : []
@@ -73,20 +118,18 @@ export function planTransitions(geometry: TransitionGeometry, tops: Record<strin
       return own
     }
     const first = ends(left, a), second = ends(right, b)
-    const hasPanel = (index: number, layer: number, station: number) => decks.some(deck => deck.pathSegment === index
-      && deck.layer === layer && deck.corners.some(p => mm(p[along]) === mm(station)))
-    if (gap < 0.001 || gap > settings.postSpacing + 0.001) { failed.push(transition); continue }
-    for (const elevation of shared) {
-      const layer = Math.round(elevation / settings.liftHeight)
-      const matches = first.filter(item => item.member.layer === layer).flatMap(from => {
-        const to = second.find(to => to.member.layer === layer && to.member.type === from.member.type
-          && mm(to.point[1]) === mm(from.point[1]) && mm(to.point[cross]) === mm(from.point[cross]))
+    // Own runs retain their historical source-array order. Borrowed corner guards
+    // follow them, exactly as the original end resolver appended those candidates.
+    const guardOrder = new Map(first.map((end, index) => [end.member.id,
+      hasSource(end.member, left) && mm(end.member.start[cross]) === mm(end.member.end[cross])
+        ? memberOrder.get(end.member.id)! : members.length + index]))
+    for (const { layer, matches: workingMatches, rails, panels: workPanels } of courses) {
+      const guards = first.filter(item => item.member.layer === layer).flatMap(from => {
+        const to = second.find(to => to.member.layer === layer && mm(to.point[1]) === mm(from.point[1]) && mm(to.point[cross]) === mm(from.point[cross]))
         return to ? [{ from, to }] : []
       })
-      const rails = matches.filter(({ from }) => from.member.type === 'longitudinal' && mm(from.point[1]) === mm(elevation))
-        .sort((p, q) => p.from.point[cross] - q.from.point[cross])
-      if (rails.length < 2 || Math.abs(rails.at(-1)!.from.point[cross] - rails[0].from.point[cross] - settings.width) > 0.002) continue
-      levels.push(elevation)
+      const order = (match: Match) => match.from.member.type === 'guardrail' ? guardOrder.get(match.from.member.id)! : memberOrder.get(match.from.member.id)!
+      const matches = [...workingMatches, ...guards].sort((a, b) => order(a) - order(b))
       for (const { from, to } of matches) {
         const start = from.point, end = to.point
         links.push({ [FRAME_SCOPES]: combinedScopes(from.member, to.member), id: `transition-${links.length + 1}`, type: from.member.type, layer, pathSegment: left,
@@ -105,24 +148,11 @@ export function planTransitions(geometry: TransitionGeometry, tops: Record<strin
           cuts.push({axis:cross,low,high}); capCuts.set(cap.id,cuts)
         }
       }
-      if (hasPanel(left, layer, a) && hasPanel(right, layer, b)) {
-        const sides = [rails[0], rails.at(-1)!]
-        const from: [Vector3Tuple, Vector3Tuple] = [sides[0].from.point, sides[1].from.point]
-        const to: [Vector3Tuple, Vector3Tuple] = [sides[0].to.point, sides[1].to.point]
-        panels.push(...deckBetweenStations(from, to, layer, left, `transition-deck-${left}-${right}-${layer}`, settings)
-          .map(panel => ({ ...panel, [FRAME_SCOPES]: combinedScopes(...rails.flatMap(rail => [rail.from.member, rail.to.member])) })))
-      }
+      panels.push(...workPanels)
     }
-    if (levels.length) {
-      joined.push({ before: before.id, after: after.id, levels })
-      // Keep a separate bridge envelope; final runs may extend far beyond it.
-      // The pure merge also preserves this snapshot for validation.
-      bridges.push({ left, right, rails: links.slice(linkStart).map(rail => ({...rail})), decks: panels.slice(panelStart) })
-    }
-    if (levels.length !== shared.length) failed.push(transition)
+    if (courses.length) bridges.push({ left, right, rails: links.slice(linkStart).map(rail => ({ ...rail })), decks: panels.slice(panelStart) })
   }
-
-  return { joined, bridges, failed, links, panels, capCuts: [...capCuts] as [string, CapCut[]][] }
+  return { joined: working.joined, bridges, failed: working.failed, links, panels, capCuts: [...capCuts] as [string, CapCut[]][] }
 }
 export type TransitionPlan = ReturnType<typeof planTransitions>
 export function openTransitionCaps(geometry: TransitionGeometry, plan: TransitionPlan) {

@@ -21,7 +21,7 @@ import { prepareFittingPlan, finishFittings } from './rules/connections.ts'
 import { CONNECTOR_CONTACT } from './rules/facts/connections.ts'
 import { assembledLength, postStockWarnings } from './rules/policies/stock.ts'
 import { assemblePostsStage, assembleStockStage, resolvePostSequences, type StockAssembly } from './rules/stock.ts'
-import { mergeMemberStage } from './rules/sharedMembers.ts'
+import { mergeMemberStage, prepareMemberCandidates } from './rules/sharedMembers.ts'
 import { transformFittingPlans } from './rules/facts/fittings.ts'
 import { FRAME_SCOPES, CONSTRUCTION_FRAMES } from './rules/facts/scopes.ts'
 import { MEMBER_USES, RETIRED_USES, makeUse, combineUses, memberUses, transformUses, type MemberPurpose } from './rules/facts/memberUses.ts'
@@ -747,23 +747,23 @@ export function assembleScaffoldDraft(draft: ScaffoldDraft, fixedPostsAndBases =
 
 /** Prepare an assembly scope without selecting horizontal stock or generating fittings. */
 export function prepareScaffoldAssembly(draft: ScaffoldDraft) {
-  const members = mergeMemberStage(draft.members)
+  const members = prepareMemberCandidates(draft.members)
   const baseChannels = draft[COMMITTED_UPRIGHTS] ? draft.baseChannels : resolveSupportingBases(draft.baseChannels, members)
   const stock = draft[COMMITTED_UPRIGHTS] ?? assemblePostsStage(members, draft.postSequences, draft.parameters)
   return { draft: { ...draft, members, baseChannels, warnings: [...draft.warnings, ...stock.warnings], postSequences: stock.sequences }, posts: stock.posts }
 }
 
 /** Complete an unchanged prepared scope without merging the same members twice. */
-export function finishPreparedScaffoldAssembly(prepared: ReturnType<typeof prepareScaffoldAssembly>): ScaffoldAssembly {
+export function finishPreparedScaffoldAssembly(prepared: ReturnType<typeof prepareScaffoldAssembly>, deferPlacement = false): ScaffoldAssembly {
   const { draft, posts } = prepared
   return assembleLayout(draft.members.map(member => ({ ...member })), draft.decks.map(deck => ({ ...deck })), draft.baseChannels.map(base => ({ ...base })),
     [...draft.warnings], draft.parameters, new Map(Object.entries(draft.postSequences)), draft.pathDimensions.map(dimension => ({ ...dimension })),
-    { ...draft.postHeights }, true, posts, true)
+    { ...draft.postHeights }, true, posts, false, deferPlacement)
 }
 
 /** Preserve the existing local splice preference pass without allocating horizontal stock or quantities. */
 function prepareComponentDraft(draft: ScaffoldDraft): ScaffoldDraft {
-  const members = mergeSharedRuns(draft.members)
+  const members = prepareMemberCandidates(draft.members)
   const bases = draft[COMMITTED_UPRIGHTS] ? draft.baseChannels : resolveSupportingBases(draft.baseChannels, members)
   const repaired = draft[COMMITTED_UPRIGHTS] ?? resolvePostSequences(members, draft.postSequences, draft.parameters)
   return { ...draft, members, baseChannels: bases, postSequences: repaired.sequences,
@@ -774,7 +774,7 @@ function prepareComponentDraft(draft: ScaffoldDraft): ScaffoldDraft {
 function assembleLayout(
   members: ScaffoldMember[], decks: DeckPanel[], baseChannels: BaseChannel[],
   warnings: LayoutWarning[], parameters: ScaffoldParameters, postSequences: Map<string, number[]>,
-  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'], fixedPostsAndBases = false, prebuiltPosts?: StockAssembly[], alreadyMerged = false,
+  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'], fixedPostsAndBases = false, prebuiltPosts?: StockAssembly[], alreadyMerged = false, deferPlacement = false,
 ): ScaffoldAssembly {
   // Merge collinear shared runs before stock assembly and coupler counting.
   // This keeps all three views on the same physical quantities.
@@ -795,7 +795,7 @@ function assembleLayout(
   const fittingPlans = [prepareFittingPlan(members, Object.fromEntries(builtPostTops), parameters, pipeSegments)]
   const connectors: ScaffoldConnector[] = []
   const assemblyPlans = assemblies.map((assembly) => assembly.plan)
-  fitGuardrailStock({ members, pipeSegments, connectors, decks })
+  if (!deferPlacement) fitGuardrailStock({ members, pipeSegments, connectors, decks })
 
 
   return {
@@ -827,7 +827,7 @@ export function publishScaffoldAssembly<T extends ScaffoldAssembly>(assembly: T,
 }
 
 /** Assemble final connected lift runs once, keeping the committed uprights and bases. */
-export function assembleConnectedRuns(layout: ScaffoldAssembly, members: ScaffoldMember[], decks: DeckPanel[], settings: ScaffoldParameters) {
+export function assembleConnectedRuns(layout: ScaffoldAssembly, members: ScaffoldMember[], decks: DeckPanel[], settings: ScaffoldParameters, deferPlacement = false) {
   const posts = new Set(members.filter(member => member.type === 'post').map(member => member.id))
   const plans = layout.assemblyPlans.filter(plan => posts.has(plan.memberId))
   const sequences = new Map(plans.map(plan => [plan.memberId, plan.stockLengths]))
@@ -841,7 +841,7 @@ export function assembleConnectedRuns(layout: ScaffoldAssembly, members: Scaffol
   }
   const prebuilt = plans.map(plan => ({ plan: { ...plan, segmentIds: pipes.get(plan.memberId)!.map(pipe => pipe.id) }, segments: pipes.get(plan.memberId)! }))
   return assembleLayout(members, decks, layout.baseChannels, layout.warnings, settings, sequences,
-    layout.pathDimensions, layout.postHeights, true, prebuilt)
+    layout.pathDimensions, layout.postHeights, true, prebuilt, false, deferPlacement)
 
 }
 
@@ -871,14 +871,22 @@ export function assembleScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldP
 }
 
 /** Logical plan and its coordinate boundary. Physical stock is intentionally deferred. */
-export function startScaffoldPlan(...args: Parameters<typeof constructScaffoldPlan>) {
-  return startConstruction(constructScaffoldPlan(...args))
+export type PlanWorkingProduct = Pick<ScaffoldDraft, 'members' | 'decks' | 'baseChannels'> & { posts?: StockAssembly[]; aliases?: Map<string, string> }
+export function startScaffoldPlan(...args: Parameters<typeof prepareScaffoldPlan>) {
+  const state: { working?: PlanWorkingProduct } = {}
+  return { ...startConstruction(constructScaffoldPlan(args[0], args[1], args[2], args[3], args[4], args[5], args[6], state)),
+    working: () => {
+      if (!state.working) throw new Error('Plan work requested before S3')
+      return state.working
+    } }
 }
-export function prepareScaffoldPlan(...args: Parameters<typeof constructScaffoldPlan>): PreparedScaffoldPlan {
-  return startScaffoldPlan(...args).finish()
+export function prepareScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
+  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): PreparedScaffoldPlan {
+  return startScaffoldPlan(drawing, parameters, localLifts, deckLayerOffset, segmentLayerCounts, preserveDirection, requiredEndPairs).finish()
 }
 function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParameters, localLifts?: readonly number[], deckLayerOffset = 0,
-  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = []): Generator<ConstructionPhase, PreparedScaffoldPlan, void> {
+  segmentLayerCounts?: readonly number[], preserveDirection = false, requiredEndPairs: readonly (readonly [boolean, boolean])[] = [],
+  state: { working?: PlanWorkingProduct } = {}): Generator<ConstructionPhase, PreparedScaffoldPlan, void> {
   yield 2
   const paths = drawingPaths(drawing)
   if (preserveDirection) for (const path of paths) {
@@ -891,6 +899,9 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
     for (const phase of CONSTRUCTION_PHASES) {
       if (phase !== 2) yield phase
       empty.advance(phase)
+      if (phase === 3) state.working = { members: [], decks: [], baseChannels: [] }
+      if (phase === 4) state.working!.posts = []
+      if (phase === 5) state.working!.aliases = new Map()
     }
     return { draft: empty.finish(), toPlan: result => result }
   }
@@ -907,10 +918,10 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
   for (const phase of CONSTRUCTION_PHASES) {
     if (phase !== 2) yield phase
     for (const construction of constructions) construction.advance(phase)
-    if (paths.length > 1 && phase === 3) {
+    if (phase === 3) {
       const members: ScaffoldMember[] = [], decks: DeckPanel[] = [], bases: BaseChannel[] = []
       paths.forEach((path, component) => {
-        const working = constructions[component].working(), prefix = `G${component}-`
+        const working = constructions[component].working(), prefix = paths.length > 1 ? `G${component}-` : ''
         const dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
         const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
         const edge = (index: number | undefined) => index === undefined ? undefined : path.edgeIndices[index]
@@ -924,8 +935,11 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
         })))
         bases.push(...working.baseChannels.map(base => ({ ...base, id: prefix + base.id, start: move(base.start), end: move(base.end), pathSegment: edge(base.pathSegment)! })))
       })
-      componentDemands = reconcileComponents(members, decks, bases, {})
-      componentDemands.bases = resolveSupportingBases(componentDemands.bases, componentDemands.members)
+      if (paths.length > 1) {
+        componentDemands = reconcileComponents(members, decks, bases, {})
+        componentDemands.bases = resolveSupportingBases(componentDemands.bases, componentDemands.members)
+        state.working = { members: componentDemands.members, decks: componentDemands.decks, baseChannels: componentDemands.bases }
+      } else state.working = { members, decks, baseChannels: bases }
     }
     if (paths.length > 1 && phase === 4) {
       const sequences = Object.fromEntries(constructions.flatMap((construction, component) =>
@@ -935,7 +949,18 @@ function* constructScaffoldPlan(drawing: PlanDrawing, parameters: ScaffoldParame
       }
       const adjacency = mergeSharedRuns(componentDemands!.members.filter(member => member.type === 'post' || member.layer === 1))
       componentStock = assemblePostsStage(adjacency, sequences, parameters)
+      state.working!.posts = componentStock.posts
     }
+    if (paths.length === 1 && phase === 4) {
+      const path = paths[0], dx = (path.points[0].x - origin.x) / PIXELS_PER_METER, dz = (path.points[0].y - origin.y) / PIXELS_PER_METER
+      const move = (p: Vector3Tuple): Vector3Tuple => [round(p[0] + dx), p[1], round(p[2] + dz)]
+      state.working!.posts = constructions[0].working().committed!.posts.map(post => ({ ...post,
+        segments: post.segments.map(pipe => ({ ...pipe, start: move(pipe.start), end: move(pipe.end) })) }))
+    }
+    if (phase === 5) state.working!.aliases = new Map(constructions.flatMap((construction, component) => {
+      const prefix = paths.length > 1 ? `G${component}-` : ''
+      return [...construction.working().aliases!].map(([id, alias]) => [prefix + id, prefix + alias] as const)
+    }))
   }
   // A normal connected outline needs exactly one domain calculation on mobile.
   if (paths.length === 1) {
