@@ -534,7 +534,7 @@ export const RULES: readonly RuleDefinition[] = [
   },
   {
     "id": "S01",
-    "revision": 1,
+    "revision": 2,
     "title": "标准规格组合覆盖所需长度，先最少根数再较小有效总长；横管居中分配余量，立杆自底向上",
     "status": "active",
     "implementation": "native",

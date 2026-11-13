@@ -1,6 +1,7 @@
 import { roundFixedMillimetre as round } from '../facts/precision.ts'
 import { DEFAULT_PARAMETERS, SPLICE_STAGGER, type ScaffoldMember, type ScaffoldParameters, type Vector3Tuple, type LayoutWarning, type PipeSegment, type PipeAssemblyPlan } from '../../scaffold.ts'
 import { Vector } from '../facts/vector.ts'
+import { memberUses } from '../facts/memberUses.ts'
 
 const vectorDistance = (a: Vector3Tuple, b: Vector3Tuple) => Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])
 
@@ -258,8 +259,23 @@ export function postStockWarnings(parameters: ScaffoldParameters): LayoutWarning
   }] : []
 }
 
-/** S01: request-local reuse only; stock order, overlap and selection objectives are unchanged. */
-export function assembleHorizontalRuns(members: ScaffoldMember[], parameters: ScaffoldParameters,
+/** S01 revision 2: tube order follows authored source direction, not world-axis sorting. */
+export const STOCK_FORWARD = Symbol('scaffold.stockForward')
+export function horizontalStockForward(member: ScaffoldMember): boolean {
+  const dx = member.end[0] - member.start[0], dz = member.end[2] - member.start[2]
+  const aligned = memberUses(member).filter(use => {
+    const ux = use.end[0] - use.start[0], uz = use.end[2] - use.start[2]
+    return Math.hypot(ux, uz) > 0.001 && Math.abs(dx * uz - dz * ux) < 0.001
+  }).map(use => ({ use, key: JSON.stringify([use.sectionId ?? '', use.spanId ?? '', use.pathSegment, use.purpose]) }))
+  // Source identities and interval lengths are unchanged by translation/rotation.
+  // Do not use coordinates, surviving display owner, or merge visitation order.
+  aligned.sort((a, b) => a.key.localeCompare(b.key)
+    || Math.hypot(b.use.end[0] - b.use.start[0], b.use.end[2] - b.use.start[2]) - Math.hypot(a.use.end[0] - a.use.start[0], a.use.end[2] - a.use.start[2]))
+  const use = aligned[0]?.use
+  return !use || dx * (use.end[0] - use.start[0]) + dz * (use.end[2] - use.start[2]) >= 0
+}
+/** S01 revision 2: reuse selected combinations locally; preserve overlap and selection objectives, orient stock from its authored source. */
+export function assembleHorizontalRuns(members: (ScaffoldMember & { [STOCK_FORWARD]?: boolean })[], parameters: ScaffoldParameters,
   sequences: Record<string, number[]>, memoize = true) {
   const cache = new Map<number, number[]>()
   const overlap = Math.max(0, Math.min(parameters.spliceOverlap, Math.min(...parameters.stockLengths) * 0.8))
@@ -269,6 +285,7 @@ export function assembleHorizontalRuns(members: ScaffoldMember[], parameters: Sc
       sequence = chooseStockLengths(member.length, parameters.stockLengths, overlap)
       if (memoize) cache.set(member.length, sequence)
     }
-    return createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap, sequence)
+    const forward = member[STOCK_FORWARD] ?? horizontalStockForward(member)
+    return createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap, forward ? sequence : [...sequence].reverse())
   })
 }

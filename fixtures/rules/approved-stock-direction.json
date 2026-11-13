@@ -1,0 +1,79 @@
+{
+  "id": "S01-source-direction-2026-11-13",
+  "rule": "S01",
+  "revision": 2,
+  "baseline": "803ba541f059b4e8133d1887512669743d6dcb03",
+  "approval": "用户确认：修正排列方向，使旋转后的实体一致；将此项登记为明确的旧版几何修正。",
+  "cases": [
+    {
+      "id": "adjacent-houses",
+      "inputSha256": "692c52d763934f536993c53cf69b3428754e70ef19bcf4666eb1f40dca05ba7a",
+      "reversedMembers": [
+        "R1/M24",
+        "R1/M25",
+        "R1/M26",
+        "R1/M33",
+        "R1/M35",
+        "R1/M36",
+        "R1/M37",
+        "R1/M44",
+        "R1/M45",
+        "R2/M76",
+        "R2/M84",
+        "R2/M475",
+        "R2/M481"
+      ]
+    },
+    {
+      "id": "adjacent-houses-independent",
+      "inputSha256": "83bd28652cac77ee01cda32248a81359af7ca3e79089c96a3ddbf4576db00848",
+      "reversedMembers": [
+        "R1/M24",
+        "R1/M25",
+        "R1/M26",
+        "R1/M33",
+        "R1/M35",
+        "R1/M36",
+        "R1/M37",
+        "R1/M44",
+        "R1/M45",
+        "R2/M73",
+        "R2/M81",
+        "R2/M472",
+        "R2/M478"
+      ]
+    },
+    {
+      "id": "adjacent-houses-two-rails",
+      "inputSha256": "1a88cc31c57ae5072a0fa259b77b71dfdcdae3205faf7490c0082c61a91d175f",
+      "reversedMembers": [
+        "R1/M24",
+        "R1/M25",
+        "R1/M26",
+        "R1/M33",
+        "R1/M34",
+        "R1/M37",
+        "R1/M38",
+        "R1/M39",
+        "R1/M46",
+        "R1/M47",
+        "R1/M48",
+        "R2/M84",
+        "R2/M92",
+        "R2/M521",
+        "R2/M527"
+      ]
+    },
+    {
+      "id": "adjacent-houses-rotated",
+      "inputSha256": "0cdfd6ad69aeed8dfa96928c4b4c859e2fbc236d6ffab10280a00a375448c009",
+      "reversedMembers": [
+        "R2/M42",
+        "R2/M44",
+        "R2/M45",
+        "R2/M76",
+        "R2/M84"
+      ]
+    }
+  ]
+}

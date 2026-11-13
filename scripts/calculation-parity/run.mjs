@@ -1,4 +1,5 @@
 import './loader.mjs'
+import { compareApprovedDirection } from './approved-direction.mjs'
 import { PERFORMANCE_POLICY } from './performance-evidence.mjs'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
@@ -11,6 +12,8 @@ const root = resolve(import.meta.dirname, '../..')
 const manifest = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/manifest.json'), 'utf8'))
 const large = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/performance/manifest.json'), 'utf8'))
 assert.equal(large.baseline, manifest.baseline, 'Large-scene baseline differs')
+const directionApproval = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/approved-stock-direction.json'), 'utf8'))
+assert.equal(directionApproval.baseline, manifest.baseline, 'Approved change baseline differs')
 const cases = [
   ...manifest.cases.map(id => ({ id, path: resolve(root, `fixtures/rules/${id}.json`), input: manifest.inputs[id], output: manifest.outputs[id] })),
   ...large.cases.map(id => ({ id, path: resolve(root, `fixtures/rules/performance/${id}.json`), input: large.inputs[id], output: large.outputs[id] })),
@@ -48,7 +51,7 @@ try {
       const oldResult = old.calculateSite(input.scene, input.parameters), currentResult = current.calculateSite(input.scene, input.parameters)
       assert(oldResult.canExportMaterials && currentResult.canExportMaterials, `${id}: benchmark must be a calculable project`)
       assert.equal(hash(JSON.stringify(oldResult)), fixture.output, `${id}: baseline output drift`)
-      assert.deepEqual(JSON.parse(JSON.stringify(currentResult)), JSON.parse(JSON.stringify(oldResult)))
+      compareApprovedDirection(JSON.parse(JSON.stringify(oldResult)), JSON.parse(JSON.stringify(currentResult)), fixture, directionApproval)
       const batchSize = id === 'roof' ? 20 : 1, warmupCalculations = id === 'roof' ? 1500 : 10
       for (let i = 0; i < warmupCalculations; i++) { old.calculateSite(input.scene, input.parameters); current.calculateSite(input.scene, input.parameters) }
       const samples = [[], []], engines = [old, current]
@@ -81,7 +84,7 @@ try {
     console.log(JSON.stringify(report, null, 2))
     assert(measurements.every(measurement => measurement.passed), 'Latency or memory budget exceeded; inspect artifacts/rule-migration/latency.json')
   }
-  const differences = [], passed = []
+  const differences = [], passed = [], approvedChanges = []
   for (const fixture of cases) {
     const { id } = fixture
     const text = readFileSync(fixture.path, 'utf8')
@@ -96,7 +99,11 @@ try {
     // references, warnings, issues, quantities and optional/unknown values.
     const baseline = JSON.parse(JSON.stringify(original)), candidate = JSON.parse(JSON.stringify(result))
     assert.equal(hash(JSON.stringify(baseline)), fixture.output, `${id}: old-engine replay drift`)
-    try { assert.deepEqual(candidate, baseline); passed.push(id) }
+    try {
+      const members = compareApprovedDirection(baseline, candidate, fixture, directionApproval)
+      if (members.length) approvedChanges.push({ id, approval: directionApproval.id, members })
+      passed.push(id)
+    }
     catch {
       const fields = [...new Set([...Object.keys(baseline), ...Object.keys(candidate)])].filter(key => {
         try { assert.deepEqual(candidate[key], baseline[key]); return false } catch { return true }
@@ -106,7 +113,7 @@ try {
       writeFileSync(resolve(reportDirectory, `${id}-after.json`), JSON.stringify(candidate))
     }
   }
-  writeFileSync(resolve(reportDirectory, 'differences.json'), JSON.stringify({ engineRevision, generatedAt: new Date().toISOString(), baseline: manifest.baseline, passed, differences }, null, 2))
-  console.log(JSON.stringify({ baseline: manifest.baseline, passed: passed.length, differences }, null, 2))
+  writeFileSync(resolve(reportDirectory, 'differences.json'), JSON.stringify({ engineRevision, generatedAt: new Date().toISOString(), baseline: manifest.baseline, passed, approvedChanges, differences }, null, 2))
+  console.log(JSON.stringify({ baseline: manifest.baseline, passed: passed.length, approvedChanges, differences }, null, 2))
   assert.equal(differences.length, 0, 'Calculation parity failed; inspect artifacts/rule-migration')
 } finally { rmSync(temporary, { recursive: true, force: true }) }

@@ -1,6 +1,6 @@
 {
   "date": "2026-11-13",
-  "sourceHash": "fdc8485185bdb98a503c2c56a369333baff00b97ed1ca7c33c0bb37ea59ef6b9",
+  "sourceHash": "78765c7376b64712c6e09b3905e7271907e2f27cfaed3a7918337e463fa9ba3a",
   "sourceFiles": [
     {
       "path": "guardrails.ts",
@@ -56,7 +56,7 @@
     },
     {
       "path": "rules/catalog.ts",
-      "sha256": "77fab58b1af0f4c6aef9930b4f313d5111810aafd68809e2e3961a6c4609056d"
+      "sha256": "43729289c62c1364c69c77848561b102901597ba4875ba951ff0fcdda5338c23"
     },
     {
       "path": "rules/components.ts",
@@ -76,7 +76,7 @@
     },
     {
       "path": "rules/diagnostics/build.ts",
-      "sha256": "b6d5e03eb2435372d715c5debd596cf39918601c16043049387bfefb553c23c5"
+      "sha256": "e060b531ea036d7b919aeb75047f044bfe77e01b95f12867b41e8441517bcccd"
     },
     {
       "path": "rules/diagnostics/editor.ts",
@@ -280,7 +280,7 @@
     },
     {
       "path": "rules/policies/stock.ts",
-      "sha256": "bea12fe0f748b39822e279c94c59d905f6618811e37e75abcea6d294b6fa1ce7"
+      "sha256": "0aa4ce6f5fe869c2140748286e430b905a65e6203ff48ccfe34bba1ce7937ecf"
     },
     {
       "path": "rules/policies/topology.ts",
@@ -320,7 +320,7 @@
     },
     {
       "path": "rules/stock.ts",
-      "sha256": "c0fe2e201617d67f3b5580c18c18283c427200d49ee972af6d725e515ab08a38"
+      "sha256": "b55d0a982f49b41f1fbf7bacbe0867e8d995981cf56257a5113e0665de2d4f3d"
     },
     {
       "path": "rules/topology.ts",

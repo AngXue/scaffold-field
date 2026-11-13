@@ -1,6 +1,6 @@
 import { VERIFY_RULE_INPUTS } from './runtime.ts'
 import type { ScaffoldMember, ScaffoldParameters, LayoutWarning } from '../scaffold.ts'
-import { postStocks, repairPostSplices, createPipeAssembly, assembleHorizontalRuns } from './policies/stock.ts'
+import { postStocks, repairPostSplices, createPipeAssembly, assembleHorizontalRuns, horizontalStockForward, STOCK_FORWARD } from './policies/stock.ts'
 import { RULES } from './catalog.ts'
 import { compilePipeline } from './pipeline.ts'
 import type { RuleStep, Proposal } from './contracts.ts'
@@ -115,7 +115,10 @@ export function resolvePostSequences(members: ScaffoldMember[], sequences: Recor
 export function assembleStockStage(members: ScaffoldMember[], sequences: Record<string, number[]>, parameters: ScaffoldParameters, fixed = false, prebuiltPosts?: Assembly[]) {
   if (!members.length) return { assemblies: [], warnings: [] }
   // Stock consumes geometry and ties, not a second copy of the provenance graph.
-  const demands = members.map(({ id, type, start, end, length, layer, connectionPoints }) => ({ id, type, start, end, length, layer, connectionPoints }))
+  const demands = members.map(member => {
+    const { id, type, start, end, length, layer, connectionPoints } = member
+    return { id, type, start, end, length, layer, connectionPoints, [STOCK_FORWARD]: type === 'post' || horizontalStockForward(member) }
+  })
   if (prebuiltPosts && !fixed) throw new Error('Committed upright inputs cannot request reselection')
   const { facts } = prebuiltPosts
     ? runCommitted({ members: demands, sequences, parameters, fixed: true, prebuiltPosts, repaired: { sequences, warnings: [] } })
