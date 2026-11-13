@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { tmpdir } from 'node:os'
+import { verificationFingerprint } from './calculation-parity/verification-fingerprint.mjs'
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const browser = await chromium.launch({
@@ -11,7 +12,9 @@ const browser = await chromium.launch({
 const base = process.env.SITE_URL || 'http://127.0.0.1:5182/'
 const output = resolve(process.env.SITE_QA_OUTPUT || resolve(tmpdir(), 'scaffold-site-qa'))
 await mkdir(output, { recursive: true })
-const report = { url: base, checks: [] }
+const sourceFingerprint = verificationFingerprint()
+const expectedEngine = /['"]([a-f0-9]{64})['"]/.exec(await readFile(new URL('../src/domain/rules/diagnostics/build.ts', import.meta.url), 'utf8'))[1]
+const report = { url: base, sourceFingerprint, checks: [] }
 const errors = []
 const watch = page => {
   page.on('pageerror', e => errors.push(e.message))
@@ -453,6 +456,19 @@ try {
     await context.close()
   }
   assert.deepEqual(errors, [])
+  // Bind the real served engine, not merely the source version on disk. This
+  // exports diagnostics from the existing page without writing its saved input.
+  const proof = await browser.newPage(); watch(proof)
+  await proof.goto(base)
+  await load(proof, 'roof')
+  await materials(proof).click()
+  await proof.getByLabel('导出项目数据', { exact: true }).click()
+  const diagnostic = JSON.parse(await downloadText(proof, proof.getByRole('button', { name: '导出计算诊断' })))
+  assert.equal(diagnostic.meta.engineRevision, expectedEngine, 'Served engine differs from tested sources')
+  report.engineRevision = diagnostic.meta.engineRevision
+  await proof.close()
+  assert.deepEqual(errors, [])
+  assert.equal(verificationFingerprint(), sourceFingerprint, 'Sources changed during browser acceptance')
   report.status = 'passed'
   await writeFile(resolve(output, 'report.json'), JSON.stringify(report, null, 2) + '\n')
   console.log(JSON.stringify({ ...report, output }, null, 2))

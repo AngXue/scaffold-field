@@ -1,0 +1,1175 @@
+{
+  "version": 1,
+  "rows": [
+    {
+      "id": "T01",
+      "title": "空图及旧参数",
+      "rules": [
+        "I01",
+        "O03"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/project.test.ts",
+          "title": "fills absent fields with the new defaults and keeps explicitly saved earlier specifications",
+          "count": 1
+        },
+        {
+          "file": "src/domain/project.test.ts",
+          "title": "adds the newly available stocks without resetting project choices",
+          "count": 1
+        },
+        {
+          "file": "src/domain/project.test.ts",
+          "title": "retains height and row migrations and discards the removed guardrail setting",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "uses the new defaults through the normal scaffold entry point",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "uses the confirmed field stock lengths",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "accepts legacy parameter objects without newly added fields",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "accepts an empty canvas without generating any purchased materials",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T02",
+      "title": "层高边界与独立目标",
+      "rules": [
+        "I02",
+        "I04",
+        "I05",
+        "V02"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "自动识别落脚面的一面可独立设层，存档及历史保留独立设置",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "改全局目标会重算现有自动笔画和启用跟随的手选面，保留手填层数",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "判定边界只用毫米，首层严格高于落脚面",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "修正窄顶面后恢复；扫地杆冲突仍保留原首层",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T03",
+      "title": "凹形与叠放",
+      "rules": [
+        "I03",
+        "G02",
+        "V01",
+        "V03"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/siteFootprints.test.ts",
+          "title": "keeps the concave boundary and its actual area instead of filling the bounding box",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteFootprints.test.ts",
+          "title": "rejects diagonal edges and crossing or open boundaries",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteFootprints.test.ts",
+          "title": "checks support across a U-shaped notch even when both endpoints are on the roof",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteFootprints.test.ts",
+          "title": "allows a separate block in the notch and checks the actual parent top for stacking",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteFootprints.test.ts",
+          "title": "scales and moves every outline vertex and preserves it in the scene file",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteFootprints.test.ts",
+          "title": "checks house penetration and roof footing using the true footprint",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteFootprints.test.ts",
+          "title": "routes only across the filled leg of a concave roof",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "叠放体块随父体块升高，已填写的层数不被覆盖",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "底座中心线在屋顶内时，仍检查 48 mm 翼缘是否悬空",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "同一父子关系不能循环，缺失的顶面不退回地面",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T04",
+      "title": "平地转角及短折返",
+      "rules": [
+        "G03",
+        "G08",
+        "G09",
+        "M01",
+        "M02",
+        "M03",
+        "M04",
+        "M05",
+        "M06",
+        "M07",
+        "M08"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "shares short-return corner posts using the neighbouring extended run",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "does not leave the old endpoint beside a corner when the short return is just wider than the row",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps a straight split station and shares its continuous tubes",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "closes both inward and outward rectangular corners",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps short corner stations instead of creating a one-leg mitre",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "cuts duplicate corner coverage without counting cut faces as extra panels",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "shares coincident runs before assembling stock and counting ties",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "passes all configurations and splice checks for user-short-returns",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "adds a third deck support rail without adding posts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "buys the 1.2 m site tube for the 横向杆 and lets it overhang the 排距",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "adds a 扫地杆 layer with horizontal members but no deck and no support rails",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "only carries deck support rails on lifts that actually have a deck",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "lays one 槽钢 under each pair of posts, aligned with the 1.2 m 横向杆",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "does not duplicate a 槽钢 when two path segments share a corner",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "builds an open end's two posts to the railed height so the top return closes",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "runs the corner band as one channel direction and one 填芯 length",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "leaves no run hanging at a junction",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T05",
+      "title": "屋顶单跨独立手算",
+      "rules": [
+        "M01",
+        "M02",
+        "M03",
+        "M04",
+        "M05",
+        "M07",
+        "P01",
+        "P02",
+        "S01",
+        "S02",
+        "C01",
+        "C02",
+        "O01"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "3.50 m 屋顶单跨：按两排、两站、两道防护手算所有钢管和扣件",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "同一个屋顶改为 3 层：四根 6.50 m 立杆各由两段定尺管组成",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T06",
+      "title": "正面与花园齐顶",
+      "rules": [
+        "I04",
+        "P05",
+        "O01"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "0 m 正面与 3.50 m 花园齐顶，独立架段的数量可相加",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T07",
+      "title": "左侧走廊及默认墙距",
+      "rules": [
+        "G01",
+        "G02",
+        "G04",
+        "P04",
+        "P05"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "居中走廊：前左共角，左侧三段 5 / 4 / 5 层，四段齐顶",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "贴墙反向落笔和交换绘制顺序，仍使用同一个外侧转角",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "按全局层交替铺板时，两种落脚面在同一层铺板和接通",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "房屋任一边的外排都在墙外",
+          "count": 4
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "未贴墙的自动地面线也能跨越完整覆盖两排柱脚的顶面",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "纵距缩为 1.50 m 时按上限增加走廊柱位",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "手选地面沿任一外墙落笔自动朝外退墙",
+          "count": 4
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "沿墙识别不依赖内外侧参数，不对已退墙的自由架段重复偏移",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "手选地面沿墙仍保留当地落脚语义，跨走廊需自动识别落脚面",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T08",
+      "title": "双屋原图及屋顶接入口",
+      "rules": [
+        "G05",
+        "G06",
+        "G07",
+        "G08"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "splits only the requested range while retaining connection endpoints and group membership",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "routes the supplied 14-section scene onto both ground and B2 and joins its shared roof corner",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "keeps quantities when the complete supplied scene rotates and translates",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "calculates the generated whole perimeter with one common target",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "anchors both B2 roof approaches 1.80 m from the connected lower post pairs",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "uses configured 1.5 m spacing for terminal roof approaches",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "uses configured 2 m spacing for terminal roof approaches",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T09",
+      "title": "内外角及不同层栏杆",
+      "rules": [
+        "P01",
+        "P02",
+        "P03",
+        "M03"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/guardrails.test.ts",
+          "title": "ends inward corner guards at the shared post, keeps the supporting longitudinals full, and moves stock surplus outside",
+          "count": 1
+        },
+        {
+          "file": "src/domain/guardrails.test.ts",
+          "title": "keeps outward guard crossings the same length as the outer supporting rails",
+          "count": 1
+        },
+        {
+          "file": "src/domain/guardrails.test.ts",
+          "title": "retains end protection above the adjacent face when lift counts differ",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "puts a single rail 居中 in the 步距 instead of at the 1.2 m edge",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "lays one 居中 rail per guarded side by default and both rails when asked",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "puts the top rail 1.2 m above the 作业层 and the mid rail centred below it",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "gives the top lift one more rail course than the lifts below",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "caps a deckless top lift with the 架顶栏杆",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "returns the rails across an open end, but not a closed one",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "drops a rail that would land on the next lift horizontal",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "整管余量及避墙约束",
+      "rules": [
+        "P08",
+        "S04",
+        "C02"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/guardrails.test.ts",
+          "title": "moves both pipes and their butt fitting together without shortening purchased stock",
+          "count": 1
+        },
+        {
+          "file": "src/domain/guardrails.test.ts",
+          "title": "allows unavoidable intrusion at both ends and never cuts or removes the guard",
+          "count": 1
+        },
+        {
+          "file": "src/domain/guardrails.test.ts",
+          "title": "does not trade walkway intrusion for a pipe through a house",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/placement.test.ts",
+          "title": "the walkway objective cannot undo the transition clearance; surplus remains when the hard constraint needs it",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/placement.test.ts",
+          "title": "no common legal position is explicit, keeps whole stock and never fabricates a new short specification",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/placement.test.ts",
+          "title": "does not treat the guard search margin as a new mandatory axial wall clearance",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/placement.test.ts",
+          "title": "the solver leaves all input entities unchanged and translating the scene preserves its selected displacement",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "S1 上层连续及邻面保留",
+      "rules": [
+        "P03",
+        "P05",
+        "P06",
+        "P07",
+        "M08"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "keeps every S1 upper guard continuous across the height change with 1 rail courses",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "keeps every S1 upper guard continuous across the height change with 2 rail courses",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T12",
+      "title": "库存错缝实际扣件与未知项",
+      "rules": [
+        "S01",
+        "S02",
+        "S03",
+        "C01",
+        "C02",
+        "C03",
+        "P07"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "reports when the available stock cannot satisfy splice staggering",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "counts the two main-node ties, intermediate supports and end rails independently",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "removes phantom corner ties and only ties fill-in rails where a transverse exists",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps a real unique member pair and perpendicular axes for each cross coupler",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "counts one sleeve per physical pipe joint and gives it the tube axis",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "ties rails carried by surplus stock above a short post’s theoretical top",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "staggers the butt joints of neighbouring posts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "excludes wall ties and leaves braces pending outside the layout",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "never places a rail above the posts that carry it",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "lists the site materials outside the calculation with an unknown quantity",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "flags a lap joint, which needs 旋转扣件 rather than 对接扣件",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "uses 5 m and 3.5 m for horizontal runs while excluding 5 m from all post assemblies",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "never falls back to 5 m uprights when a saved inventory has no permitted post size",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T13",
+      "title": "阻断及提醒图纸",
+      "rules": [
+        "V01",
+        "V02",
+        "V03",
+        "V04"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "跨高差补出的杆件与独立架体相交时，定位相关笔画并拦截出量",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "草图 narrow 保留定位并阻止出量",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "草图 step 保留定位并阻止出量",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "草图 sweep 保留定位并阻止出量",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "草图 penetration 保留定位并阻止出量",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "草图 overlap 保留定位并阻止出量",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "修正窄顶面后恢复；扫地杆冲突仍保留原首层",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "高差场景不足 0.10 m 的原段或交点碎段不会被自动拉长出量",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "底座中心线在屋顶内时，仍检查 48 mm 翼缘是否悬空",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "关闭扫地杆也不会让紧贴顶面的作业杆穿屋而通过",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "warns about self crossings and backtracking without fabricating a new junction rule",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "merges shared branch posts and explicitly flags unspecified junction details",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T14",
+      "title": "输入输出人工修正及网页 CSV",
+      "rules": [
+        "O01",
+        "O02",
+        "O03",
+        "O04"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/history.test.ts",
+          "title": "labels a record with what the site recognises",
+          "count": 1
+        },
+        {
+          "file": "src/domain/history.test.ts",
+          "title": "keeps the newest first and never stores the same project twice in a row",
+          "count": 1
+        },
+        {
+          "file": "src/domain/history.test.ts",
+          "title": "caps the history at 100 records, dropping the oldest",
+          "count": 1
+        },
+        {
+          "file": "src/domain/history.test.ts",
+          "title": "deletes one record by id and leaves the rest alone",
+          "count": 1
+        },
+        {
+          "file": "src/domain/history.test.ts",
+          "title": "reads back what it wrote, and tolerates anything else",
+          "count": 1
+        },
+        {
+          "file": "src/domain/history.test.ts",
+          "title": "shows a short timestamp for a list row",
+          "count": 1
+        },
+        {
+          "file": "src/domain/history.test.ts",
+          "title": "restores explicit disconnected edges and an intentionally blank saved drawing",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/boundaries/outputs.test.ts",
+          "title": "saves invalid drafts with original references and manual deltas, but cannot export an OA material result",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/boundaries/outputs.test.ts",
+          "title": "exports only the existing OA whitelist and reproduces the legacy kernel output",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/boundaries/outputs.test.ts",
+          "title": "uses the same 0.7 boundary for projects and defaults; history retains height dependencies and independent layer choices",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/materials.test.ts",
+          "title": "production quantities are derived from a unique physical ledger and reject invalid references",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/materials.test.ts",
+          "title": "manual corrections change only displayed quantities while swivel stays unknown",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "sorts manually added pipe sizes by length and includes them in the displayed total",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "adjusts couplers one bag at a time while preserving individual-unit corrections",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "clamps a final partial bag at zero without leaving hidden negative quantities",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "shares the measured path perimeter and segment numbers between both views",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "does not close an open perimeter and counts an explicitly closed path once",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "迁移原平地 1 段：测量、构件和材料与旧入口一致",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "迁移原平地 2 段：测量、构件和材料与旧入口一致",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "迁移原平地 4 段：测量、构件和材料与旧入口一致",
+          "count": 1
+        },
+        {
+          "file": "src/domain/site.test.ts",
+          "title": "0.7 存档和历史保留体块、架段以及修正量，参数变化不改已画段",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "T15",
+      "title": "运行器与规则合同",
+      "rules": [],
+      "assertions": [
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "catalog identifies every existing rule without claiming adapter migration complete",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "commits privately, leaves input intact and trace cannot change result",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "rejects duplicate rules, invalid revisions and unknown step ownership",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "does not run draft/retired rules and rejects their use as active dependencies",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "rejects absent, cyclic and backwards dependencies",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "resolves forward dependencies even with reversed registration",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "deduplicates identical writes, rejects competing writes without committing",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "blocks nested mutations and exposes only declared inputs",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "rejects stale proposals and unauthorized proposal kinds",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "preserves not-applicable reasons and propagates rejection without touching input",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "preserves and freezes symbol-keyed provenance instead of silently dropping it",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "rejects mutable collection containers instead of offering a false readonly contract",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "compares proposal values independent of property order and includes symbol origins",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "development verification and production execution commit identical outputs",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "advances committed phases without replaying earlier rules or publishing future facts",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/pipeline.test.ts",
+          "title": "rejects recovery of a failed phase and retains the last published immutable stage",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/diagnostics/session.test.ts",
+          "title": "portable fingerprints match an independent SHA-256 implementation",
+          "count": 4
+        },
+        {
+          "file": "src/domain/rules/diagnostics/session.test.ts",
+          "title": "fingerprints ignore object property order but retain array order and absent-vs-undefined fields",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/diagnostics/session.test.ts",
+          "title": "records a fixed input and implementation version without changing the existing project JSON",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/diagnostics/session.test.ts",
+          "title": "height, width, inventory and layer changes invalidate the complete input fingerprint",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/diagnostics/session.test.ts",
+          "title": "a failed or nested calculation cannot leak tracing into the next request",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/diagnostics/session.test.ts",
+          "title": "explicit local diagnostics contain the entity-to-material chain and remain separate from project formats",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/lineage.test.ts",
+          "title": "rejects dangling, cyclic and contradictory replacement ancestry",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/lineage.test.ts",
+          "title": "keeps both ends of every interval replacement in the same transformed coordinate frame",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberUses.test.ts",
+          "title": "merges separate purposes without mutating the bridge validation snapshot",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberUses.test.ts",
+          "title": "roof: every physical contribution is unique and matches the computed BOM",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberUses.test.ts",
+          "title": "corridor: every physical contribution is unique and matches the computed BOM",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberUses.test.ts",
+          "title": "adjacent-houses: every physical contribution is unique and matches the computed BOM",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberUses.test.ts",
+          "title": "legacy: every physical contribution is unique and matches the computed BOM",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberUses.test.ts",
+          "title": "detects dangling references and duplicate contributions instead of silently counting",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberUses.test.ts",
+          "title": "S1 upper guards retain support-span origins after merging, clipping and rotating (1 courses)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/facts/memberUses.test.ts",
+          "title": "S1 upper guards retain support-span origins after merging, clipping and rotating (2 courses)",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/stock.test.ts",
+          "title": "request-local stock memoization equals uncached selection and cannot leak across inventories or overlaps",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "K01",
+      "title": "接入口完整柱对与转角规则",
+      "rules": [
+        "G05",
+        "G08",
+        "G09",
+        "P05"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "anchors both B2 roof approaches 1.80 m from the connected lower post pairs",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "uses configured 1.5 m spacing for terminal roof approaches",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "uses configured 2 m spacing for terminal roof approaches",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "K02",
+      "title": "短角连接及合并后局部开口",
+      "rules": [
+        "P03",
+        "P05",
+        "P06",
+        "M08"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "keeps every S1 upper guard continuous across the height change with 1 rail courses",
+          "count": 1
+        },
+        {
+          "file": "src/domain/siteEditing.test.ts",
+          "title": "keeps every S1 upper guard continuous across the height change with 2 rail courses",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "K03",
+      "title": "独立层数与同层防护",
+      "rules": [
+        "I05",
+        "P02",
+        "P03",
+        "P05"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/rules/acceptanceCombinations.test.ts",
+          "title": "K03 I05 + P02/P03/P05: a three-lift front keeps the five-lift side and its roof connections protected",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "K04",
+      "title": "通道优化整管定位与对接扣",
+      "rules": [
+        "P08",
+        "S04",
+        "C02"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/rules/placement.test.ts",
+          "title": "the walkway objective cannot undo the transition clearance; surplus remains when the hard constraint needs it",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/placement.test.ts",
+          "title": "no common legal position is explicit, keeps whole stock and never fabricates a new short specification",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/placement.test.ts",
+          "title": "does not treat the guard search margin as a new mandatory axial wall clearance",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/placement.test.ts",
+          "title": "the solver leaves all input entities unchanged and translating the scene preserves its selected displacement",
+          "count": 1
+        },
+        {
+          "file": "src/domain/guardrails.test.ts",
+          "title": "moves both pipes and their butt fitting together without shortening purchased stock",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "K05",
+      "title": "钢笆裁片拼缝仍为通道内部",
+      "rules": [
+        "M06",
+        "P08"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/rules/acceptanceCombinations.test.ts",
+          "title": "K05 M06 + P08: cut panel seams remain inside the walkway and do not change the chosen whole-pipe position",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "K06",
+      "title": "禁用规格错缝与真实接头",
+      "rules": [
+        "S02",
+        "S03",
+        "C02"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/rules/acceptanceCombinations.test.ts",
+          "title": "K06 S02 + S03 + C02: repaired upright stock excludes 5m and its real sleeves remain staggered and exactly counted",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "K07",
+      "title": "材料增量存档不污染计算",
+      "rules": [
+        "O02",
+        "O03",
+        "O01"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/rules/acceptanceCombinations.test.ts",
+          "title": "K07 O02 + O03 + O01: manual deltas survive project and history round trips without becoming geometry or calculation input",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "K08",
+      "title": "平移旋转闭合起点及可交换顺序",
+      "rules": [
+        "S01",
+        "M08",
+        "O01"
+      ],
+      "assertions": [
+        {
+          "file": "src/domain/rules/acceptanceCombinations.test.ts",
+          "title": "K08 corridor: translating and rotating preserves all physical entities at millimetre precision",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/acceptanceCombinations.test.ts",
+          "title": "K08 adjacent-houses: translating and rotating preserves all physical entities at millimetre precision",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/acceptanceCombinations.test.ts",
+          "title": "K08 exchangeable independent strokes preserve physical geometry and materials when their drawing order changes",
+          "count": 1
+        },
+        {
+          "file": "src/domain/scaffold.test.ts",
+          "title": "keeps closed geometry and stock quantities independent of the drawing start",
+          "count": 1
+        },
+        {
+          "file": "src/domain/rules/stockDirection.test.ts",
+          "title": "S01 revision 2 keeps a hand-checked 5m + 3.5m run tied to source direction under all quarter turns and merge visitation orders",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "browserChecks": [
+    "Desktop: draw a house, edit height, choose its roof, draw a 4-lift run, save and reload",
+    "L-shaped outline: live snapped lengths, fixed edge labels, zoom, undo/cancel and closure; stacked height, save/reload, JSON and 3D work",
+    "3D canvas and house visibility; hand-checked aligned materials match CSV and 0.7 JSON",
+    "One roof bay matches the independent stock and connector counts; three lifts add exactly four butt couplers",
+    "Exact layer boundary and four additional invalid drawings have the expected levels or blocking reasons",
+    "Invalid footing blocks materials/print/CSV, draft still exports; fixing width restores totals",
+    "Parent height recalculates four lifts after undo and save/reload; closed legacy Demo retains its perimeter",
+    "Corridor: two near-wall strokes snap, preview and connect above the roof; save/reload, CSV and 3D match; house drag and stacking",
+    "Old 0.6 local project opens on ground and retains its count in OA export",
+    "Tablet 1152×680: touch drawing and dragging, pinch cancellation, 3D and BOM fit",
+    "Tablet 720×1110: touch drawing and dragging, pinch cancellation, 3D and BOM fit"
+  ]
+}

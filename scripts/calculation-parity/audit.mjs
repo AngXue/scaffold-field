@@ -2,6 +2,8 @@ import './loader.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { performanceEvidence } from './performance-evidence.mjs'
+import { acceptanceEvidence } from './acceptance-evidence.mjs'
+import { verificationFingerprint } from './verification-fingerprint.mjs'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 const root = resolve(import.meta.dirname, '../..')
@@ -56,12 +58,19 @@ const fixtures = ['roof', 'corridor', 'adjacent-houses', 'wall-stroke', ...large
 const reportPath = resolve(root, 'artifacts/rule-migration/latency.json')
 const performanceAcceptance = performanceEvidence(existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : undefined,
   { engineRevision: ENGINE_REVISION, baseline, fixtures })
+const readEvidence = name => {
+  const path = resolve(root, `artifacts/rule-migration/${name}.json`)
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : undefined
+}
+const matrixAcceptance = acceptanceEvidence(JSON.parse(readFileSync(resolve(root, 'fixtures/rules/acceptance-matrix.json'), 'utf8')),
+  readEvidence('acceptance-tests'), readEvidence('acceptance-browser'),
+  { root, sourceFingerprint: verificationFingerprint(), engineRevision: ENGINE_REVISION, rules: RULES.map(rule => rule.id) })
 const summary = { rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
   boundaries: RULES.filter(rule => rule.implementation === 'boundary').length,
   adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size, partialRuleOwners: [...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'legacy-adapter'),
-  scope: 'live package-local DAGs and boundaries; complete global pipeline still pending', performanceAcceptance,
+  scope: 'live package-local DAGs and boundaries; complete global pipeline still pending', performanceAcceptance, matrixAcceptance,
   pendingAcceptance: ['global S0-S9 orchestration without compatibility rebuilds', 'stable entity identities and full derivedFrom/replacedBy lineage',
-    'complete T01-T15 combination evidence', ...(!performanceAcceptance.accepted ? ['paired 50/200-segment latency and memory budgets'] : []), 'rollback rehearsal and final production acceptance'] }
+    ...(!matrixAcceptance.accepted ? ['complete T01-T15 combination evidence'] : []), ...(!performanceAcceptance.accepted ? ['paired 50/200-segment latency and memory budgets'] : []), 'rollback rehearsal and final production acceptance'] }
 console.log(JSON.stringify(summary, null, 2))
 if (process.argv.includes('--complete')) {
   assert.equal(summary.adaptersRemaining, 0, 'Complete migration gate: legacy calculation adapters remain')

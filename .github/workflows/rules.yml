@@ -1,0 +1,58 @@
+name: Calculation regression
+on:
+  push:
+    branches: [main, codex/rule-framework]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: calculation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the independent frozen engine is read from its original commit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.0
+          cache: npm
+      - run: npm ci
+      - run: npm run test:rules -- --domain-only
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run test:parity
+      - run: npm run audit:geometry
+      - name: Install isolated browser tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/scaffold-browser" --no-save @playwright/test@1.64.1
+          node "$RUNNER_TEMP/scaffold-browser/node_modules/@playwright/test/cli.js" install --with-deps chromium
+      - name: Production exports and tablet browser acceptance
+        shell: bash
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 5183 --strictPort > "$RUNNER_TEMP/scaffold-preview.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:5183/ > /dev/null; then break; fi
+            sleep 1
+          done
+          export PLAYWRIGHT_MODULE="$RUNNER_TEMP/scaffold-browser/node_modules/@playwright/test/index.mjs"
+          export SITE_URL=http://127.0.0.1:5183
+          export SITE_QA_OUTPUT="$RUNNER_TEMP/scaffold-browser-qa"
+          node scripts/site-browser.mjs
+          npm run test:rules -- --check --browser-report="$SITE_QA_OUTPUT/report.json"
+          npm run audit:rules
+      - name: Preserve reproducible evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: calculation-evidence
+          path: |
+            artifacts/rule-migration/
+            docs/geometry-audit/results.json
+            ${{ runner.temp }}/scaffold-browser-qa/
+            ${{ runner.temp }}/scaffold-preview.log
