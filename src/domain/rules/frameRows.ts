@@ -48,7 +48,11 @@ const run = compilePipeline<Facts, Change>(RULES, FRAME_ROW_STEPS, (facts, propo
     case 'GuardRanges': result = { ...result, guards: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // These pure policies read calculation-owned facts and allocate their changes.
+  // Development still clones/freezes the full snapshot to verify that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function startFrameRows(physical: PlanPoint[], stations: AlignedStations, corners: CornerTopology, counts: number[], closed: boolean, parameters: ScaffoldParameters) {
   const stage = run.start({ physical, stations, corners, counts, closed, width: parameters.width,
     supportCount: Math.max(2, Math.round(parameters.deckSupportRailCount)), outerRow: parameters.swapInnerOuter ? 1 : 0 })

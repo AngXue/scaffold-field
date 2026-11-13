@@ -685,6 +685,14 @@ export function prepareScaffoldAssembly(draft: ScaffoldDraft) {
   return { draft: { ...draft, members, baseChannels, warnings: [...draft.warnings, ...stock.warnings], postSequences: stock.sequences }, posts: stock.posts }
 }
 
+/** Complete an unchanged prepared scope without merging the same members twice. */
+export function finishPreparedScaffoldAssembly(prepared: ReturnType<typeof prepareScaffoldAssembly>): ScaffoldAssembly {
+  const { draft, posts } = prepared
+  return assembleLayout(draft.members.map(member => ({ ...member })), draft.decks.map(deck => ({ ...deck })), draft.baseChannels.map(base => ({ ...base })),
+    [...draft.warnings], draft.parameters, new Map(Object.entries(draft.postSequences)), draft.pathDimensions.map(dimension => ({ ...dimension })),
+    { ...draft.postHeights }, true, posts, true)
+}
+
 /** Preserve the existing local splice preference pass without allocating horizontal stock or quantities. */
 function prepareComponentDraft(draft: ScaffoldDraft): ScaffoldDraft {
   const members = mergeMemberStage(draft.members)
@@ -698,11 +706,11 @@ function prepareComponentDraft(draft: ScaffoldDraft): ScaffoldDraft {
 function assembleLayout(
   members: ScaffoldMember[], decks: DeckPanel[], baseChannels: BaseChannel[],
   warnings: LayoutWarning[], parameters: ScaffoldParameters, postSequences: Map<string, number[]>,
-  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'], fixedPostsAndBases = false, prebuiltPosts?: StockAssembly[],
+  pathDimensions: PathDimension[], postHeights: MaterialResult['postHeights'], fixedPostsAndBases = false, prebuiltPosts?: StockAssembly[], alreadyMerged = false,
 ): ScaffoldAssembly {
   // Merge collinear shared runs before stock assembly and coupler counting.
   // This keeps all three views on the same physical quantities.
-  members = mergeMemberStage(members)
+  if (!alreadyMerged) members = mergeMemberStage(members)
   // A relocated station may now carry a mitre that already had its own beam.
   // Remove a beam only when ALL of its posts are carried by one other beam;
   // never join beams into a longer piece or leave a post without a base.

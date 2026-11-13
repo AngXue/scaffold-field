@@ -26,7 +26,7 @@ const run = compilePipeline<ConnectionFacts, ConnectionProposal>(RULES, CONNECTI
   }
   return { ...facts, connectors } as ConnectionFacts
 }, { verifyImmutability: VERIFY_RULE_INPUTS,
-  snapshot: input => ({ ...input, tops: { ...input.tops }, parameters: { ...input.parameters },
+  snapshot: input => !VERIFY_RULE_INPUTS ? input : ({ ...input, tops: { ...input.tops }, parameters: { ...input.parameters },
     members: input.members.map(({ id, type, start, end, length, layer, roles, connectionPoints }) => ({ id, type, start: [...start], end: [...end], length, layer,
       roles: roles && [...roles], connectionPoints: connectionPoints.map(point => [...point]) })) }),
 })

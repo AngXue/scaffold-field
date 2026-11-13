@@ -1,0 +1,18 @@
+{
+  "baseline": "803ba541f059b4e8133d1887512669743d6dcb03",
+  "cases": [
+    "orthogonal-50",
+    "orthogonal-200",
+    "multi-elevation-24"
+  ],
+  "inputs": {
+    "orthogonal-50": "f4e1a50a5f07ac07340423a2ee0b3f74e446eb76aad800c859f68a36fe452a58",
+    "orthogonal-200": "4075956c0199540e13351776b1f5cf9866462f0d06ea684b19896703c37000e5",
+    "multi-elevation-24": "e836cada6ae51ace49575b8f230f73e522b8865bd21fabafcdfb85286edc8b64"
+  },
+  "outputs": {
+    "orthogonal-50": "f327d595601190c73b497c80096e61f60d2355282a56f3452984fea139b6383e",
+    "orthogonal-200": "36d4ae6415446ae1e1a67a25052caed4738e69bb55e709cac92c5855c0cb5b9a",
+    "multi-elevation-24": "89ae1e10059a8b7a7d857cf6f05ba6c4a4e47e5b81a07fdadbc1151254c9c836"
+  }
+}

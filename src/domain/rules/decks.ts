@@ -28,7 +28,11 @@ const run = compilePipeline<Facts, Change>(RULES, DECK_STEPS, (facts, proposals)
     }
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // These pure policies read calculation-owned facts and allocate their changes.
+  // Development still clones/freezes the full snapshot to verify that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function resolveDecks(input: Omit<Facts, 'candidates' | 'panels'>): DeckPanel[] {
   return run(input).facts.panels!.map(panel => ({ ...panel })) as DeckPanel[]
 }

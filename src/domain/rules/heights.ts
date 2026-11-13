@@ -38,7 +38,11 @@ const run = compilePipeline<Facts, Change>(RULES, HEIGHT_STEPS, (facts, proposal
     case 'SupportedCourses': result = { ...result, courses: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // These pure policies read calculation-owned facts and allocate their changes.
+  // Development still clones/freezes the full snapshot to verify that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 
 export function startHeightStages(parameters: ScaffoldParameters, segmentCounts: readonly number[], localLifts: readonly number[] | undefined,
   deckLayerOffset: number, trace = false) {

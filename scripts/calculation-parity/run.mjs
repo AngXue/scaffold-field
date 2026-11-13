@@ -1,6 +1,6 @@
 import './loader.mjs'
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
@@ -8,6 +8,23 @@ import { pathToFileURL } from 'node:url'
 import { createHash } from 'node:crypto'
 const root = resolve(import.meta.dirname, '../..')
 const manifest = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/manifest.json'), 'utf8'))
+const large = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/performance/manifest.json'), 'utf8'))
+assert.equal(large.baseline, manifest.baseline, 'Large-scene baseline differs')
+const cases = [
+  ...manifest.cases.map(id => ({ id, path: resolve(root, `fixtures/rules/${id}.json`), input: manifest.inputs[id], output: manifest.outputs[id] })),
+  ...large.cases.map(id => ({ id, path: resolve(root, `fixtures/rules/performance/${id}.json`), input: large.inputs[id], output: large.outputs[id] })),
+]
+const memory = (enginePath, inputPath) => new Promise((done, reject) => {
+  const child = spawn(process.execPath, ['--expose-gc', resolve(root, 'scripts/calculation-parity/memory-worker.mjs'), enginePath, inputPath], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] })
+  let output = '', errors = ''
+  child.stdout.on('data', chunk => { output += chunk })
+  child.stderr.on('data', chunk => { errors += chunk })
+  child.on('error', reject)
+  child.on('close', code => {
+    if (code !== 0) return reject(new Error(`Memory worker exited ${code}: ${errors}`))
+    try { done(JSON.parse(output)) } catch (error) { reject(error) }
+  })
+})
 const temporary = mkdtempSync(resolve(tmpdir(), 'scaffold-parity-'))
 const reportDirectory = resolve(root, 'artifacts/rule-migration')
 mkdirSync(reportDirectory, { recursive: true })
@@ -21,8 +38,16 @@ try {
   const { ENGINE_REVISION: engineRevision } = await import(pathToFileURL(resolve(root, 'src/domain/rules/diagnostics/build.ts')))
   if (process.argv.includes('--bench')) {
     const measurements = []
-    for (const id of ['roof', 'corridor', 'adjacent-houses', 'wall-stroke']) {
-      const input = JSON.parse(readFileSync(resolve(root, `fixtures/rules/${id}.json`), 'utf8'))
+    for (const id of ['roof', 'corridor', 'adjacent-houses', 'wall-stroke', ...large.cases]) {
+      const fixture = cases.find(item => item.id === id)
+      const inputText = readFileSync(fixture.path, 'utf8')
+      assert.equal(hash(inputText), fixture.input, `${id}: frozen benchmark input changed`)
+      const input = JSON.parse(inputText)
+      const before = JSON.stringify(input)
+      const oldResult = old.calculateSite(input.scene, input.parameters), currentResult = current.calculateSite(input.scene, input.parameters)
+      assert(oldResult.canExportMaterials && currentResult.canExportMaterials, `${id}: benchmark must be a calculable project`)
+      assert.equal(hash(JSON.stringify(oldResult)), fixture.output, `${id}: baseline output drift`)
+      assert.deepEqual(JSON.parse(JSON.stringify(currentResult)), JSON.parse(JSON.stringify(oldResult)))
       const batchSize = id === 'roof' ? 20 : 1, warmupCalculations = id === 'roof' ? 1500 : 10
       for (let i = 0; i < warmupCalculations; i++) { old.calculateSite(input.scene, input.parameters); current.calculateSite(input.scene, input.parameters) }
       const samples = [[], []], engines = [old, current]
@@ -36,20 +61,32 @@ try {
       // absolute allowances; large drawings retain explicit relative ceilings.
       const limits = stats[0].p50 < 1 ? { p50: stats[0].p50 + 0.25, p95: stats[0].p95 + 0.5 }
         : { p50: stats[0].p50 * 1.20, p95: stats[0].p95 * 1.25 }
-      measurements.push({ id, batchSize, warmupCalculations, inputSha256: manifest.inputs[id], old: stats[0], current: stats[1],
+      measurements.push({ id, batchSize, warmupCalculations, inputSha256: fixture.input, old: stats[0], current: stats[1],
         ratioP50: stats[1].p50 / stats[0].p50, ratioP95: stats[1].p95 / stats[0].p95, limits,
-        passed: stats[1].p50 <= limits.p50 && stats[1].p95 <= limits.p95 })
+        passed: stats[1].p50 <= limits.p50 && stats[1].p95 <= limits.p95,
+        geometry: { sections: input.scene.sections.length, members: currentResult.members.length, pipes: currentResult.pipeSegments.length, decks: currentResult.decks.length } })
+      assert.equal(JSON.stringify(input), before, `${id}: benchmark mutated input`)
+      const oldMemory = await memory(resolve(temporary, 'src/domain/site.ts'), fixture.path)
+      const currentMemory = await memory(resolve(root, 'src/domain/site.ts'), fixture.path)
+      assert.deepEqual(currentMemory.signature, oldMemory.signature, `${id}: memory worker output differs`)
+      const measurement = measurements.at(-1)
+      measurement.memory = { method: 'isolated process OS high-water RSS; 10 warmups and 100 calculations with GC before each measured call',
+        old: oldMemory, current: currentMemory, ratioPeakRss: currentMemory.peakRssKiB / oldMemory.peakRssKiB, limitRatio: 1.25,
+        passed: currentMemory.peakRssKiB <= oldMemory.peakRssKiB * 1.25 }
+      measurement.passed &&= measurement.memory.passed
+      console.log(JSON.stringify({ completed: id, passed: measurement.passed, ratioP50: measurement.ratioP50, ratioP95: measurement.ratioP95, ratioPeakRss: measurement.memory.ratioPeakRss }))
     }
     const report = { engineRevision, baseline: manifest.baseline, generatedAt: new Date().toISOString(), node: process.version, platform: process.platform, arch: process.arch, samples: 100,
-      scope: 'paired latency only; memory and large-scene acceptance still pending', measurements }
+      scope: 'paired latency and isolated-process peak RSS for small, 50/200-section and multi-elevation projects', measurements }
     writeFileSync(resolve(reportDirectory, 'latency.json'), JSON.stringify(report, null, 2))
     console.log(JSON.stringify(report, null, 2))
-    assert(measurements.every(measurement => measurement.passed), 'Latency budget exceeded; inspect artifacts/rule-migration/latency.json')
+    assert(measurements.every(measurement => measurement.passed), 'Latency or memory budget exceeded; inspect artifacts/rule-migration/latency.json')
   }
   const differences = [], passed = []
-  for (const id of manifest.cases) {
-    const text = readFileSync(resolve(root, `fixtures/rules/${id}.json`), 'utf8')
-    assert.equal(hash(text), manifest.inputs[id], `${id}: frozen input changed`)
+  for (const fixture of cases) {
+    const { id } = fixture
+    const text = readFileSync(fixture.path, 'utf8')
+    assert.equal(hash(text), fixture.input, `${id}: frozen input changed`)
     const input = JSON.parse(text)
     const before = JSON.stringify(input)
     const original = old.calculateSite(input.scene, input.parameters)
@@ -59,7 +96,7 @@ try {
     // JSON is the existing export boundary. Compare every field, including geometry,
     // references, warnings, issues, quantities and optional/unknown values.
     const baseline = JSON.parse(JSON.stringify(original)), candidate = JSON.parse(JSON.stringify(result))
-    assert.equal(hash(JSON.stringify(baseline)), manifest.outputs[id], `${id}: old-engine replay drift`)
+    assert.equal(hash(JSON.stringify(baseline)), fixture.output, `${id}: old-engine replay drift`)
     try { assert.deepEqual(candidate, baseline); passed.push(id) }
     catch {
       const fields = [...new Set([...Object.keys(baseline), ...Object.keys(candidate)])].filter(key => {

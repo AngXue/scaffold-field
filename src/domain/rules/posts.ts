@@ -24,7 +24,11 @@ const run = compilePipeline<Facts, Change>(RULES, POST_STEPS, (facts, proposals)
     case 'InitialPostSequences': result = { ...result, sequences: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // These pure policies read calculation-owned facts and allocate their changes.
+  // Development still clones/freezes the full snapshot to verify that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function startPosts(input: PostInput, parameters: ScaffoldParameters) {
   const stage = run.start({ input, parameters })
   return { advance: (phase: import('./contracts.ts').Phase) => {

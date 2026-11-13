@@ -23,7 +23,7 @@ export { resolveBlocks } from './rules/policies/blocks.ts'
 export { getSectionLevels, defaultSectionLayers, sectionTargetLayer, siteWithTargetLayers } from './rules/policies/levels.ts'
 import { prepareScene } from './rules/scene.ts'
 import { measureDrawing, PIXELS_PER_METER } from './plan.ts'
-import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, publishScaffoldAssembly, assembleScaffoldDraft, prepareScaffoldPlan, prepareScaffoldAssembly, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
+import { BASE_CHANNEL_HEIGHT, BASE_CHANNEL_WIDTH, publishScaffoldAssembly, finishPreparedScaffoldAssembly, prepareScaffoldPlan, prepareScaffoldAssembly, type ScaffoldLayout, type ScaffoldParameters, type Vector3Tuple } from './scaffold.ts'
 import type { PlanPolygon } from './polygons.ts'
 import { footprintContainsPoint } from './siteFootprints.ts'
 import { positionSiteStock } from './siteWallFit.ts'
@@ -114,7 +114,7 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   }
   const indexById = new Map(site.sections.map((line, index) => [line.id, index]))
   const physicalGroups: PhysicalGroup[] = []
-  const completions: Array<{ prefix: string; complete: () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans'> }> = []
+  const completions: Array<{ prefix: string; complete: () => Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans'>; release: () => void }> = []
   const validations: Array<{ groupIndex: number; validate: (physical: { checks: PhysicalCheck[]; elements: ElementBounds[] }) => void }> = []
   let measuredLength = 0
   const minimumLength = flat ? 0.01 : MIN_SECTION_LENGTH
@@ -200,12 +200,21 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
       .map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
     const connectors = part.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
       .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
-    completions.push({ prefix, complete: () => {
-      const completed = plan.toPlan(assembleScaffoldDraft(preparation.draft, true, preparation.posts))
+    // Validation closures outlive assembly. Keep bulky local construction facts
+    // in one releasable cell rather than retaining them through shared closures.
+    const pending = { value: { preparation, toPlan: plan.toPlan, members, decks: part.decks } as {
+      preparation: typeof preparation; toPlan: typeof plan.toPlan; members: typeof members; decks: typeof part.decks;
+    } | undefined }
+    completions.push({ prefix, release: () => { pending.value = undefined }, complete: () => {
+      const { preparation, toPlan, members, decks } = pending.value!
+      const physical = finishPreparedScaffoldAssembly(preparation)
+      // Logical world geometry was committed above. Only new physical records
+      // need this coordinate conversion; do not transform every member twice.
+      const completed = toPlan({ ...physical, members: [], decks: [], baseChannels: [], pathDimensions: [] })
       const finalPipes = completed.pipeSegments.filter(pipe => !removed.has(pipe.memberId)).map(pipe => ({ ...pipe, start: world(pipe.start), end: world(pipe.end) }))
       const finalConnectors = completed.connectors.filter(c => !removed.has(c.memberId) && (!c.connectedMemberId || !removed.has(c.connectedMemberId)))
         .map(c => ({ ...c, position: world(c.position), ...(c[CONNECTOR_CONTACT] && { [CONNECTOR_CONTACT]: world(c[CONNECTOR_CONTACT]) }) }))
-      positionSiteStock({ members, pipeSegments: finalPipes, connectors: finalConnectors, decks: part.decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,
+      positionSiteStock({ members, pipeSegments: finalPipes, connectors: finalConnectors, decks: decks.map(deck => ({ ...deck, corners: deck.corners.map(world) as typeof deck.corners,
         coverage: deck.coverage?.map(face => face.map(world)) })) }, blocks, radius, transitionEnds, followsWall)
       return { pipeSegments: finalPipes.map(pipe => ({ ...pipe, id: prefix + pipe.id, memberId: prefix + pipe.memberId })),
         connectors: finalConnectors.map(c => ({ ...c, id: prefix + c.id, memberId: prefix + c.memberId, connectedMemberId: c.connectedMemberId ? prefix + c.connectedMemberId : undefined })),
@@ -277,7 +286,13 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
   const preview: SiteAssembly = { ...layout, blocks, sections: summaries, issues, canExportMaterials: !issues.some(issue => issue.blocking) }
   return { preview, finish: (resolved: ScaffoldAssembly = preview, affected: readonly string[] = []): SiteAssembly => {
     const changed = new Set(affected)
-    const additions = completions.filter(item => !changed.has(item.prefix.slice(0, -1))).map(item => item.complete())
+    const additions: Pick<ScaffoldAssembly, 'pipeSegments' | 'connectors' | 'assemblyPlans'>[] = []
+    completions.reverse()
+    while (completions.length) {
+      const completion = completions.pop()!
+      try { if (!changed.has(completion.prefix.slice(0, -1))) additions.push(completion.complete()) }
+      finally { completion.release() }
+    }
     const retained = (id: string) => changed.has(id.split('/')[0]) || (changed.size > 0 && id.startsWith('transition-'))
     const final: SiteAssembly = { ...preview, ...resolved,
       pipeSegments: [...additions.flatMap(part => part.pipeSegments), ...resolved.pipeSegments.filter(pipe => retained(pipe.memberId))],
@@ -295,7 +310,15 @@ function prepareSiteSpans(site: Site, settings: ScaffoldParameters, wallIds = ne
         physical[scope.group].elements.push({ bounds: stockBounds(scope.start, scope.end, settings.pipeDiameter / 2), sectionId: scope.sectionId })
       }
     }
-    validations.forEach(({ groupIndex, validate }) => validate(physical[groupIndex]))
+    validations.reverse()
+    while (validations.length) {
+      const { groupIndex, validate } = validations.pop()!
+      validate(physical[groupIndex])
+      // Only compact collision bounds remain needed after this group's support
+      // and penetration findings are committed. Do not retain all check scopes.
+      physical[groupIndex].checks.length = 0
+      physical[groupIndex].elements.length = 0
+    }
     for (const issue of validateIndependentGroups(physicalGroups, site.sections.map(line => line.id), labels)) appendIssue(issues, issue)
     final.canExportMaterials = !issues.some(issue => issue.blocking)
     return final

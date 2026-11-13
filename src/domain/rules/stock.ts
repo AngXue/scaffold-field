@@ -84,7 +84,7 @@ const reduceStock = (facts: import('./contracts.ts').DeepReadonly<StockFacts>, p
   return result
 }
 const configuration = { verifyImmutability: VERIFY_RULE_INPUTS,
-  snapshot: (input: StockFacts): StockFacts => ({ ...input, parameters: { ...input.parameters, stockLengths: [...input.parameters.stockLengths] },
+  snapshot: (input: StockFacts): StockFacts => !VERIFY_RULE_INPUTS ? input : ({ ...input, parameters: { ...input.parameters, stockLengths: [...input.parameters.stockLengths] },
     prebuiltPosts: input.prebuiltPosts?.map(assembly => ({ plan: { ...assembly.plan, stockLengths: [...assembly.plan.stockLengths], segmentIds: [...assembly.plan.segmentIds] },
       segments: assembly.segments.map(pipe => ({ ...pipe, start: [...pipe.start], end: [...pipe.end] })) })),
     sequences: Object.fromEntries(Object.entries(input.sequences).map(([id, sequence]) => [id, [...sequence]])),

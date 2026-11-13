@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { DEFAULT_PARAMETERS, createScaffoldDraft, completeScaffoldDraft, calculateScaffold, type ScaffoldMember } from '../scaffold'
+import { DEFAULT_PARAMETERS, createScaffoldDraft, completeScaffoldDraft, prepareScaffoldAssembly, finishPreparedScaffoldAssembly, assembleScaffoldDraft, calculateScaffold, type ScaffoldMember } from '../scaffold'
 import { calculateSite } from '../site'
 import { SITE_DEMOS } from '../siteDemos'
 import { CALCULATION_TRACE } from './diagnostics/session'
@@ -57,4 +57,21 @@ it('settles corridor connections before selecting horizontal stock and measures 
   expect(layout.canExportMaterials).toBe(true)
   expect(layout.baseChannels).toHaveLength(14)
   expect(layout.decks).toHaveLength(119)
+})
+
+
+it('completes an unchanged frozen assembly scope without rebuilding its logical members', () => {
+  const draft = createScaffoldDraft([{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 180, y: 0 }, { id: 'c', x: 180, y: 270 }], [3.6, 5.4], DEFAULT_PARAMETERS)
+  const prepared = prepareScaffoldAssembly(draft)
+  const freeze = (value: unknown) => {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return
+    for (const key of Reflect.ownKeys(value)) freeze(Reflect.get(value, key))
+    Object.freeze(value)
+  }
+  freeze(prepared)
+  const expected = assembleScaffoldDraft(prepared.draft, true, prepared.posts)
+  expect(finishPreparedScaffoldAssembly(prepared)).toEqual(expected)
+  const output = finishPreparedScaffoldAssembly(prepared)
+  output.pipeSegments[0].start[0] += 2
+  expect(finishPreparedScaffoldAssembly(prepared)).toEqual(expected)
 })

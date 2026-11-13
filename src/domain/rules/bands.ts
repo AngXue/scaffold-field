@@ -21,7 +21,11 @@ const run = compilePipeline<Facts, Change>(RULES, BAND_STEPS, (facts, proposals)
     case 'WorkingBands': result = { ...result, working: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // These pure policies read calculation-owned facts and allocate their changes.
+  // Development still clones/freezes the full snapshot to verify that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function resolveBands(geometry: BandGeometry[], parameters: ScaffoldParameters, deckLayerOffset: number): Band[][] {
   const { facts } = run({ geometry, parameters, deckLayerOffset })
   return geometry.map((_, index) => [...facts.sweep![index], ...facts.working![index]]) as Band[][]

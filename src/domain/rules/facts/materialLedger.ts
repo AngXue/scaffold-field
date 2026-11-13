@@ -20,23 +20,23 @@ export function physicalContributions(layout: PhysicalLayout): PhysicalContribut
   const members = new Set(layout.members.map(member => member.id))
   if (members.size !== layout.members.length) throw new Error('Duplicate logical member ID')
   const entries: PhysicalContribution[] = [], seen = new Set<string>()
-  const add = (entry: Omit<PhysicalContribution, 'sourceSegments'>, sourceSegments: number[] = []) => {
+  const add = (entry: PhysicalContribution) => {
     if (seen.has(entry.id)) throw new Error(`Duplicate material contribution: ${entry.id}`)
     seen.add(entry.id)
     for (const id of entry.memberIds) if (!members.has(id)) throw new Error(`Dangling material reference: ${entry.entityId} -> ${id}`)
-    entries.push({ ...entry, sourceSegments })
+    entries.push(entry)
   }
   for (const pipe of layout.pipeSegments) add({ id: `stock:${pipe.id}`, entityId: pipe.id, category: 'stock', specification: pipe.stockLength,
-    quantity: 1, length: pipe.stockLength, memberIds: [pipe.memberId], rule: 'O01' })
+    quantity: 1, length: pipe.stockLength, memberIds: [pipe.memberId], sourceSegments: [], rule: 'O01' })
   for (const connector of layout.connectors) {
     if (connector.type === 'swivel') throw new Error('Swivel quantity has no modelled contribution rule')
     add({ id: `connector:${connector.id}`, entityId: connector.id, category: connector.type, quantity: 1,
-      memberIds: [connector.memberId, ...(connector.connectedMemberId ? [connector.connectedMemberId] : [])], rule: connector.type === 'butt' ? 'C02' : 'C01' })
+      memberIds: [connector.memberId, ...(connector.connectedMemberId ? [connector.connectedMemberId] : [])], sourceSegments: [], rule: connector.type === 'butt' ? 'C02' : 'C01' })
   }
   for (const deck of layout.decks) add({ id: `deck:${deck.id}`, entityId: deck.id, category: 'deck', quantity: 1,
-    area: deck.area, memberIds: [], rule: 'M05' }, [deck.pathSegment])
+    area: deck.area, memberIds: [], sourceSegments: [deck.pathSegment], rule: 'M05' })
   for (const channel of layout.baseChannels) add({ id: `channel:${channel.id}`, entityId: channel.id, category: 'channel', quantity: 1,
-    length: channel.length, memberIds: [], rule: 'M07' }, [channel.pathSegment])
+    length: channel.length, memberIds: [], sourceSegments: [channel.pathSegment], rule: 'M07' })
   return entries
 }
 /** Detailed uses are opt-in. Manual deltas never enter the physical ledger. */

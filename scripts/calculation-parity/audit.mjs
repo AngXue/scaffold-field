@@ -1,5 +1,7 @@
 import './loader.mjs'
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { performanceEvidence } from './performance-evidence.mjs'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 const root = resolve(import.meta.dirname, '../..')
@@ -44,12 +46,22 @@ const site = await import('../../src/domain/site.ts'), files = await import('../
 const history = await import('../../src/domain/history.ts'), historyBoundary = await import('../../src/domain/rules/boundaries/history.ts')
 for (const name of ['readSite', 'siteFromLegacy', 'siteFromSnapshot', 'legacySiteDrawing', 'legacySnapshot', 'drawingFromSections']) assert.equal(site[name], files[name])
 for (const name of ['addHistoryRecord', 'parseHistory', 'serialiseHistory', 'sameSnapshot']) assert.equal(history[name], historyBoundary[name])
+const { ENGINE_REVISION } = await import('../../src/domain/rules/diagnostics/build.ts')
+const baseline = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/manifest.json'), 'utf8')).baseline
+const large = JSON.parse(readFileSync(resolve(root, 'fixtures/rules/performance/manifest.json'), 'utf8'))
+const fixtures = ['roof', 'corridor', 'adjacent-houses', 'wall-stroke', ...large.cases].map(id => {
+  const input = readFileSync(resolve(root, `fixtures/rules/${large.cases.includes(id) ? 'performance/' : ''}${id}.json`), 'utf8')
+  return { id, hash: createHash('sha256').update(input).digest('hex'), sections: JSON.parse(input).scene.sections.length }
+})
+const reportPath = resolve(root, 'artifacts/rule-migration/latency.json')
+const performanceAcceptance = performanceEvidence(existsSync(reportPath) ? JSON.parse(readFileSync(reportPath, 'utf8')) : undefined,
+  { engineRevision: ENGINE_REVISION, baseline, fixtures })
 const summary = { rules: RULES.length, native: RULES.filter(rule => rule.implementation === 'native').length,
   boundaries: RULES.filter(rule => rule.implementation === 'boundary').length,
   adaptersRemaining: RULES.filter(rule => rule.implementation === 'legacy-adapter').length, liveSteps: steps.size, partialRuleOwners: [...executed].filter(id => RULES.find(rule => rule.id === id).implementation === 'legacy-adapter'),
-  scope: 'live package-local DAGs and boundaries; complete global pipeline still pending',
+  scope: 'live package-local DAGs and boundaries; complete global pipeline still pending', performanceAcceptance,
   pendingAcceptance: ['global S0-S9 orchestration without compatibility rebuilds', 'stable entity identities and full derivedFrom/replacedBy lineage',
-    'complete T01-T15 combination evidence', 'paired 50/200-segment latency and memory budgets', 'rollback rehearsal and final production acceptance'] }
+    'complete T01-T15 combination evidence', ...(!performanceAcceptance.accepted ? ['paired 50/200-segment latency and memory budgets'] : []), 'rollback rehearsal and final production acceptance'] }
 console.log(JSON.stringify(summary, null, 2))
 if (process.argv.includes('--complete')) {
   assert.equal(summary.adaptersRemaining, 0, 'Complete migration gate: legacy calculation adapters remain')

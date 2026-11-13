@@ -21,7 +21,11 @@ const run = compilePipeline<Facts, Change>(RULES, BASE_STEPS, (facts, proposals)
     case 'RetainSupportingBases': result = { ...result, kept: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // These pure policies read calculation-owned facts and allocate their changes.
+  // Development still clones/freezes the full snapshot to verify that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function resolveBaseCandidates(input: BaseInput): BaseChannel[] {
   return run({ input }).facts.candidates!.map(base => ({ ...base })) as BaseChannel[]
 }

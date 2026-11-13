@@ -37,7 +37,11 @@ const run = compilePipeline<TopologyFacts, TopologyProposal>(RULES, TOPOLOGY_STE
     case 'RetainRequiredStations': result = { ...result, retained: proposal.value }; break
   }
   return result
-}, { verifyImmutability: VERIFY_RULE_INPUTS })
+}, { verifyImmutability: VERIFY_RULE_INPUTS,
+  // These pure policies read calculation-owned facts and allocate their changes.
+  // Development still clones/freezes the full snapshot to verify that contract.
+  snapshot: VERIFY_RULE_INPUTS ? undefined : facts => facts,
+})
 export function resolveTopology(physical: PlanPoint[], parameters: ScaffoldParameters, closed: boolean, supportRows: number, required: readonly (readonly [boolean, boolean])[]) {
   const { facts } = run({ physical, parameters: { width: parameters.width, postSpacing: parameters.postSpacing }, closed, supportRows, required })
   return { grid: facts.grid as StationGrid, corners: facts.corners as CornerTopology, stations: facts.stations as AlignedStations, retained: facts.retained as boolean[][] }

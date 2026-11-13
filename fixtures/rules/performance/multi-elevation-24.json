@@ -1,0 +1,422 @@
+{
+  "id": "multi-elevation-24",
+  "scene": {
+    "blocks": [
+      {
+        "id": "B2",
+        "parentId": "ground",
+        "x": 16,
+        "z": 0,
+        "width": 10,
+        "depth": 10,
+        "height": 3.5
+      },
+      {
+        "id": "B3",
+        "parentId": "ground",
+        "x": 32,
+        "z": 0,
+        "width": 10,
+        "depth": 10,
+        "height": 5.64
+      },
+      {
+        "id": "B5",
+        "parentId": "ground",
+        "x": 0,
+        "z": 16,
+        "width": 10,
+        "depth": 10,
+        "height": 3.5
+      },
+      {
+        "id": "B6",
+        "parentId": "ground",
+        "x": 16,
+        "z": 16,
+        "width": 10,
+        "depth": 10,
+        "height": 5.64
+      },
+      {
+        "id": "B8",
+        "parentId": "ground",
+        "x": 48,
+        "z": 16,
+        "width": 10,
+        "depth": 10,
+        "height": 3.5
+      },
+      {
+        "id": "B9",
+        "parentId": "ground",
+        "x": 0,
+        "z": 32,
+        "width": 10,
+        "depth": 10,
+        "height": 5.64
+      },
+      {
+        "id": "B11",
+        "parentId": "ground",
+        "x": 32,
+        "z": 32,
+        "width": 10,
+        "depth": 10,
+        "height": 3.5
+      },
+      {
+        "id": "B12",
+        "parentId": "ground",
+        "x": 48,
+        "z": 32,
+        "width": 10,
+        "depth": 10,
+        "height": 5.64
+      }
+    ],
+    "guides": [],
+    "sections": [
+      {
+        "id": "S1",
+        "surfaceId": "ground",
+        "layers": 3,
+        "start": {
+          "x": 2,
+          "z": 2
+        },
+        "end": {
+          "x": 5.6,
+          "z": 2
+        }
+      },
+      {
+        "id": "S2",
+        "surfaceId": "ground",
+        "layers": 3,
+        "start": {
+          "x": 5.6,
+          "z": 2
+        },
+        "end": {
+          "x": 5.6,
+          "z": 7.4
+        }
+      },
+      {
+        "id": "S3",
+        "surfaceId": "B2",
+        "layers": 3,
+        "start": {
+          "x": 18,
+          "z": 2
+        },
+        "end": {
+          "x": 21.6,
+          "z": 2
+        }
+      },
+      {
+        "id": "S4",
+        "surfaceId": "B2",
+        "layers": 3,
+        "start": {
+          "x": 21.6,
+          "z": 2
+        },
+        "end": {
+          "x": 21.6,
+          "z": 7.4
+        }
+      },
+      {
+        "id": "S5",
+        "surfaceId": "B3",
+        "layers": 3,
+        "start": {
+          "x": 34,
+          "z": 2
+        },
+        "end": {
+          "x": 37.6,
+          "z": 2
+        }
+      },
+      {
+        "id": "S6",
+        "surfaceId": "B3",
+        "layers": 3,
+        "start": {
+          "x": 37.6,
+          "z": 2
+        },
+        "end": {
+          "x": 37.6,
+          "z": 7.4
+        }
+      },
+      {
+        "id": "S7",
+        "surfaceId": "ground",
+        "layers": 3,
+        "start": {
+          "x": 50,
+          "z": 2
+        },
+        "end": {
+          "x": 53.6,
+          "z": 2
+        }
+      },
+      {
+        "id": "S8",
+        "surfaceId": "ground",
+        "layers": 3,
+        "start": {
+          "x": 53.6,
+          "z": 2
+        },
+        "end": {
+          "x": 53.6,
+          "z": 7.4
+        }
+      },
+      {
+        "id": "S9",
+        "surfaceId": "B5",
+        "layers": 3,
+        "start": {
+          "x": 2,
+          "z": 18
+        },
+        "end": {
+          "x": 5.6,
+          "z": 18
+        }
+      },
+      {
+        "id": "S10",
+        "surfaceId": "B5",
+        "layers": 3,
+        "start": {
+          "x": 5.6,
+          "z": 18
+        },
+        "end": {
+          "x": 5.6,
+          "z": 23.4
+        }
+      },
+      {
+        "id": "S11",
+        "surfaceId": "B6",
+        "layers": 3,
+        "start": {
+          "x": 18,
+          "z": 18
+        },
+        "end": {
+          "x": 21.6,
+          "z": 18
+        }
+      },
+      {
+        "id": "S12",
+        "surfaceId": "B6",
+        "layers": 3,
+        "start": {
+          "x": 21.6,
+          "z": 18
+        },
+        "end": {
+          "x": 21.6,
+          "z": 23.4
+        }
+      },
+      {
+        "id": "S13",
+        "surfaceId": "ground",
+        "layers": 3,
+        "start": {
+          "x": 34,
+          "z": 18
+        },
+        "end": {
+          "x": 37.6,
+          "z": 18
+        }
+      },
+      {
+        "id": "S14",
+        "surfaceId": "ground",
+        "layers": 3,
+        "start": {
+          "x": 37.6,
+          "z": 18
+        },
+        "end": {
+          "x": 37.6,
+          "z": 23.4
+        }
+      },
+      {
+        "id": "S15",
+        "surfaceId": "B8",
+        "layers": 3,
+        "start": {
+          "x": 50,
+          "z": 18
+        },
+        "end": {
+          "x": 53.6,
+          "z": 18
+        }
+      },
+      {
+        "id": "S16",
+        "surfaceId": "B8",
+        "layers": 3,
+        "start": {
+          "x": 53.6,
+          "z": 18
+        },
+        "end": {
+          "x": 53.6,
+          "z": 23.4
+        }
+      },
+      {
+        "id": "S17",
+        "surfaceId": "B9",
+        "layers": 3,
+        "start": {
+          "x": 2,
+          "z": 34
+        },
+        "end": {
+          "x": 5.6,
+          "z": 34
+        }
+      },
+      {
+        "id": "S18",
+        "surfaceId": "B9",
+        "layers": 3,
+        "start": {
+          "x": 5.6,
+          "z": 34
+        },
+        "end": {
+          "x": 5.6,
+          "z": 39.4
+        }
+      },
+      {
+        "id": "S19",
+        "surfaceId": "ground",
+        "layers": 3,
+        "start": {
+          "x": 18,
+          "z": 34
+        },
+        "end": {
+          "x": 21.6,
+          "z": 34
+        }
+      },
+      {
+        "id": "S20",
+        "surfaceId": "ground",
+        "layers": 3,
+        "start": {
+          "x": 21.6,
+          "z": 34
+        },
+        "end": {
+          "x": 21.6,
+          "z": 39.4
+        }
+      },
+      {
+        "id": "S21",
+        "surfaceId": "B11",
+        "layers": 3,
+        "start": {
+          "x": 34,
+          "z": 34
+        },
+        "end": {
+          "x": 37.6,
+          "z": 34
+        }
+      },
+      {
+        "id": "S22",
+        "surfaceId": "B11",
+        "layers": 3,
+        "start": {
+          "x": 37.6,
+          "z": 34
+        },
+        "end": {
+          "x": 37.6,
+          "z": 39.4
+        }
+      },
+      {
+        "id": "S23",
+        "surfaceId": "B12",
+        "layers": 3,
+        "start": {
+          "x": 50,
+          "z": 34
+        },
+        "end": {
+          "x": 53.6,
+          "z": 34
+        }
+      },
+      {
+        "id": "S24",
+        "surfaceId": "B12",
+        "layers": 3,
+        "start": {
+          "x": 53.6,
+          "z": 34
+        },
+        "end": {
+          "x": 53.6,
+          "z": 39.4
+        }
+      }
+    ]
+  },
+  "parameters": {
+    "layerCount": 3,
+    "width": 0.75,
+    "deckSupportRailCount": 3,
+    "postSpacing": 1.8,
+    "liftHeight": 1.88,
+    "sweepBarHeight": 0.2,
+    "swapInnerOuter": false,
+    "guardrailRailCount": 1,
+    "tubeEndExtension": 0.1,
+    "spliceOverlap": 0,
+    "deckLiftInterval": 1,
+    "deckPanelLength": 1,
+    "deckPanelWidth": 0.75,
+    "pipeDiameter": 0.048,
+    "stockLengths": [
+      6,
+      5,
+      4.5,
+      4,
+      3.5,
+      3,
+      2.4,
+      2,
+      1.2,
+      0.8
+    ]
+  }
+}
